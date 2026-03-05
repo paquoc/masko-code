@@ -10,8 +10,20 @@ final class HotkeySharedState: @unchecked Sendable {
     /// Whether pending permissions exist — controls Cmd+1-9 interception.
     var hasPendingPermissions = false
 
+    /// Number of active sessions — controls double-tap Cmd interception (only when >= 2).
+    var activeSessionCount: Int32 = 0
+
+    /// Whether the session switcher overlay is currently showing.
+    var sessionSwitcherActive = false
+
     /// Whether the Cmd key is currently held.
     var cmdHeld = false
+
+    // Double-tap Cmd detection state
+    /// Mach absolute time of last Cmd release (for double-tap detection).
+    var lastCmdReleaseTime: UInt64 = 0
+    /// True if Cmd was pressed and released without any other key (solitary press).
+    var cmdWasSolitary = false
 
     /// The configured shortcut key code (default: 46 = M).
     var keyCode: Int64 = 46
@@ -60,6 +72,24 @@ final class GlobalHotkeyManager {
     /// Called when ⌘L collapses (later) the topmost non-collapsed permission.
     var onCollapsePermission: (() -> Void)?
 
+    /// Called when double-tap Cmd opens the session switcher.
+    var onSessionSwitcherOpen: (() -> Void)?
+
+    /// Called when arrow key cycles to next session (while switcher active).
+    var onSessionSwitcherNext: (() -> Void)?
+
+    /// Called when arrow key cycles to previous session (while switcher active).
+    var onSessionSwitcherPrev: (() -> Void)?
+
+    /// Called when Enter or double-tap Cmd confirms selection (while switcher active).
+    var onSessionSwitcherConfirm: (() -> Void)?
+
+    /// Called when Esc cancels the switcher.
+    var onSessionSwitcherCancel: (() -> Void)?
+
+    /// Called when Cmd+N selects Nth session in the switcher (0-indexed).
+    var onSessionSwitcherSelect: ((Int) -> Void)?
+
     // MARK: - Private
 
     let shared = HotkeySharedState()
@@ -71,6 +101,17 @@ final class GlobalHotkeyManager {
     var hasPendingPermissions: Bool {
         get { shared.hasPendingPermissions }
         set { shared.hasPendingPermissions = newValue }
+    }
+
+    var activeSessionCount: Int {
+        get { Int(shared.activeSessionCount) }
+        set { shared.activeSessionCount = Int32(newValue) }
+    }
+
+    /// Whether the session switcher overlay is currently showing — used to suppress permission badges.
+    var isSessionSwitcherActive: Bool {
+        get { shared.sessionSwitcherActive }
+        set { shared.sessionSwitcherActive = newValue }
     }
 
     // MARK: - Configurable shortcut (stored in UserDefaults)
@@ -159,6 +200,7 @@ final class GlobalHotkeyManager {
 
     /// Log to a file for debugging (stdout is lost when backgrounded)
     static func debugLog(_ msg: String) {
+        #if DEBUG
         let path = NSHomeDirectory() + "/.masko-desktop/hotkey-debug.log"
         let line = "\(Date()): \(msg)\n"
         if let handle = FileHandle(forWritingAtPath: path) {
@@ -168,6 +210,7 @@ final class GlobalHotkeyManager {
         } else {
             try? line.write(toFile: path, atomically: true, encoding: .utf8)
         }
+        #endif
     }
 
     func start() {
@@ -267,6 +310,16 @@ final class GlobalHotkeyManager {
     }
 }
 
+// MARK: - Mach time helper
+
+/// Convert mach_absolute_time delta to milliseconds.
+private func machTimeToMs(_ delta: UInt64) -> UInt64 {
+    var info = mach_timebase_info_data_t()
+    mach_timebase_info(&info)
+    let nanos = delta * UInt64(info.numer) / UInt64(info.denom)
+    return nanos / 1_000_000
+}
+
 // MARK: - CGEvent callback (C-compatible, runs on Mach port thread)
 
 private func globalHotkeyCallback(
@@ -296,9 +349,45 @@ private func globalHotkeyCallback(
         GlobalHotkeyManager.debugLog("event: type=\(type.rawValue) keyCode=\(keyCode) flags=\(flags.rawValue)")
     }
 
-    // --- flagsChanged: track Cmd hold state ---
+    // --- flagsChanged: track Cmd hold state + double-tap Cmd detection ---
     if type == .flagsChanged {
         let cmdDown = flags.contains(.maskCommand)
+        let wasCmdDown = state.cmdHeld
+        state.cmdHeld = cmdDown
+
+        if cmdDown && !wasCmdDown {
+            // Cmd just pressed — start tracking solitary press
+            state.cmdWasSolitary = true
+        }
+
+        if !cmdDown && wasCmdDown {
+            // Cmd just released
+            if state.cmdWasSolitary {
+                let now = mach_absolute_time()
+                let elapsed = state.lastCmdReleaseTime > 0 ? machTimeToMs(now - state.lastCmdReleaseTime) : UInt64.max
+
+                if state.sessionSwitcherActive {
+                    // Double-tap while switcher open → confirm
+                    if elapsed < 400 {
+                        state.lastCmdReleaseTime = 0
+                        DispatchQueue.main.async { manager.onSessionSwitcherConfirm?() }
+                    } else {
+                        state.lastCmdReleaseTime = now
+                    }
+                } else if elapsed < 400 && state.activeSessionCount >= 2 {
+                    // Double-tap Cmd detected → open session switcher
+                    GlobalHotkeyManager.debugLog("Double-tap Cmd detected — opening session switcher")
+                    state.lastCmdReleaseTime = 0 // reset to prevent triple-tap
+                    DispatchQueue.main.async { manager.onSessionSwitcherOpen?() }
+                } else {
+                    state.lastCmdReleaseTime = now
+                }
+            } else {
+                // Cmd was used as modifier — reset double-tap tracking
+                state.lastCmdReleaseTime = 0
+            }
+        }
+
         DispatchQueue.main.async {
             manager.isCmdHeld = cmdDown
             if !cmdDown { manager.selectedButtonIndex = nil }
@@ -308,6 +397,11 @@ private func globalHotkeyCallback(
 
     // --- keyDown: check for our shortcuts ---
     guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+
+    // Any keyDown while Cmd is held → Cmd is being used as modifier, not solitary
+    if state.cmdHeld {
+        state.cmdWasSolitary = false
+    }
 
     // Check focus-toggle shortcut (configurable, default ⌘M)
     let requiredMods = CGEventFlags(rawValue: state.modifiersRaw)
@@ -320,26 +414,66 @@ private func globalHotkeyCallback(
         return nil // consume
     }
 
+    // --- Session switcher active: arrow keys, Esc ---
+    if state.sessionSwitcherActive {
+        // Arrow Down or Arrow Right: next session
+        if keyCode == 125 || keyCode == 124 {
+            DispatchQueue.main.async { manager.onSessionSwitcherNext?() }
+            return nil
+        }
+        // Arrow Up or Arrow Left: previous session
+        if keyCode == 126 || keyCode == 123 {
+            DispatchQueue.main.async { manager.onSessionSwitcherPrev?() }
+            return nil
+        }
+        // Tab: next session (Shift+Tab: previous) — only when switcher is open
+        if keyCode == 48 {
+            if flags.contains(.maskShift) {
+                DispatchQueue.main.async { manager.onSessionSwitcherPrev?() }
+            } else {
+                DispatchQueue.main.async { manager.onSessionSwitcherNext?() }
+            }
+            return nil
+        }
+        // Esc: cancel
+        if keyCode == 53 {
+            DispatchQueue.main.async { manager.onSessionSwitcherCancel?() }
+            return nil
+        }
+    }
+
     // Cmd-only shortcuts (no Shift/Ctrl/Option)
     if flags.contains(.maskCommand) &&
        !flags.contains(.maskShift) &&
        !flags.contains(.maskControl) &&
        !flags.contains(.maskAlternate) {
 
-        // ⌘1-9: select button within topmost card
+        // ⌘1-9: session switcher selection (takes priority when switcher is active)
         let digitKeyCodes: [Int64: Int] = [
             18: 1, 19: 2, 20: 3, 21: 4, 23: 5,
             22: 6, 26: 7, 28: 8, 25: 9,
         ]
-        if let digit = digitKeyCodes[keyCode], state.hasPendingPermissions {
-            DispatchQueue.main.async { manager.onSelectPermission?(digit - 1) }
-            return nil // consume
+        if let digit = digitKeyCodes[keyCode] {
+            if state.sessionSwitcherActive {
+                DispatchQueue.main.async { manager.onSessionSwitcherSelect?(digit - 1) }
+                return nil
+            }
+            if state.hasPendingPermissions {
+                DispatchQueue.main.async { manager.onSelectPermission?(digit - 1) }
+                return nil
+            }
         }
 
-        // ⌘Enter: confirm selected button
-        if keyCode == 36, state.hasPendingPermissions {
-            DispatchQueue.main.async { manager.onConfirmPermission?() }
-            return nil // consume
+        // ⌘Enter: confirm session switcher or permission
+        if keyCode == 36 {
+            if state.sessionSwitcherActive {
+                DispatchQueue.main.async { manager.onSessionSwitcherConfirm?() }
+                return nil
+            }
+            if state.hasPendingPermissions {
+                DispatchQueue.main.async { manager.onConfirmPermission?() }
+                return nil
+            }
         }
 
         // ⌘L: collapse (later) topmost non-collapsed permission
@@ -348,10 +482,10 @@ private func globalHotkeyCallback(
             return nil // consume
         }
 
-        // ⌘Esc: dismiss (skip/deny) topmost permission
+        // ⌘Esc: dismiss permission
         if keyCode == 53, state.hasPendingPermissions {
             DispatchQueue.main.async { manager.onDismissPermission?() }
-            return nil // consume
+            return nil
         }
     }
 

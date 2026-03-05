@@ -73,24 +73,40 @@ final class SessionStore {
 
     /// Read the tail of each running session's transcript to detect interrupts.
     private func checkForInterrupts() {
-        let running = sessions.indices.filter {
-            sessions[$0].status == .active && sessions[$0].phase == .running && sessions[$0].transcriptPath != nil
+        // Collect data needed for background I/O
+        let candidates: [(index: Int, id: String, path: String, lastEventAt: Date?)] = sessions.indices.compactMap {
+            guard sessions[$0].status == .active,
+                  sessions[$0].phase == .running,
+                  let path = sessions[$0].transcriptPath else { return nil }
+            return ($0, sessions[$0].id, path, sessions[$0].lastEventAt)
         }
-        guard !running.isEmpty else { return }
+        guard !candidates.isEmpty else { return }
 
-        var changed = false
-        for i in running {
-            guard let path = sessions[i].transcriptPath else { continue }
-            if Self.transcriptIndicatesInterrupt(path: path, since: sessions[i].lastEventAt) {
-                sessions[i].phase = .idle
-                sessions[i].isCompacting = false
-                changed = true
-                print("[masko-desktop] Interrupt detected for session \(sessions[i].id) via transcript")
+        // File I/O on background queue to avoid blocking main thread
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let interrupted = candidates.filter {
+                Self.transcriptIndicatesInterrupt(path: $0.path, since: $0.lastEventAt)
             }
-        }
-        if changed {
-            persist()
-            onPhasesChanged?()
+            guard !interrupted.isEmpty else { return }
+
+            DispatchQueue.main.async {
+                guard let self else { return }
+                var changed = false
+                for candidate in interrupted {
+                    // Re-verify index is still valid and session hasn't changed
+                    guard candidate.index < self.sessions.count,
+                          self.sessions[candidate.index].id == candidate.id,
+                          self.sessions[candidate.index].phase == .running else { continue }
+                    self.sessions[candidate.index].phase = .idle
+                    self.sessions[candidate.index].isCompacting = false
+                    changed = true
+                    print("[masko-desktop] Interrupt detected for session \(candidate.id) via transcript")
+                }
+                if changed {
+                    self.persist()
+                    self.onPhasesChanged?()
+                }
+            }
         }
     }
 
@@ -174,10 +190,20 @@ final class SessionStore {
     func reconcileIfNeeded() {
         guard !activeSessions.isEmpty else { return }
 
+        // Run pgrep on a background thread to avoid blocking the UI
+        checkForClaudeProcesses { [weak self] hasClaudeProcess in
+            DispatchQueue.main.async {
+                self?.applyReconciliation(hasClaudeProcess: hasClaudeProcess)
+            }
+        }
+    }
+
+    private func applyReconciliation(hasClaudeProcess: Bool) {
+        guard !activeSessions.isEmpty else { return }
+
         var changed = false
 
         // 1. If no Claude process at all, end everything
-        let hasClaudeProcess = checkForClaudeProcesses()
         if !hasClaudeProcess {
             for i in sessions.indices where sessions[i].status == .active {
                 sessions[i].status = .ended
@@ -209,19 +235,22 @@ final class SessionStore {
         }
     }
 
-    /// Check if any `claude` CLI processes are running via pgrep (exact name match)
-    private func checkForClaudeProcesses() -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-x", "claude"] // exact match — won't match masko-desktop
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0 // 0 = found matches
-        } catch {
-            return false
+    /// Check if any `claude` CLI processes are running via pgrep (exact name match).
+    /// Runs on a background thread to avoid blocking the main/UI thread.
+    private func checkForClaudeProcesses(completion: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+            process.arguments = ["-x", "claude"] // exact match — won't match masko-desktop
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                process.waitUntilExit()
+                completion(process.terminationStatus == 0) // 0 = found matches
+            } catch {
+                completion(false)
+            }
         }
     }
 
@@ -323,6 +352,7 @@ final class SessionStore {
                 sessions[index].phase = .idle
                 sessions[index].activeSubagentCount = 0
                 sessions[index].isCompacting = false
+                onPhasesChanged?()
 
             case .subagentStart:
                 sessions[index].activeSubagentCount += 1

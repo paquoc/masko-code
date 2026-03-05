@@ -33,6 +33,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Do NOT set NSApp.applicationIconImage — it overrides the .icns
         // and causes incorrect sizing in the dock.
 
+        #if DEBUG
+        PerfMonitor.shared.start()
+        #endif
+
         // Show the dashboard window on launch
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             AppDelegate.showDashboard()
@@ -144,6 +148,7 @@ struct MaskoDesktopApp: App {
                     overlayManager.eventStore = appStore.eventStore
                     overlayManager.pendingPermissionStore = appStore.pendingPermissionStore
                     overlayManager.hotkeyManager = appStore.hotkeyManager
+                    overlayManager.sessionSwitcherStore = appStore.sessionSwitcherStore
                     appStore.onEventForOverlay = { [weak overlayManager] event in
                         overlayManager?.handleEvent(event)
                     }
@@ -152,6 +157,15 @@ struct MaskoDesktopApp: App {
                     }
                     appStore.onRefreshOverlay = { [weak overlayManager] in
                         overlayManager?.refreshInputs()
+                    }
+                    appStore.onSessionSwitcherShow = { [weak overlayManager] in
+                        overlayManager?.showSessionSwitcher()
+                    }
+                    appStore.onSessionSwitcherUpdate = { [weak overlayManager] in
+                        overlayManager?.updateSessionSwitcher()
+                    }
+                    appStore.onSessionSwitcherDismiss = { [weak overlayManager] in
+                        overlayManager?.dismissSessionSwitcher()
                     }
                     await appStore.start()
                     overlayManager.restoreIfNeeded()

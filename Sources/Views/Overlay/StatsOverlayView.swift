@@ -6,6 +6,10 @@ struct StatsOverlayView: View {
     @Environment(PendingPermissionStore.self) var pendingPermissionStore
 
     var body: some View {
+        #if DEBUG
+        let _ = Self._printChanges()
+        let _ = PerfMonitor.shared.track(.viewBodyStatsOverlay)
+        #endif
         HStack(spacing: 8) {
             // Active sessions
             HStack(spacing: 3) {

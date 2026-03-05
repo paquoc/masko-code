@@ -9,14 +9,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/RousselPaul/masko-for-claude-code/releases/latest"><img src="https://img.shields.io/github/v/release/RousselPaul/masko-for-claude-code?style=flat-square&color=f95d02" alt="Release" /></a>
+  <a href="https://github.com/RousselPaul/masko-code/releases/latest"><img src="https://img.shields.io/github/v/release/RousselPaul/masko-code?style=flat-square&color=f95d02" alt="Release" /></a>
   <img src="https://img.shields.io/badge/macOS-14.0%2B-black?style=flat-square&logo=apple" alt="macOS 14+" />
   <img src="https://img.shields.io/badge/Apple%20Silicon-arm64-black?style=flat-square" alt="Apple Silicon" />
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/RousselPaul/masko-for-claude-code/releases/latest"><strong>Download</strong></a> · <a href="https://masko.ai/claude-code"><strong>Website</strong></a> · <a href="https://masko.ai"><strong>Custom Mascots</strong></a>
+  <a href="https://github.com/RousselPaul/masko-code/releases/latest"><strong>Download</strong></a> · <a href="https://masko.ai/claude-code"><strong>Website</strong></a> · <a href="https://masko.ai"><strong>Custom Mascots</strong></a>
 </p>
 
 ---
@@ -72,13 +72,13 @@ The `vscode-extension/` directory includes a lightweight VS Code extension that 
 
 ## Install
 
-Download the latest `.dmg` from [**Releases**](https://github.com/RousselPaul/masko-for-claude-code/releases/latest).
+Download the latest `.dmg` from [**Releases**](https://github.com/RousselPaul/masko-code/releases/latest).
 
 ## Build from Source
 
 ```bash
-git clone https://github.com/RousselPaul/masko-for-claude-code.git
-cd masko-for-claude-code
+git clone https://github.com/RousselPaul/masko-code.git
+cd masko-code
 swift build
 swift run
 ```

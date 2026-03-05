@@ -396,7 +396,7 @@ final class PendingPermissionStore {
     private var livenessTimer: Timer?
 
     func startLivenessChecks() {
-        livenessTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        livenessTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { self?.checkConnectionLiveness() }
         }
     }

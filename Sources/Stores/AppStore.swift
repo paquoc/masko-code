@@ -11,10 +11,12 @@ final class AppStore {
     let pendingPermissionStore = PendingPermissionStore()
     let mascotStore = MascotStore()
     let hotkeyManager = GlobalHotkeyManager()
+    let sessionSwitcherStore = SessionSwitcherStore()
 
     private(set) var eventProcessor: EventProcessor!
     private(set) var isReady = false
     private(set) var isRunning = false
+    private var lastReconcileDate: Date = .distantPast
 
     /// Called when a Claude Code event is received — wire to OverlayManager.handleEvent
     var onEventForOverlay: ((ClaudeEvent) -> Void)?
@@ -22,6 +24,11 @@ final class AppStore {
     var onInputForOverlay: ((String, ConditionValue) -> Void)?
     /// Called when session phases change outside of events (e.g. interrupt detection via transcript)
     var onRefreshOverlay: (() -> Void)?
+
+    /// Session switcher overlay callbacks — wire to OverlayManager
+    var onSessionSwitcherShow: (() -> Void)?
+    var onSessionSwitcherUpdate: (() -> Void)?
+    var onSessionSwitcherDismiss: (() -> Void)?
 
     var hasUnreadNotifications: Bool { notificationStore.unreadCount > 0 }
 
@@ -73,9 +80,24 @@ final class AppStore {
             }
         }
 
-        // Wire interrupt detection → overlay refresh
+        // Wire interrupt detection → overlay refresh + session count sync + switcher refresh
         sessionStore.onPhasesChanged = { [weak self] in
-            self?.onRefreshOverlay?()
+            guard let self else { return }
+            self.onRefreshOverlay?()
+            let activeCount = self.sessionStore.activeSessions.count
+            self.hotkeyManager.activeSessionCount = activeCount
+
+            // Auto-dismiss or refresh session switcher when sessions change
+            if self.sessionSwitcherStore.isActive {
+                if activeCount < 2 {
+                    self.hotkeyManager.shared.sessionSwitcherActive = false
+                    self.sessionSwitcherStore.close()
+                    self.onSessionSwitcherDismiss?()
+                } else {
+                    self.sessionSwitcherStore.refresh(sessions: self.sessionStore.activeSessions)
+                    self.onSessionSwitcherUpdate?()
+                }
+            }
         }
 
         // Wire pending permission count → hotkey manager
@@ -119,6 +141,63 @@ final class AppStore {
                 self.pendingPermissionStore.expand(id: topCollapsed.id)
             }
         }
+        // Set initial count
+        hotkeyManager.activeSessionCount = sessionStore.activeSessions.count
+
+        // Wire session switcher tap-to-confirm (clicked a row)
+        sessionSwitcherStore.onTapConfirm = { [weak self] session in
+            guard let self else { return }
+            self.hotkeyManager.shared.sessionSwitcherActive = false
+            IDETerminalFocus.focusSession(session)
+            self.onSessionSwitcherDismiss?()
+        }
+
+        // Wire hotkey manager — session switcher callbacks
+        hotkeyManager.onSessionSwitcherOpen = { [weak self] in
+            guard let self else { return }
+            let active = self.sessionStore.activeSessions
+            guard active.count >= 2 else { return }
+            self.sessionSwitcherStore.open(sessions: active)
+            self.hotkeyManager.shared.sessionSwitcherActive = true
+            self.onSessionSwitcherShow?()
+        }
+
+        hotkeyManager.onSessionSwitcherNext = { [weak self] in
+            self?.sessionSwitcherStore.selectNext()
+            self?.onSessionSwitcherUpdate?()
+        }
+
+        hotkeyManager.onSessionSwitcherPrev = { [weak self] in
+            self?.sessionSwitcherStore.selectPrevious()
+            self?.onSessionSwitcherUpdate?()
+        }
+
+        hotkeyManager.onSessionSwitcherSelect = { [weak self] index in
+            guard let self else { return }
+            self.sessionSwitcherStore.selectIndex(index)
+            // Immediately confirm — Cmd+N is a direct jump, not just selection
+            self.hotkeyManager.shared.sessionSwitcherActive = false
+            if let session = self.sessionSwitcherStore.confirm() {
+                IDETerminalFocus.focusSession(session)
+            }
+            self.onSessionSwitcherDismiss?()
+        }
+
+        hotkeyManager.onSessionSwitcherConfirm = { [weak self] in
+            guard let self else { return }
+            self.hotkeyManager.shared.sessionSwitcherActive = false
+            if let session = self.sessionSwitcherStore.confirm() {
+                IDETerminalFocus.focusSession(session)
+            }
+            self.onSessionSwitcherDismiss?()
+        }
+
+        hotkeyManager.onSessionSwitcherCancel = { [weak self] in
+            guard let self else { return }
+            self.hotkeyManager.shared.sessionSwitcherActive = false
+            self.sessionSwitcherStore.close()
+            self.onSessionSwitcherDismiss?()
+        }
 
         // Wire hotkey manager — toggle focus via configurable shortcut
         // When permissions are pending, ⌘M focuses the terminal (same as terminal button).
@@ -159,13 +238,15 @@ final class AppStore {
             print("[masko-desktop] Failed to install hooks: \(error)")
         }
 
-        // Start global hotkey manager (CGEvent tap)
-        hotkeyManager.start()
-
         // Evict cached videos older than 30 days
         VideoCache.shared.evictStaleFiles()
 
-        await notificationService.requestPermission()
+        // Only request permissions if onboarding is done.
+        // During onboarding, each permission is requested by its dedicated step.
+        if hasCompletedOnboarding {
+            hotkeyManager.start()
+            await notificationService.requestPermission()
+        }
 
         do {
             try localServer.start()
@@ -173,16 +254,25 @@ final class AppStore {
             print("[masko-desktop] Failed to start local server: \(error)")
         }
 
-        // Reconcile sessions when app comes to foreground (crash recovery)
+        // Reconcile sessions when app comes to foreground (crash recovery).
+        // Throttled to at most once per 30 seconds — this notification fires on every
+        // app switch (Cmd+Tab), not just when Masko activates.
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.sessionStore.reconcileIfNeeded()
-            // Retry hotkey manager if not yet active (user may have just granted Accessibility)
-            if !(self?.hotkeyManager.isActive ?? true) {
-                self?.hotkeyManager.start()
+            Task { @MainActor in
+                guard let self else { return }
+                let now = Date()
+                if now.timeIntervalSince(self.lastReconcileDate) >= 30 {
+                    self.lastReconcileDate = now
+                    self.sessionStore.reconcileIfNeeded()
+                }
+                // Retry hotkey manager if not yet active (user may have just granted Accessibility)
+                if !self.hotkeyManager.isActive {
+                    self.hotkeyManager.start()
+                }
             }
         }
 
@@ -192,7 +282,9 @@ final class AppStore {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.stop()
+            Task { @MainActor in
+                self?.stop()
+            }
         }
 
         isReady = true

@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "masko-for-claude-code",
+    name: "masko-code",
     platforms: [
         .macOS(.v14)
     ],
@@ -11,7 +11,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "masko-for-claude-code",
+            name: "masko-code",
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle")
             ],

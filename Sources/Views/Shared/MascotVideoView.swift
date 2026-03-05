@@ -27,6 +27,9 @@ struct MascotVideoView: NSViewRepresentable {
 
         let player = AVPlayer(url: url)
         player.isMuted = true
+        #if DEBUG
+        PerfMonitor.shared.avPlayerCreated()
+        #endif
 
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.videoGravity = .resizeAspect
@@ -38,8 +41,8 @@ struct MascotVideoView: NSViewRepresentable {
             layer.addSublayer(playerLayer)
         }
 
-        // Loop
-        NotificationCenter.default.addObserver(
+        // Loop — store observer token for cleanup
+        let observer = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: player.currentItem,
             queue: .main
@@ -52,16 +55,44 @@ struct MascotVideoView: NSViewRepresentable {
 
         context.coordinator.player = player
         context.coordinator.playerLayer = playerLayer
+        context.coordinator.loopObserver = observer
 
         return container
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
 
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.cleanup()
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     class Coordinator {
         var player: AVPlayer?
         var playerLayer: AVPlayerLayer?
+        var loopObserver: NSObjectProtocol?
+
+        func cleanup() {
+            if let obs = loopObserver {
+                NotificationCenter.default.removeObserver(obs)
+                loopObserver = nil
+            }
+            player?.pause()
+            player?.replaceCurrentItem(with: nil)
+            playerLayer?.removeFromSuperlayer()
+            playerLayer?.player = nil
+            #if DEBUG
+            if player != nil {
+                Task { @MainActor in PerfMonitor.shared.avPlayerDestroyed() }
+            }
+            #endif
+            player = nil
+            playerLayer = nil
+        }
+
+        deinit {
+            cleanup()
+        }
     }
 }

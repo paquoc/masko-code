@@ -1,7 +1,7 @@
 {
   "name": "masko-terminal-focus",
   "displayName": "Masko Terminal Focus",
-  "description": "Allows Masko for Claude Code to focus specific terminal tabs",
+  "description": "Allows Masko Code to focus specific terminal tabs",
   "version": "1.0.0",
   "publisher": "masko",
   "engines": {

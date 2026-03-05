@@ -28,6 +28,9 @@ struct ContentView: View {
         if !appStore.hasCompletedOnboarding {
             OnboardingView {
                 appStore.hasCompletedOnboarding = true
+                // Start services that were deferred during onboarding
+                appStore.hotkeyManager.start()
+                Task { await appStore.notificationService.requestPermission() }
             }
         } else {
             dashboardView
@@ -45,14 +48,9 @@ struct ContentView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 24, height: 24)
                     }
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Masko")
-                            .font(Constants.heading(size: 16, weight: .bold))
-                            .foregroundColor(Constants.textPrimary)
-                        Text("for Claude Code")
-                            .font(Constants.body(size: 11, weight: .medium))
-                            .foregroundColor(Constants.textMuted)
-                    }
+                    Text("Masko Code")
+                        .font(Constants.heading(size: 16, weight: .bold))
+                        .foregroundColor(Constants.textPrimary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)

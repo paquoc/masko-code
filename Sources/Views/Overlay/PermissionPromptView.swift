@@ -236,6 +236,7 @@ struct AskUserQuestionView: View {
     @State private var multiSelections: [String: Set<String>] = [:]
     @State private var customInputs: [String: String] = [:]
     @State private var usingCustom: Set<String> = []
+    @State private var currentQuestionIndex: Int = 0
     @FocusState private var otherFieldFocused: String?
 
     private var allAnswered: Bool {
@@ -290,8 +291,8 @@ struct AskUserQuestionView: View {
 
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(questions.enumerated()), id: \.offset) { _, question in
-                        questionView(question)
+                    ForEach(Array(questions.enumerated()), id: \.offset) { qIdx, question in
+                        questionView(question, questionIndex: qIdx)
                     }
                 }
             }
@@ -350,7 +351,10 @@ struct AskUserQuestionView: View {
         .clipShape(SpeechBubbleShape(tailSide: tailSide, tailPercent: tailPercent))
         .shadow(color: OverlayStyle.cardShadow, radius: 3, x: 0, y: 2)
         .onChange(of: hotkeyManager.selectedButtonIndex) { _, newIdx in
-            guard showShortcuts, let idx = newIdx, let q = questions.first else { return }
+            guard showShortcuts, let idx = newIdx else { return }
+            let qIdx = currentQuestionIndex
+            guard qIdx < questions.count else { return }
+            let q = questions[qIdx]
             if idx < q.options.count {
                 usingCustom.remove(q.question)
                 if q.multiSelect {
@@ -360,6 +364,10 @@ struct AskUserQuestionView: View {
                     multiSelections[q.question] = set
                 } else {
                     selections[q.question] = q.options[idx].label
+                    // Auto-advance to next unanswered question
+                    if qIdx + 1 < questions.count {
+                        currentQuestionIndex = qIdx + 1
+                    }
                 }
             } else if idx == q.options.count {
                 // "Other" option — activate app + make panel key so text field can receive focus
@@ -386,7 +394,9 @@ struct AskUserQuestionView: View {
     }
 
     @ViewBuilder
-    private func questionView(_ question: ParsedQuestion) -> some View {
+    private func questionView(_ question: ParsedQuestion, questionIndex: Int) -> some View {
+        let isActive = questionIndex == currentQuestionIndex
+
         VStack(alignment: .leading, spacing: 3) {
             if let header = question.header {
                 Text(header)
@@ -402,19 +412,24 @@ struct AskUserQuestionView: View {
                 .foregroundStyle(OverlayStyle.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .contentShape(Rectangle())
-                .onTapGesture { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid) }
+                .onTapGesture {
+                    if questions.count > 1 {
+                        currentQuestionIndex = questionIndex
+                    }
+                    focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid)
+                }
 
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(question.options.enumerated()), id: \.offset) { idx, option in
-                    optionRow(question: question, option: option, index: idx)
+                    optionRow(question: question, option: option, index: idx, isActiveQuestion: isActive, questionIndex: questionIndex)
                 }
-                otherRow(question: question)
+                otherRow(question: question, isActiveQuestion: isActive, questionIndex: questionIndex)
             }
         }
     }
 
     @ViewBuilder
-    private func optionRow(question: ParsedQuestion, option: ParsedOption, index: Int) -> some View {
+    private func optionRow(question: ParsedQuestion, option: ParsedOption, index: Int, isActiveQuestion: Bool, questionIndex: Int) -> some View {
         let isMulti = question.multiSelect
         let isSelected: Bool = {
             guard !usingCustom.contains(question.question) else { return false }
@@ -423,8 +438,10 @@ struct AskUserQuestionView: View {
             }
             return selections[question.question] == option.label
         }()
+        let showBadge = showShortcuts && isActiveQuestion
 
         Button {
+            currentQuestionIndex = questionIndex
             usingCustom.remove(question.question)
             if isMulti {
                 var set = multiSelections[question.question] ?? []
@@ -432,6 +449,10 @@ struct AskUserQuestionView: View {
                 multiSelections[question.question] = set
             } else {
                 selections[question.question] = option.label
+                // Auto-advance to next unanswered question on click
+                if questionIndex + 1 < questions.count {
+                    currentQuestionIndex = questionIndex + 1
+                }
             }
         } label: {
             HStack(alignment: .top, spacing: 5) {
@@ -458,14 +479,14 @@ struct AskUserQuestionView: View {
 
                 Spacer(minLength: 0)
 
-                if showShortcuts {
+                if showBadge {
                     ShortcutBadge(index: index, isSelected: hotkeyManager.selectedButtonIndex == index)
                 }
             }
             .padding(.vertical, 2)
             .padding(.horizontal, 5)
             .background(
-                (hotkeyManager.selectedButtonIndex == index && showShortcuts)
+                (hotkeyManager.selectedButtonIndex == index && showBadge)
                     ? OverlayStyle.orange.opacity(0.12)
                     : (isSelected ? OverlayStyle.selectedBg : Color.clear)
             )
@@ -475,12 +496,14 @@ struct AskUserQuestionView: View {
     }
 
     @ViewBuilder
-    private func otherRow(question: ParsedQuestion) -> some View {
+    private func otherRow(question: ParsedQuestion, isActiveQuestion: Bool, questionIndex: Int) -> some View {
         let isCustom = usingCustom.contains(question.question)
         let otherIndex = question.options.count
+        let showBadge = showShortcuts && isActiveQuestion
 
         VStack(alignment: .leading, spacing: 2) {
             Button {
+                currentQuestionIndex = questionIndex
                 pendingPermissionStore.onRequestTextInputFocus?()
                 usingCustom.insert(question.question)
                 selections.removeValue(forKey: question.question)
@@ -498,14 +521,14 @@ struct AskUserQuestionView: View {
 
                     Spacer(minLength: 0)
 
-                    if showShortcuts {
+                    if showBadge {
                         ShortcutBadge(index: otherIndex, isSelected: hotkeyManager.selectedButtonIndex == otherIndex)
                     }
                 }
                 .padding(.vertical, 2)
                 .padding(.horizontal, 5)
                 .background(
-                    (hotkeyManager.selectedButtonIndex == otherIndex && showShortcuts)
+                    (hotkeyManager.selectedButtonIndex == otherIndex && showBadge)
                         ? OverlayStyle.orange.opacity(0.12)
                         : (isCustom ? OverlayStyle.selectedBg : Color.clear)
                 )
@@ -1083,6 +1106,10 @@ struct PermissionStackView: View {
     @Environment(GlobalHotkeyManager.self) var hotkeyManager
 
     var body: some View {
+        #if DEBUG
+        let _ = Self._printChanges()
+        let _ = PerfMonitor.shared.track(.viewBodyPermissionStack)
+        #endif
         if !pendingPermissionStore.pending.isEmpty {
             VStack(spacing: 4) {
                 // Bulk actions when multiple pending
@@ -1123,7 +1150,7 @@ struct PermissionStackView: View {
                     : nil
 
                 ForEach(Array(pendingPermissionStore.pending.reversed().enumerated()), id: \.element.id) { index, perm in
-                    let showShortcuts = hotkeyManager.isCmdHeld && (perm.id == firstNonCollapsedId || perm.id == firstCollapsedId)
+                    let showShortcuts = hotkeyManager.isCmdHeld && !hotkeyManager.isSessionSwitcherActive && (perm.id == firstNonCollapsedId || perm.id == firstCollapsedId)
 
                     if pendingPermissionStore.collapsed.contains(perm.id) {
                         CollapsedPermissionPill(

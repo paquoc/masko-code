@@ -18,6 +18,10 @@ struct OverlayStateMachineView: View {
     @AppStorage("overlay_resize_mode") private var resizeMode = false
 
     var body: some View {
+        #if DEBUG
+        let _ = Self._printChanges()
+        let _ = PerfMonitor.shared.track(.viewBodyStateMachine)
+        #endif
         ZStack(alignment: .bottomTrailing) {
             StateMachineVideoPlayer(
                 url: stateMachine.currentVideoURL,
@@ -53,10 +57,20 @@ struct StatsHUDView: View {
     @AppStorage("overlay_show_stats") private var showStats = true
 
     var body: some View {
+        #if DEBUG
+        let _ = Self._printChanges()
+        let _ = PerfMonitor.shared.track(.viewBodyStatsHUD)
+        #endif
         VStack(spacing: 4) {
             if showDebug {
                 DebugHUD(stateMachine: stateMachine)
             }
+
+            #if DEBUG
+            if showDebug {
+                PerfOverlayView()
+            }
+            #endif
 
             if showStats {
                 StatsOverlayView()
@@ -86,20 +100,25 @@ final class PermissionHUDConfig {
 
 struct PermissionHUDView: View {
     let config: PermissionHUDConfig
+    @Environment(SessionSwitcherStore.self) var sessionSwitcherStore
+    @Environment(GlobalHotkeyManager.self) var hotkeyManager
 
     var body: some View {
-        PermissionStackView()
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: 280)
-            .background(GeometryReader { geo in
-                Color.clear
-                    .onAppear { config.contentSize = geo.size }
-                    .onChange(of: geo.size) { _, newSize in
-                        config.contentSize = newSize
-                    }
-            })
-            .environment(\.speechBubbleTailSide, config.tailSide)
-            .environment(\.speechBubbleTailPercent, config.tailPercent)
+        VStack(spacing: 4) {
+            SessionSwitcherView()
+            PermissionStackView()
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: 280)
+        .background(GeometryReader { geo in
+            Color.clear
+                .onAppear { config.contentSize = geo.size }
+                .onChange(of: geo.size) { _, newSize in
+                    config.contentSize = newSize
+                }
+        })
+        .environment(\.speechBubbleTailSide, config.tailSide)
+        .environment(\.speechBubbleTailPercent, config.tailPercent)
     }
 }
 
@@ -110,6 +129,10 @@ struct DebugHUD: View {
     let stateMachine: OverlayStateMachine
 
     var body: some View {
+        #if DEBUG
+        let _ = Self._printChanges()
+        let _ = PerfMonitor.shared.track(.viewBodyDebugHUD)
+        #endif
         VStack(alignment: .leading, spacing: 2) {
             Text("\(stateMachine.currentNodeName) (\(phaseLabel))")
                 .fontWeight(.bold)
@@ -239,6 +262,16 @@ struct StateMachineVideoPlayer: NSViewRepresentable {
         private var activePlayer: AVPlayer? { activeIsA ? playerA : playerB }
         private var activeLayer: AVPlayerLayer? { activeIsA ? layerA : layerB }
 
+        private func releasePlayer(_ player: inout AVPlayer?) {
+            guard let p = player else { return }
+            p.pause()
+            p.replaceCurrentItem(with: nil)
+            #if DEBUG
+            Task { @MainActor in PerfMonitor.shared.avPlayerDestroyed() }
+            #endif
+            player = nil
+        }
+
         func loadVideo(url: URL, loop: Bool) {
             // Clean up pending observers
             if let obs = endObserver {
@@ -254,8 +287,11 @@ struct StateMachineVideoPlayer: NSViewRepresentable {
             let isFirstLoad = playerA == nil && playerB == nil
             let newPlayer = AVPlayer(url: url)
             newPlayer.isMuted = true
+            #if DEBUG
+            Task { @MainActor in PerfMonitor.shared.avPlayerCreated() }
+            #endif
 
-            // Load onto the inactive buffer
+            // Load onto the inactive buffer, releasing any old player there
             let targetLayer: AVPlayerLayer?
             if isFirstLoad {
                 // First video — load directly onto A
@@ -265,10 +301,13 @@ struct StateMachineVideoPlayer: NSViewRepresentable {
                 activeIsA = true
                 targetLayer = layerA
             } else if activeIsA {
+                // Release old inactive buffer player before replacing
+                releasePlayer(&playerB)
                 playerB = newPlayer
                 layerB?.player = newPlayer
                 targetLayer = layerB
             } else {
+                releasePlayer(&playerA)
                 playerA = newPlayer
                 layerA?.player = newPlayer
                 targetLayer = layerA
@@ -291,6 +330,7 @@ struct StateMachineVideoPlayer: NSViewRepresentable {
                         oldLayer?.opacity = 0
                         CATransaction.commit()
                         oldPlayer?.pause()
+                        oldPlayer?.replaceCurrentItem(with: nil)
                         self.activeIsA.toggle()
                     }
                     self?.readyObserver?.invalidate()
@@ -328,6 +368,14 @@ struct StateMachineVideoPlayer: NSViewRepresentable {
             readyObserver?.invalidate()
             playerA?.pause()
             playerB?.pause()
+            #if DEBUG
+            let hadA = playerA != nil
+            let hadB = playerB != nil
+            Task { @MainActor in
+                if hadA { PerfMonitor.shared.avPlayerDestroyed() }
+                if hadB { PerfMonitor.shared.avPlayerDestroyed() }
+            }
+            #endif
         }
     }
 }

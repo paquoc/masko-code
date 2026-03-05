@@ -25,6 +25,8 @@ final class OverlayStateMachine {
     // MARK: - Inputs
 
     /// Current values of all inputs (system + custom).
+    /// No SwiftUI view reads this directly — excluded from observation to avoid needless invalidation.
+    @ObservationIgnored
     private(set) var inputs: [String: ConditionValue] = [:]
 
     // MARK: - Debug state
@@ -61,6 +63,7 @@ final class OverlayStateMachine {
     private var loopCount = 0
     private var nodeArrivalTime: Date?
     private var nodeTimeTimer: Timer?
+    private var nodeTimeGeneration: Int = 0
 
     // MARK: - Init
 
@@ -109,14 +112,21 @@ final class OverlayStateMachine {
 
     /// Set an input value and evaluate conditions on all outgoing edges.
     func setInput(_ name: String, _ value: ConditionValue) {
-        let oldValue = inputs[name]
-        inputs[name] = value
+        #if DEBUG
+        PerfMonitor.shared.track(.setInput)
+        #endif
 
-        // Skip evaluation if value didn't change
+        // Skip evaluation if value didn't change (check BEFORE writing to avoid needless observation)
+        let oldValue = inputs[name]
         if let old = oldValue, conditionValuesEqual(old, value) { return }
 
-        lastInputChange = "\(name) = \(conditionValueStr(value))"
-        lastInputTime = Date()
+        inputs[name] = value
+
+        // Only update debug state when debug HUD is visible
+        if UserDefaults.standard.bool(forKey: "overlay_show_debug") {
+            lastInputChange = "\(name) = \(conditionValueStr(value))"
+            lastInputTime = Date()
+        }
 
         print("[masko-desktop] Input: \(name) = \(conditionValueStr(value))")
 
@@ -154,9 +164,26 @@ final class OverlayStateMachine {
     // MARK: - Condition Evaluation
 
     private func evaluateAndFire(changedInput: String) {
+        #if DEBUG
+        PerfMonitor.shared.track(.evaluateAndFire)
+        #endif
+
         guard phase == .looping || phase == .idle else {
             lastMatchResult = "Ignored (phase=\(phase))"
             return
+        }
+
+        // Lazily refresh nodeTime when other inputs change, so compound conditions
+        // (e.g. nodeTime >= 5000 AND isWorking == true) use a fresh value
+        if changedInput != "nodeTime", let arrival = nodeArrivalTime {
+            let hasNodeTimeEdge = config.edges.contains { edge in
+                edge.source == currentNodeId && !edge.isLoop &&
+                edge.conditions?.contains(where: { $0.input == "nodeTime" }) == true
+            }
+            if hasNodeTimeEdge {
+                let elapsed = Date().timeIntervalSince(arrival) * 1000
+                inputs["nodeTime"] = .number(elapsed)
+            }
         }
 
         // Check all non-loop edges from current node — first match wins
@@ -259,24 +286,31 @@ final class OverlayStateMachine {
 
     private func startNodeTimeTimer() {
         nodeArrivalTime = Date()
+        nodeTimeGeneration += 1
+        let generation = nodeTimeGeneration
 
-        // Only tick if an edge from this node uses nodeTime
-        let hasNodeTimeCondition = config.edges.contains { edge in
-            edge.source == currentNodeId && !edge.isLoop &&
-            edge.conditions?.contains(where: { $0.input == "nodeTime" }) == true
+        // Collect all nodeTime thresholds from outgoing edges
+        let thresholds: [Double] = config.edges.compactMap { edge in
+            guard edge.source == currentNodeId, !edge.isLoop else { return nil }
+            guard let conditions = edge.conditions else { return nil }
+            return conditions.first(where: { $0.input == "nodeTime" })?.value.doubleValue
         }
-        guard hasNodeTimeCondition else { return }
+        guard !thresholds.isEmpty else { return }
 
-        nodeTimeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self, let arrival = self.nodeArrivalTime else { return }
-                let elapsed = Date().timeIntervalSince(arrival) * 1000 // ms
+        // Schedule a one-shot check at each unique threshold instead of polling every 100ms
+        for threshold in Set(thresholds).sorted() {
+            let delaySec = threshold / 1000.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delaySec) { [weak self] in
+                guard let self, self.nodeTimeGeneration == generation,
+                      let arrival = self.nodeArrivalTime else { return }
+                let elapsed = Date().timeIntervalSince(arrival) * 1000
                 self.setInput("nodeTime", .number(elapsed))
             }
         }
     }
 
     private func cancelNodeTimeTimer() {
+        nodeTimeGeneration += 1 // Invalidates all pending closures
         nodeTimeTimer?.invalidate()
         nodeTimeTimer = nil
     }

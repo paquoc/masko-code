@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate branded DMG installer background for Masko for Claude Code.
+"""Generate branded DMG installer background for Masko Code.
 
 Uses Pillow. Output: 1280x840 PNG (2x Retina for a 640x420 Finder window).
 """

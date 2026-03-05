@@ -6,6 +6,8 @@ final class LocalServer {
     private var listener: NWListener?
     private(set) var isRunning = false
     let port: UInt16 = Constants.serverPort
+    private var retryCount = 0
+    private static let maxRetries = 3
 
     var onEventReceived: ((ClaudeEvent) -> Void)?
     var onPermissionRequest: ((ClaudeEvent, NWConnection) -> Void)?
@@ -13,6 +15,10 @@ final class LocalServer {
     var onInputReceived: ((String, ConditionValue) -> Void)?
 
     func start() throws {
+        // Cancel any existing listener before creating a new one
+        listener?.cancel()
+        listener = nil
+
         let params = NWParameters.tcp
         guard let nwPort = NWEndpoint.Port(rawValue: port) else { return }
         listener = try NWListener(using: params, on: nwPort)
@@ -23,13 +29,25 @@ final class LocalServer {
 
         listener?.stateUpdateHandler = { [weak self] state in
             DispatchQueue.main.async {
+                guard let self else { return }
                 switch state {
                 case .ready:
-                    self?.isRunning = true
-                    print("[masko-desktop] Server listening on port \(self?.port ?? 0)")
+                    self.isRunning = true
+                    self.retryCount = 0
+                    print("[masko-desktop] Server listening on port \(self.port)")
                 case .failed(let error):
-                    self?.isRunning = false
-                    print("[masko-desktop] Server failed: \(error)")
+                    self.isRunning = false
+                    self.listener?.cancel()
+                    self.listener = nil
+                    if self.retryCount < Self.maxRetries {
+                        self.retryCount += 1
+                        print("[masko-desktop] Server failed: \(error) — retrying (\(self.retryCount)/\(Self.maxRetries))...")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            try? self.start()
+                        }
+                    } else {
+                        print("[masko-desktop] Server failed after \(Self.maxRetries) retries: \(error)")
+                    }
                 default:
                     break
                 }

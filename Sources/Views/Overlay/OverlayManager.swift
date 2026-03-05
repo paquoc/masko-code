@@ -36,12 +36,16 @@ final class OverlayManager {
     // Context menu panel
     private var contextPanel: ContextMenuPanel?
 
+    // Coalescing flag for HUD repositioning — prevents recursive layout cycles
+    private var hudRepositionScheduled = false
+
     // Stores passed from AppStore for overlay display
     // Non-optional with defaults — avoids @Environment crash when overlay renders before stores are set
     var sessionStore: SessionStore = SessionStore()
     var eventStore: EventStore = EventStore()
     var pendingPermissionStore: PendingPermissionStore = PendingPermissionStore()
     var hotkeyManager: GlobalHotkeyManager = GlobalHotkeyManager()
+    var sessionSwitcherStore: SessionSwitcherStore = SessionSwitcherStore()
 
     var currentSizePixels: Int {
         get {
@@ -209,11 +213,12 @@ final class OverlayManager {
         // --- Permission panel (smart-positioned, adapts to screen edges) ---
         permissionHUDConfig = PermissionHUDConfig()
         permissionHUDConfig.onContentSizeChange = { [weak self] _ in
-            self?.syncPermissionPanel()
+            self?.scheduleHUDReposition()
         }
         let permView = PermissionHUDView(config: permissionHUDConfig)
             .environment(pendingPermissionStore)
             .environment(hotkeyManager)
+            .environment(sessionSwitcherStore)
 
         let permController = TransparentHostingController(rootView: permView)
         permController.sizingOptions = []
@@ -233,7 +238,7 @@ final class OverlayManager {
         // Resize/reposition when permissions change (delay lets SwiftUI render)
         pendingPermissionStore.onPendingChange = { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self?.syncPermissionPanel()
+                self?.scheduleHUDReposition()
             }
         }
 
@@ -264,7 +269,7 @@ final class OverlayManager {
             object: mascotPanel,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.repositionHUD() }
+            Task { @MainActor in self?.scheduleHUDReposition() }
         }
         workspaceObservers.append(moveObserver)
     }
@@ -357,6 +362,7 @@ final class OverlayManager {
         workspaceObservers.removeAll()
 
         dismissContextMenu()
+        dismissSessionSwitcher()
         permissionPanel?.close()
         permissionPanel = nil
         statsPanel?.close()
@@ -457,6 +463,27 @@ final class OverlayManager {
         contextPanel = nil
     }
 
+    // MARK: - Session Switcher (rendered inside permission panel)
+
+    /// Trigger permission panel resize when session switcher opens/updates/closes.
+    /// The SessionSwitcherView is rendered inside PermissionHUDView — no separate panel needed.
+    func showSessionSwitcher() {
+        // The SessionSwitcherView lives inside the permission panel.
+        // Ensure the panel is visible and re-sync after SwiftUI renders.
+        permissionPanel?.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { self.scheduleHUDReposition() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.scheduleHUDReposition() }
+    }
+
+    func updateSessionSwitcher() {
+        scheduleHUDReposition()
+    }
+
+    func dismissSessionSwitcher() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { self.scheduleHUDReposition() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.scheduleHUDReposition() }
+    }
+
     // MARK: - Snooze Toast
 
     private func showSnoozeToast(minutes: Int) {
@@ -538,8 +565,14 @@ final class OverlayManager {
             width: side,
             height: side
         )
+        #if DEBUG
+        PerfMonitor.shared.measure(.setFrame, threshold: 16) {
+            panel.setFrame(newFrame, display: true, animate: true)
+        }
+        #else
         panel.setFrame(newFrame, display: true, animate: true)
-        repositionHUD()
+        #endif
+        scheduleHUDReposition()
     }
 
     /// Resize panel instantly during drag — no animation, no UserDefaults save.
@@ -557,7 +590,7 @@ final class OverlayManager {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         panel.setFrame(newFrame, display: true, animate: false)
-        repositionHUD()
+        scheduleHUDReposition()
         CATransaction.commit()
     }
 
@@ -575,10 +608,15 @@ final class OverlayManager {
     /// Measure permission content, resize panel, and smart-position it.
     /// Tries above → right → left → below mascot.
     private func syncPermissionPanel() {
+        #if DEBUG
+        PerfMonitor.shared.track(.syncPermissionPanel)
+        #endif
         guard let panel, let permissionPanel else { return }
 
         let contentSize = permissionHUDConfig.contentSize
+        // Skip if no content (no permissions AND no session switcher)
         if contentSize.height <= 10 { return }
+
         let permSize = CGSize(width: max(contentSize.width, 280), height: contentSize.height)
 
         let mascotFrame = panel.frame
@@ -634,7 +672,13 @@ final class OverlayManager {
         // Clamp tail percent
         tailPercent = max(0.15, min(tailPercent, 0.85))
 
+        #if DEBUG
+        PerfMonitor.shared.measure(.setFrame, threshold: 16) {
+            permissionPanel.setFrame(NSRect(origin: origin, size: permSize), display: true)
+        }
+        #else
         permissionPanel.setFrame(NSRect(origin: origin, size: permSize), display: true)
+        #endif
         permissionHUDConfig.tailSide = tailSide
         permissionHUDConfig.tailPercent = tailPercent
     }
@@ -643,6 +687,19 @@ final class OverlayManager {
     private func repositionHUD() {
         repositionStats()
         syncPermissionPanel()
+    }
+
+    /// Coalesced HUD reposition — defers setFrame to the next run loop tick
+    /// to break recursive layout cycles (setFrame → SwiftUI layout → onContentSizeChange → setFrame).
+    private func scheduleHUDReposition() {
+        guard !hudRepositionScheduled else { return }
+        hudRepositionScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.hudRepositionScheduled = false
+            self.repositionStats()
+            self.syncPermissionPanel()
+        }
     }
 
     private func savePosition() {

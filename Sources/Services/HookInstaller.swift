@@ -120,7 +120,7 @@ enum HookInstaller {
         try writeSettings(settings)
     }
 
-    private static let scriptVersion = "# version: 11"
+    private static let scriptVersion = "# version: 12"
 
     /// Create or update hook-sender.sh
     static func ensureScriptExists() throws {
@@ -147,7 +147,7 @@ enum HookInstaller {
         \(scriptVersion)
         # hook-sender.sh — Forwards Claude Code hook events to masko-desktop
         # Exit instantly if the desktop app isn't running (avoids curl timeout latency)
-        pgrep -xq masko-for-claude-code || exit 0
+        pgrep -xq masko-code || exit 0
         INPUT=$(cat 2>/dev/null || echo '{}')
         EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
 

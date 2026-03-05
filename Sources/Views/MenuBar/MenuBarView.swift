@@ -15,7 +15,7 @@ struct MenuBarView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 24, height: 24)
                 }
-                Text("Masko for Claude Code")
+                Text("Masko Code")
                     .font(Constants.heading(size: 14, weight: .bold))
                     .foregroundColor(Constants.textPrimary)
                 Spacer()
