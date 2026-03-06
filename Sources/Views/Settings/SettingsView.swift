@@ -6,6 +6,8 @@ struct SettingsView: View {
     @State private var isHookEnabled = false
     @State private var hookError: String?
     @State private var showUninstallConfirm = false
+    @State private var portText: String = ""
+    @State private var portError: String?
     @State private var videoCacheSize: Int64 = 0
     @State private var ideExtensionInstalled = false
     @State private var ideStatuses: [ExtensionInstaller.IDEStatus] = []
@@ -36,6 +38,36 @@ struct SettingsView: View {
                         Text(appStore.localServer.isRunning ? "Port \(appStore.localServer.port)" : "Offline")
                             .foregroundColor(Constants.textMuted)
                     }
+                }
+
+                HStack {
+                    Text("Port")
+                        .foregroundColor(Constants.textPrimary)
+                    Spacer()
+                    TextField("Port", text: $portText)
+                        .frame(width: 70)
+                        .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.trailing)
+                        .font(.system(size: 12, design: .monospaced))
+                        .onSubmit { applyPort() }
+                    Button("Apply") { applyPort() }
+                        .buttonStyle(.plain)
+                        .foregroundColor(Constants.orangePrimary)
+                        .font(.system(size: 12, weight: .medium))
+                }
+
+                if let error = portError {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                }
+
+                if !appStore.localServer.isRunning {
+                    Button("Restart Server") {
+                        appStore.localServer.restart(port: appStore.localServer.port)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(Constants.orangePrimary)
                 }
             } header: {
                 Text("Connection").font(Constants.heading(size: 13, weight: .semibold))
@@ -308,6 +340,7 @@ struct SettingsView: View {
             isHookEnabled = HookInstaller.isRegistered()
             videoCacheSize = VideoCache.shared.cacheSize
             refreshIDEStatuses()
+            portText = String(appStore.localServer.port)
         }
         .alert("Uninstall Masko?", isPresented: $showUninstallConfirm) {
             Button("Cancel", role: .cancel) {}
@@ -315,6 +348,19 @@ struct SettingsView: View {
         } message: {
             Text("This will remove Claude Code hooks, delete all local data, and quit the app. You can reinstall anytime.")
         }
+    }
+
+    private func applyPort() {
+        portError = nil
+        guard let value = UInt16(portText), value >= 1024 else {
+            portError = "Enter a port between 1024 and 65535"
+            return
+        }
+        if value == appStore.localServer.port && appStore.localServer.isRunning {
+            return // No change needed
+        }
+        appStore.localServer.restart(port: value)
+        portText = String(value)
     }
 
     private func toggleHooks() {

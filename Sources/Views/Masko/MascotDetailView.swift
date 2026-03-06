@@ -37,6 +37,9 @@ struct MascotDetailView: View {
                     Spacer()
 
                     Button(action: {
+                        if !overlayManager.isOverlayEnabled {
+                            overlayManager.enableOverlay()
+                        }
                         overlayManager.showOverlayWithConfig(mascot.config)
                     }) {
                         HStack(spacing: 5) {
@@ -54,12 +57,38 @@ struct MascotDetailView: View {
                 Divider().overlay(Constants.border)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Nodes section
-                        nodesSection(mascot.config)
+                    VStack(alignment: .leading, spacing: 24) {
+                        // States grid with video previews
+                        statesSection(mascot.config)
 
-                        // Edges section
-                        edgesSection(mascot)
+                        // Transitions section
+                        transitionsSection(mascot)
+
+                        // View on masko.ai link
+                        if let slug = mascot.templateSlug {
+                            Button(action: {
+                                NSWorkspace.shared.open(URL(string: "\(Constants.maskoBaseURL)/community/\(slug)")!)
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "safari")
+                                        .font(.system(size: 14))
+                                    Text("View on masko.ai")
+                                        .font(Constants.body(size: 13, weight: .medium))
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                                .foregroundColor(Constants.orangePrimary)
+                                .padding(14)
+                                .background(Constants.orangePrimary.opacity(0.05))
+                                .clipShape(RoundedRectangle(cornerRadius: Constants.cornerRadius))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Constants.cornerRadius)
+                                        .stroke(Constants.orangePrimary.opacity(0.2), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(20)
                 }
@@ -68,13 +97,15 @@ struct MascotDetailView: View {
         }
     }
 
-    // MARK: - Nodes
+    // MARK: - States (with video previews)
 
     @ViewBuilder
-    private func nodesSection(_ config: MaskoAnimationConfig) -> some View {
+    private func statesSection(_ config: MaskoAnimationConfig) -> some View {
+        let loopEdges = config.edges.filter { $0.isLoop }
+
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Nodes")
+                Text("States")
                     .font(Constants.heading(size: 14, weight: .semibold))
                     .foregroundColor(Constants.textPrimary)
                 Text("\(config.nodes.count)")
@@ -85,32 +116,46 @@ struct MascotDetailView: View {
                     .background(Constants.chip, in: Capsule())
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(config.nodes) { node in
-                        let isInitial = node.id == config.initialNode
-                        VStack(spacing: 6) {
-                            // Thumbnail
-                            if let urlStr = node.transparentThumbnailUrl, let url = URL(string: urlStr) {
+            LazyVGrid(columns: [
+                GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 12)
+            ], spacing: 12) {
+                ForEach(config.nodes) { node in
+                    let isInitial = node.id == config.initialNode
+                    let loopEdge = loopEdges.first(where: { $0.source == node.id })
+
+                    VStack(spacing: 0) {
+                        // Video preview or thumbnail
+                        ZStack {
+                            RoundedRectangle(cornerRadius: Constants.cornerRadiusSmall)
+                                .fill(Constants.stage)
+
+                            if let edge = loopEdge,
+                               let urlStr = edge.videos.hevc ?? edge.videos.webm,
+                               let url = URL(string: urlStr) {
+                                MascotVideoView(url: url)
+                                    .clipShape(RoundedRectangle(cornerRadius: Constants.cornerRadiusSmall))
+                            } else if let urlStr = node.transparentThumbnailUrl, let url = URL(string: urlStr) {
                                 AsyncImage(url: url) { phase in
                                     switch phase {
                                     case .success(let image):
                                         image
                                             .resizable()
                                             .aspectRatio(contentMode: .fit)
-                                            .frame(width: 56, height: 56)
                                     default:
                                         nodePlaceholder
                                     }
                                 }
-                                .frame(width: 56, height: 56)
                             } else {
                                 nodePlaceholder
                             }
+                        }
+                        .aspectRatio(1, contentMode: .fit)
+                        .padding(8)
 
-                            // Name
+                        // Name
+                        VStack(spacing: 2) {
                             Text(node.name)
-                                .font(Constants.body(size: 11, weight: .medium))
+                                .font(Constants.heading(size: 12, weight: .semibold))
                                 .foregroundColor(Constants.textPrimary)
                                 .lineLimit(1)
 
@@ -120,15 +165,15 @@ struct MascotDetailView: View {
                                     .foregroundColor(Constants.orangePrimary)
                             }
                         }
-                        .frame(width: 80)
-                        .padding(.vertical, 8)
-                        .background(isInitial ? Constants.orangePrimaryLight : Constants.surfaceWhite)
-                        .clipShape(RoundedRectangle(cornerRadius: Constants.cornerRadiusSmall))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Constants.cornerRadiusSmall)
-                                .stroke(isInitial ? Constants.orangePrimary.opacity(0.3) : Constants.border, lineWidth: 1)
-                        )
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
                     }
+                    .background(isInitial ? Constants.orangePrimaryLight : Constants.surfaceWhite)
+                    .clipShape(RoundedRectangle(cornerRadius: Constants.cornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Constants.cornerRadius)
+                            .stroke(isInitial ? Constants.orangePrimary.opacity(0.3) : Constants.border, lineWidth: 1)
+                    )
                 }
             }
         }
@@ -136,15 +181,14 @@ struct MascotDetailView: View {
 
     private var nodePlaceholder: some View {
         Image(systemName: "photo")
-            .font(.system(size: 20))
+            .font(.system(size: 24))
             .foregroundColor(Constants.textMuted.opacity(0.4))
-            .frame(width: 56, height: 56)
     }
 
-    // MARK: - Edges
+    // MARK: - Transitions
 
     @ViewBuilder
-    private func edgesSection(_ mascot: SavedMascot) -> some View {
+    private func transitionsSection(_ mascot: SavedMascot) -> some View {
         let config = mascot.config
 
         VStack(alignment: .leading, spacing: 10) {
@@ -307,8 +351,6 @@ private struct ConditionEditorRow: View {
     let onCancel: () -> Void
 
     @State private var inputName: String
-    @State private var op: String = "=="
-    @State private var boolValue: Bool = true
 
     private static let presets: [(label: String, conditions: [MaskoAnimationCondition])] = [
         ("Click", [

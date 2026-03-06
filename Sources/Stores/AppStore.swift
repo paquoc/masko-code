@@ -30,6 +30,9 @@ final class AppStore {
     var onSessionSwitcherUpdate: (() -> Void)?
     var onSessionSwitcherDismiss: (() -> Void)?
 
+    /// Set by URL handler to navigate to a mascot after install
+    var navigateToMascotId: UUID?
+
     var hasUnreadNotifications: Bool { notificationStore.unreadCount > 0 }
 
     var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {

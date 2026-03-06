@@ -84,6 +84,11 @@ struct ContentView: View {
             }
         }
         .background(Constants.lightBackground)
+        .onChange(of: appStore.navigateToMascotId) { _, newId in
+            if newId != nil {
+                selectedSection = .masko
+            }
+        }
     }
 
     private func badgeCount(for section: SidebarSection) -> Int {

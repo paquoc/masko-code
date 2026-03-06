@@ -146,6 +146,22 @@ final class MascotStore {
         persist()
     }
 
+    // MARK: - Community
+
+    /// Add a mascot installed from the community marketplace.
+    func addFromCommunity(config: MaskoAnimationConfig, slug: String) {
+        guard !mascots.contains(where: { $0.templateSlug == slug }) else { return }
+        let mascot = SavedMascot(
+            id: UUID(),
+            name: config.name,
+            config: config,
+            addedAt: Date(),
+            templateSlug: slug
+        )
+        mascots.insert(mascot, at: 0)
+        persist()
+    }
+
     // MARK: - General Management
 
     func add(config: MaskoAnimationConfig) {

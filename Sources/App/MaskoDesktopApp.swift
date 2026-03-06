@@ -172,6 +172,9 @@ struct MaskoDesktopApp: App {
                     await appStore.start()
                     overlayManager.restoreIfNeeded()
                 }
+                .onOpenURL { url in
+                    handleMaskoURL(url)
+                }
         }
         .defaultSize(width: 1000, height: 700)
 
@@ -210,4 +213,28 @@ struct MaskoDesktopApp: App {
         }
     }
 
+    /// Handle masko:// URL scheme (e.g. masko://install/my-mascot-slug)
+    private func handleMaskoURL(_ url: URL) {
+        guard url.scheme == "masko" else { return }
+
+        switch url.host {
+        case "install":
+            let slug = url.pathComponents.count > 1 ? url.pathComponents[1] : ""
+            guard !slug.isEmpty else { return }
+            Task {
+                if let config = await MascotStore.fetchRemoteConfig(slug: slug) {
+                    await MainActor.run {
+                        appStore.mascotStore.addFromCommunity(config: config, slug: slug)
+                        // Navigate to the newly added mascot's detail view
+                        if let mascot = appStore.mascotStore.mascots.first(where: { $0.templateSlug == slug }) {
+                            appStore.navigateToMascotId = mascot.id
+                        }
+                        AppDelegate.showDashboard()
+                    }
+                }
+            }
+        default:
+            break
+        }
+    }
 }

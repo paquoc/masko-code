@@ -117,6 +117,7 @@ private struct CardMenuHost: NSViewRepresentable {
     let onViewGraph: () -> Void
     let onEditJSON: () -> Void
     let onCopyJSON: () -> Void
+    let onViewOnWeb: (() -> Void)?
     let onDelete: () -> Void
 
     func makeNSView(context: Context) -> NSView {
@@ -127,7 +128,7 @@ private struct CardMenuHost: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         let c = context.coordinator
         c.hostView = nsView
-        c.actions = (onViewGraph, onEditJSON, onCopyJSON, onDelete)
+        c.actions = (onViewGraph, onEditJSON, onCopyJSON, onViewOnWeb, onDelete)
         if trigger != c.lastTrigger {
             c.lastTrigger = trigger
             if trigger > 0 { c.showMenuFromButton() }
@@ -138,7 +139,7 @@ private struct CardMenuHost: NSViewRepresentable {
 
     final class Coordinator {
         weak var hostView: NSView?
-        var actions: (() -> Void, () -> Void, () -> Void, () -> Void)?
+        var actions: (() -> Void, () -> Void, () -> Void, (() -> Void)?, () -> Void)?
         var lastTrigger = 0
 
         private func buildMenu() -> NSMenu {
@@ -147,8 +148,11 @@ private struct CardMenuHost: NSViewRepresentable {
             menu.addItem(CallbackMenuItem(title: "View Graph", icon: "rectangle.3.group", callback: actions.0))
             menu.addItem(CallbackMenuItem(title: "Edit JSON", icon: "curlybraces", callback: actions.1))
             menu.addItem(CallbackMenuItem(title: "Copy JSON", icon: "doc.on.doc", callback: actions.2))
+            if let onWeb = actions.3 {
+                menu.addItem(CallbackMenuItem(title: "View on masko.ai", icon: "safari", callback: onWeb))
+            }
             menu.addItem(.separator())
-            let del = CallbackMenuItem(title: "Delete", icon: "trash", callback: actions.3)
+            let del = CallbackMenuItem(title: "Delete", icon: "trash", callback: actions.4)
             del.attributedTitle = NSAttributedString(
                 string: "Delete",
                 attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.systemFont(ofSize: 13)]
@@ -314,6 +318,18 @@ struct MaskoDashboardView: View {
         }
         .background(Constants.lightBackground)
         .navigationTitle("")
+        .onChange(of: appStore.navigateToMascotId) { _, newId in
+            if let newId {
+                selectedMascotId = newId
+                appStore.navigateToMascotId = nil
+            }
+        }
+        .onAppear {
+            if let id = appStore.navigateToMascotId {
+                selectedMascotId = id
+                appStore.navigateToMascotId = nil
+            }
+        }
         .sheet(isPresented: $showingAddSheet) {
             addMascotSheet
         }
@@ -351,11 +367,49 @@ struct MaskoDashboardView: View {
             }
             .padding(20)
 
-            // CTA banner
+            // CTA banners
+            browseCommunityBanner
+                .padding(.horizontal, 20)
+
             createMascotBanner
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
         }
+    }
+
+    private var browseCommunityBanner: some View {
+        Button(action: {
+            NSWorkspace.shared.open(URL(string: "\(Constants.maskoBaseURL)/community")!)
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "globe")
+                    .font(.system(size: 16))
+                    .foregroundColor(Constants.orangePrimary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Browse Community Mascots")
+                        .font(Constants.heading(size: 14, weight: .semibold))
+                        .foregroundColor(Constants.textPrimary)
+                    Text("Discover and install mascots made by the community")
+                        .font(Constants.body(size: 12))
+                        .foregroundColor(Constants.textMuted)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Constants.orangePrimary)
+            }
+            .padding(14)
+            .background(Constants.orangePrimary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: Constants.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: Constants.cornerRadius)
+                    .stroke(Constants.orangePrimary.opacity(0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var createMascotBanner: some View {
@@ -478,6 +532,7 @@ struct MascotCard: View {
     let onActivate: () -> Void
     let onSaveConfig: (MaskoAnimationConfig) -> Void
     let onDelete: () -> Void
+    var communitySlug: String? { mascot.templateSlug }
     @State private var isHovered = false
     @State private var showingJSON = false
     @State private var menuTrigger = 0
@@ -604,6 +659,13 @@ struct MascotCard: View {
             }) {
                 Label("Copy JSON", systemImage: "doc.on.doc")
             }
+            if let slug = communitySlug {
+                Button(action: {
+                    NSWorkspace.shared.open(URL(string: "\(Constants.maskoBaseURL)/community/\(slug)")!)
+                }) {
+                    Label("View on masko.ai", systemImage: "safari")
+                }
+            }
             Divider()
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
@@ -620,6 +682,9 @@ struct MascotCard: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(json, forType: .string)
                     }
+                },
+                onViewOnWeb: communitySlug.map { slug in
+                    { NSWorkspace.shared.open(URL(string: "\(Constants.maskoBaseURL)/community/\(slug)")!) }
                 },
                 onDelete: onDelete
             )

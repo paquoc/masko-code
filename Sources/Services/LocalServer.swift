@@ -5,13 +5,16 @@ import Network
 final class LocalServer {
     private var listener: NWListener?
     private(set) var isRunning = false
-    let port: UInt16 = Constants.serverPort
+    private(set) var port: UInt16 = Constants.serverPort
     private var stopped = false
 
     var onEventReceived: ((ClaudeEvent) -> Void)?
     var onPermissionRequest: ((ClaudeEvent, NWConnection) -> Void)?
     /// Custom input endpoint: `POST /input {"name":"x","value":true}`
     var onInputReceived: ((String, ConditionValue) -> Void)?
+
+    private var retryCount = 0
+    private static let maxRetries = 10
 
     func start() throws {
         stopped = false
@@ -20,6 +23,9 @@ final class LocalServer {
         listener = nil
 
         let params = NWParameters.tcp
+        // Enable SO_REUSEADDR so we can rebind immediately after a crash/restart
+        // (avoids TIME_WAIT blocking the port for up to 60s)
+        params.allowLocalEndpointReuse = true
         guard let nwPort = NWEndpoint.Port(rawValue: port) else { return }
         listener = try NWListener(using: params, on: nwPort)
 
@@ -33,17 +39,23 @@ final class LocalServer {
                 switch state {
                 case .ready:
                     self.isRunning = true
+                    self.retryCount = 0
                     print("[masko-desktop] Server listening on port \(self.port)")
                 case .failed(let error):
                     self.isRunning = false
                     self.listener?.cancel()
                     self.listener = nil
-                    guard !self.stopped else { return }
-                    print("[masko-desktop] Server failed: \(error) — retrying in 5s...")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                        guard !self.stopped else { return }
-                        try? self.start()
-                    }
+                    self.scheduleRetry(reason: "failed", error: error)
+                case .waiting(let error):
+                    // .waiting means the port is temporarily unavailable (e.g. TIME_WAIT
+                    // after a crash). NWListener stays in this state and won't auto-recover
+                    // reliably, so tear down and retry manually.
+                    self.isRunning = false
+                    self.listener?.cancel()
+                    self.listener = nil
+                    self.scheduleRetry(reason: "waiting", error: error)
+                case .cancelled:
+                    self.isRunning = false
                 default:
                     break
                 }
@@ -51,6 +63,22 @@ final class LocalServer {
         }
 
         listener?.start(queue: .global(qos: .userInitiated))
+    }
+
+    private func scheduleRetry(reason: String, error: NWError) {
+        guard !stopped else { return }
+        guard retryCount < Self.maxRetries else {
+            print("[masko-desktop] Server gave up after \(Self.maxRetries) retries (last: \(reason) — \(error))")
+            return
+        }
+        retryCount += 1
+        // Exponential backoff: 2s, 4s, 8s... capped at 30s
+        let delay = min(Double(2 << retryCount), 30.0)
+        print("[masko-desktop] Server \(reason): \(error) — retry \(retryCount)/\(Self.maxRetries) in \(Int(delay))s...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, !self.stopped else { return }
+            try? self.start()
+        }
     }
 
     private func handleConnection(_ connection: NWConnection) {
@@ -115,6 +143,12 @@ final class LocalServer {
 
         // Extract first line to get method + path
         let firstLine = httpString.components(separatedBy: "\r\n").first ?? ""
+
+        // Route: GET /health — quick liveness check for hook script
+        if firstLine.contains("GET /health") {
+            sendResponse(connection: connection, status: "200 OK", body: "ok")
+            return
+        }
 
         // Extract body for POST routes
         guard let bodyRange = httpString.range(of: "\r\n\r\n") else {
@@ -191,6 +225,17 @@ final class LocalServer {
         connection.send(content: response.data(using: .utf8), completion: .contentProcessed { _ in
             connection.cancel()
         })
+    }
+
+    /// Restart the server on a new port. Updates Constants, reinstalls hooks, and restarts.
+    func restart(port newPort: UInt16) {
+        stop()
+        Constants.setServerPort(newPort)
+        port = newPort
+        retryCount = 0
+        // Reinstall hooks so the hook script uses the new port
+        try? HookInstaller.install()
+        try? start()
     }
 
     func stop() {

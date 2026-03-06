@@ -9,7 +9,14 @@ enum Constants {
     #endif
 
     // Local hook server
-    static let serverPort: UInt16 = 49152
+    static let defaultServerPort: UInt16 = 49152
+    static var serverPort: UInt16 {
+        let stored = UserDefaults.standard.integer(forKey: "serverPort")
+        return stored > 0 ? UInt16(stored) : defaultServerPort
+    }
+    static func setServerPort(_ port: UInt16) {
+        UserDefaults.standard.set(Int(port), forKey: "serverPort")
+    }
 
     // Brand colors — matches masko.ai web design
     static let orangePrimary = Color(red: 249/255, green: 93/255, blue: 2/255)     // #f95d02

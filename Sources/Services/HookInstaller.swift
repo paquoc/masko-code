@@ -120,16 +120,17 @@ enum HookInstaller {
         try writeSettings(settings)
     }
 
-    private static let scriptVersion = "# version: 12"
+    private static let scriptVersion = "# version: 13"
 
     /// Create or update hook-sender.sh
     static func ensureScriptExists() throws {
         let scriptURL = URL(fileURLWithPath: hookScriptPath)
 
-        // Check if existing script needs updating
+        // Check if existing script needs updating (version + port must both match)
         if FileManager.default.fileExists(atPath: hookScriptPath),
            let contents = try? String(contentsOf: scriptURL, encoding: .utf8),
-           contents.contains(scriptVersion) {
+           contents.contains(scriptVersion),
+           contents.contains("localhost:\(Constants.serverPort)") {
             return // Already up to date
         }
 
@@ -146,8 +147,9 @@ enum HookInstaller {
         #!/bin/bash
         \(scriptVersion)
         # hook-sender.sh — Forwards Claude Code hook events to masko-desktop
-        # Exit instantly if the desktop app isn't running (avoids curl timeout latency)
-        pgrep -xq masko-code || exit 0
+        # Exit instantly if the desktop app server isn't reachable (avoids curl timeout latency)
+        # Use health endpoint instead of pgrep (works regardless of binary name)
+        curl -s --connect-timeout 0.3 "http://localhost:\(Constants.serverPort)/health" >/dev/null 2>&1 || exit 0
         INPUT=$(cat 2>/dev/null || echo '{}')
         EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
 
