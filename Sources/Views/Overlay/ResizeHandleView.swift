@@ -116,3 +116,5 @@ final class ResizeHandleNSView: NSView {
         onDragEnd?(currentSize)
     }
 }
+
+

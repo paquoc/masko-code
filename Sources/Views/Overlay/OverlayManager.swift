@@ -668,6 +668,20 @@ final class OverlayManager {
 
     // MARK: - Context Menu
 
+    /// Set the dialog scale and reposition.
+    func setDialogScale(_ scale: Double) {
+        permissionHUDConfig.scale = CGFloat(scale)
+        permissionHUDConfig.updateScaledSize()
+        scheduleHUDReposition()
+    }
+
+    /// Show/hide the preview dialog for scale adjustment.
+    func setDialogPreview(_ show: Bool) {
+        permissionHUDConfig.showPreview = show
+        permissionPanel?.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.scheduleHUDReposition() }
+    }
+
     /// Set the mascot overlay opacity and persist it.
     func setOverlayOpacity(_ value: Double) {
         UserDefaults.standard.set(value, forKey: "overlay_opacity")
@@ -680,11 +694,14 @@ final class OverlayManager {
         let content = OverlayContextMenuContent(
             onSnooze: { [weak self] minutes in self?.snooze(minutes: minutes) },
             onResize: { [weak self] size in self?.currentSizePixels = size.rawValue },
+            onDialogScale: { [weak self] scale in self?.setDialogScale(scale) },
+            onDialogPreview: { [weak self] show in self?.setDialogPreview(show) },
             onOpacity: { [weak self] value in self?.setOverlayOpacity(value) },
             onClose: { [weak self] in self?.hideOverlay() },
             onDisable: { [weak self] in self?.disableOverlay() },
             dismiss: { [weak panel] in panel?.dismiss() }
         )
+        panel.onDismiss = { [weak self] in self?.setDialogPreview(false) }
         panel.showAt(point: point, mascotFrame: self.panel?.frame, with: content)
         self.contextPanel = panel
     }

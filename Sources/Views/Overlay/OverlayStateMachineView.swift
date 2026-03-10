@@ -88,13 +88,35 @@ final class PermissionHUDConfig {
     var tailSide: TailSide = .bottom
     var tailPercent: CGFloat = 0.80
     var onContentSizeChange: ((CGSize) -> Void)?
+    var showPreview = false
+    var scale: CGFloat {
+        get {
+            let v = UserDefaults.standard.double(forKey: "permission_panel_scale")
+            return v > 0 ? CGFloat(v) : 1.0
+        }
+        set {
+            let clamped = max(0.8, min(newValue, 2.5))
+            UserDefaults.standard.set(Double(clamped), forKey: "permission_panel_scale")
+        }
+    }
 
+    /// Unscaled content size measured by GeometryReader.
+    var unscaledSize: CGSize = CGSize(width: 280, height: 200)
+
+    /// Scaled content size used for panel frame.
     var contentSize: CGSize = CGSize(width: 280, height: 200) {
         didSet {
             guard abs(contentSize.width - oldValue.width) > 2
                || abs(contentSize.height - oldValue.height) > 2 else { return }
             onContentSizeChange?(contentSize)
         }
+    }
+
+    func updateScaledSize() {
+        contentSize = CGSize(
+            width: unscaledSize.width * scale,
+            height: unscaledSize.height * scale
+        )
     }
 }
 
@@ -106,6 +128,9 @@ struct PermissionHUDView: View {
 
     var body: some View {
         VStack(spacing: 4) {
+            if config.showPreview {
+                DialogScalePreview()
+            }
             SessionSwitcherView()
             SessionFinishedToastView()
             PermissionStackView()
@@ -114,11 +139,21 @@ struct PermissionHUDView: View {
         .frame(maxWidth: 280)
         .background(GeometryReader { geo in
             Color.clear
-                .onAppear { config.contentSize = geo.size }
+                .onAppear {
+                    config.unscaledSize = geo.size
+                    config.updateScaledSize()
+                }
                 .onChange(of: geo.size) { _, newSize in
-                    config.contentSize = newSize
+                    config.unscaledSize = newSize
+                    config.updateScaledSize()
                 }
         })
+        .scaleEffect(config.scale, anchor: .topLeading)
+        .frame(
+            width: config.unscaledSize.width * config.scale,
+            height: config.unscaledSize.height * config.scale,
+            alignment: .topLeading
+        )
         .environment(\.speechBubbleTailSide, config.tailSide)
         .environment(\.speechBubbleTailPercent, config.tailPercent)
     }

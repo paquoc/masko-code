@@ -1218,3 +1218,60 @@ struct PermissionStackView: View {
     }
 }
 
+// MARK: - Dialog Scale Preview
+
+/// Sample dialog shown while adjusting dialog scale so the user can preview the result.
+struct DialogScalePreview: View {
+    @Environment(\.speechBubbleTailSide) private var tailSide
+    @Environment(\.speechBubbleTailPercent) private var tailPercent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            // Header
+            HStack {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(OverlayStyle.orange)
+                Text("Bash")
+                    .font(Constants.heading(size: 11, weight: .bold))
+                    .foregroundStyle(OverlayStyle.textPrimary)
+                Spacer()
+            }
+
+            // Fake command
+            Text("npm run build")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(OverlayStyle.textPrimary)
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(OverlayStyle.codeBg)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(OverlayStyle.codeBorder, lineWidth: 1))
+
+            // Fake buttons
+            HStack(spacing: 4) {
+                Text("Allow")
+                    .font(Constants.heading(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .background(OverlayStyle.orange)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                Text("Deny")
+                    .font(Constants.heading(size: 11, weight: .semibold))
+                    .foregroundStyle(OverlayStyle.denyText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(OverlayStyle.denyBorder, lineWidth: 1))
+            }
+        }
+        .padding(8)
+        .padding(tailSide.paddingEdge, OverlayStyle.tailHeight)
+        .background(OverlayStyle.cardBg)
+        .clipShape(SpeechBubbleShape(tailSide: tailSide, tailPercent: tailPercent))
+        .shadow(color: OverlayStyle.cardShadow, radius: 3, x: 0, y: 2)
+    }
+}
+

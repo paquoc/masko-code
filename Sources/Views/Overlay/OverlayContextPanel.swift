@@ -7,6 +7,7 @@ import SwiftUI
 /// Styled to match the app's design system (Fredoka/Rubik fonts, orange accents, rounded corners).
 @MainActor
 final class ContextMenuPanel: NSPanel {
+    var onDismiss: (() -> Void)?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
 
@@ -68,6 +69,8 @@ final class ContextMenuPanel: NSPanel {
     func dismiss() {
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m); globalMouseMonitor = nil }
         if let m = localMouseMonitor { NSEvent.removeMonitor(m); localMouseMonitor = nil }
+        onDismiss?()
+        onDismiss = nil
         orderOut(nil)
     }
 
@@ -80,6 +83,8 @@ final class ContextMenuPanel: NSPanel {
 struct OverlayContextMenuContent: View {
     let onSnooze: (Int) -> Void     // 0 = indefinite
     let onResize: (OverlaySize) -> Void
+    let onDialogScale: (Double) -> Void
+    let onDialogPreview: (Bool) -> Void
     let onOpacity: (Double) -> Void
     let onClose: () -> Void
     let onDisable: () -> Void
@@ -93,8 +98,9 @@ struct OverlayContextMenuContent: View {
     @AppStorage("overlay_size") private var currentSizePixels: Int = OverlaySize.medium.rawValue
     @AppStorage("overlay_resize_mode") private var resizeMode = false
     @AppStorage("overlay_opacity") private var currentOpacity: Double = 1.0
+    @AppStorage("permission_panel_scale") private var currentDialogScale: Double = 1.0
 
-    private enum Section { case snooze, size, transparency }
+    private enum Section { case snooze, size, dialogScale, transparency }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -122,6 +128,15 @@ struct OverlayContextMenuContent: View {
                     resizeMode = true
                     dismiss()
                 }
+            } else if expandedSection == .dialogScale {
+                // Dialog scale slider
+                menuHeader("Dialog Size") {
+                    expandedSection = nil
+                    onDialogPreview(false)
+                }
+                divider
+                dialogScaleSlider
+                    .onAppear { onDialogPreview(true) }
             } else if expandedSection == .transparency {
                 // Transparency slider
                 menuHeader("Transparency") { expandedSection = nil }
@@ -131,6 +146,7 @@ struct OverlayContextMenuContent: View {
                 // Main menu
                 expandableItem("Snooze", icon: "moon.zzz.fill") { expandedSection = .snooze }
                 expandableItem("Size", icon: "arrow.up.left.and.arrow.down.right") { expandedSection = .size }
+                expandableItem("Dialog Size", icon: "text.bubble") { expandedSection = .dialogScale }
                 expandableItem("Transparency", icon: "circle.lefthalf.filled") { expandedSection = .transparency }
                 divider
                 openDashboardItem
@@ -148,6 +164,7 @@ struct OverlayContextMenuContent: View {
         .shadow(color: Constants.cardHoverShadowColor, radius: Constants.cardHoverShadowRadius, x: 0, y: Constants.cardHoverShadowY)
         .frame(width: 200)
         .animation(.easeInOut(duration: 0.15), value: expandedSection)
+        .onDisappear { onDialogPreview(false) }
     }
 
     // MARK: - Menu Items
@@ -308,6 +325,54 @@ struct OverlayContextMenuContent: View {
         }
         .buttonStyle(.plain)
         .onHover { hoveredItem = $0 ? "size-\(title)" : nil }
+    }
+
+    private var dialogScaleSlider: some View {
+        VStack(spacing: 6) {
+            GeometryReader { geo in
+                let trackHeight: CGFloat = 6
+                let thumbSize: CGFloat = 18
+                let usableWidth = geo.size.width - thumbSize
+                // Map 0.8–2.5 scale to 0–1 fraction
+                let fraction = (currentDialogScale - 0.8) / 1.7
+                let thumbX = thumbSize / 2 + usableWidth * fraction
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Constants.textMuted.opacity(0.15))
+                        .frame(height: trackHeight)
+
+                    Capsule()
+                        .fill(Constants.orangePrimary)
+                        .frame(width: thumbX, height: trackHeight)
+
+                    Circle()
+                        .fill(Color.white)
+                        .overlay(Circle().stroke(Constants.orangePrimary, lineWidth: 2))
+                        .frame(width: thumbSize, height: thumbSize)
+                        .offset(x: thumbX - thumbSize / 2)
+                }
+                .frame(height: geo.size.height)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { drag in
+                            let raw = (drag.location.x - thumbSize / 2) / usableWidth
+                            let clamped = min(max(raw, 0), 1)
+                            let stepped = (clamped * 17).rounded() / 17 // ~6% steps
+                            currentDialogScale = 0.8 + stepped * 1.7
+                            onDialogScale(currentDialogScale)
+                        }
+                )
+            }
+            .frame(height: 22)
+
+            Text("\(Int(currentDialogScale * 100))%")
+                .font(Constants.body(size: 11, weight: .medium))
+                .foregroundStyle(Constants.textMuted)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     private var opacitySlider: some View {
