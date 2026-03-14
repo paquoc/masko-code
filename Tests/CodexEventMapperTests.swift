@@ -255,6 +255,119 @@ final class CodexEventMapperTests: XCTestCase {
         XCTAssertEqual(exited.events.first?.reason, "exited_review_mode")
     }
 
+    func testAgentMessageAndReasoningEventMessagesMapToNotifications() throws {
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let context = CodexSessionContext(
+            sessionId: sessionId,
+            cwd: "/Users/test/project",
+            source: "cli",
+            originator: "codex_cli_rs"
+        )
+        let fileURL = URL(fileURLWithPath: "/tmp/rollout-2026-03-09T23-54-07-\(sessionId).jsonl")
+
+        let agentMessageLine = #"""
+        {"type":"event_msg","payload":{"type":"agent_message","message":"Implemented the fix."}}
+        """#
+        let agentMessage = CodexEventMapper.parse(line: agentMessageLine, fileURL: fileURL, context: context)
+        XCTAssertEqual(agentMessage.events.count, 1)
+        XCTAssertEqual(agentMessage.events.first?.hookEventName, HookEventType.notification.rawValue)
+        XCTAssertEqual(agentMessage.events.first?.notificationType, "codex_agent_message")
+        XCTAssertEqual(agentMessage.events.first?.message, "Implemented the fix.")
+
+        let reasoningLine = #"""
+        {"type":"event_msg","payload":{"type":"agent_reasoning","text":"Inspecting project structure"}}
+        """#
+        let reasoning = CodexEventMapper.parse(line: reasoningLine, fileURL: fileURL, context: context)
+        XCTAssertEqual(reasoning.events.count, 1)
+        XCTAssertEqual(reasoning.events.first?.hookEventName, HookEventType.notification.rawValue)
+        XCTAssertEqual(reasoning.events.first?.notificationType, "codex_agent_reasoning")
+        XCTAssertEqual(reasoning.events.first?.message, "Inspecting project structure")
+    }
+
+    func testTokenCountEventMessageMapsToNotification() throws {
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let context = CodexSessionContext(
+            sessionId: sessionId,
+            cwd: "/Users/test/project",
+            source: "cli",
+            originator: "codex_cli_rs"
+        )
+        let fileURL = URL(fileURLWithPath: "/tmp/rollout-2026-03-09T23-54-07-\(sessionId).jsonl")
+        let line = #"""
+        {"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":11.0},"secondary":{"used_percent":14.0}}}}
+        """#
+
+        let result = CodexEventMapper.parse(line: line, fileURL: fileURL, context: context)
+        XCTAssertEqual(result.events.count, 1)
+        XCTAssertEqual(result.events.first?.hookEventName, HookEventType.notification.rawValue)
+        XCTAssertEqual(result.events.first?.notificationType, "codex_token_count")
+        XCTAssertEqual(result.events.first?.message, "Token usage: primary 11%, secondary 14%")
+    }
+
+    func testResponseItemMessageMapsToNotification() throws {
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let context = CodexSessionContext(
+            sessionId: sessionId,
+            cwd: "/Users/test/project",
+            source: "cli",
+            originator: "codex_cli_rs"
+        )
+        let fileURL = URL(fileURLWithPath: "/tmp/rollout-2026-03-09T23-54-07-\(sessionId).jsonl")
+        let line = #"""
+        {"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done with implementation"}]}}
+        """#
+
+        let result = CodexEventMapper.parse(line: line, fileURL: fileURL, context: context)
+
+        XCTAssertEqual(result.events.count, 1)
+        XCTAssertEqual(result.events.first?.hookEventName, HookEventType.notification.rawValue)
+        XCTAssertEqual(result.events.first?.notificationType, "codex_agent_message")
+        XCTAssertEqual(result.events.first?.message, "Done with implementation")
+    }
+
+    func testResponseItemReasoningMapsToNotification() throws {
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let context = CodexSessionContext(
+            sessionId: sessionId,
+            cwd: "/Users/test/project",
+            source: "cli",
+            originator: "codex_cli_rs"
+        )
+        let fileURL = URL(fileURLWithPath: "/tmp/rollout-2026-03-09T23-54-07-\(sessionId).jsonl")
+        let line = #"""
+        {"type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Inspecting test suite"}]}}
+        """#
+
+        let result = CodexEventMapper.parse(line: line, fileURL: fileURL, context: context)
+
+        XCTAssertEqual(result.events.count, 1)
+        XCTAssertEqual(result.events.first?.hookEventName, HookEventType.notification.rawValue)
+        XCTAssertEqual(result.events.first?.notificationType, "codex_agent_reasoning")
+        XCTAssertEqual(result.events.first?.message, "Inspecting test suite")
+    }
+
+    func testResponseItemWebSearchCallMapsToToolLifecycle() throws {
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let context = CodexSessionContext(
+            sessionId: sessionId,
+            cwd: "/Users/test/project",
+            source: "cli",
+            originator: "codex_cli_rs"
+        )
+        let fileURL = URL(fileURLWithPath: "/tmp/rollout-2026-03-09T23-54-07-\(sessionId).jsonl")
+        let line = #"""
+        {"type":"response_item","payload":{"type":"web_search_call","status":"completed","action":{"type":"search","query":"codex docs","queries":["codex docs"]}}}
+        """#
+
+        let result = CodexEventMapper.parse(line: line, fileURL: fileURL, context: context)
+
+        XCTAssertEqual(result.events.count, 2)
+        XCTAssertEqual(result.events.first?.hookEventName, HookEventType.preToolUse.rawValue)
+        XCTAssertEqual(result.events.first?.toolName, "web_search_call")
+        XCTAssertEqual(result.events.last?.hookEventName, HookEventType.postToolUse.rawValue)
+        XCTAssertEqual(result.events.last?.toolName, "web_search_call")
+    }
+
     func testFunctionCallMapsToToolEvents() throws {
         let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
         let context = CodexSessionContext(

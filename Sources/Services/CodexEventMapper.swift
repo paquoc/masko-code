@@ -169,6 +169,50 @@ enum CodexEventMapper {
                         source: source
                     ),
                 ]
+            case "agent_message":
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: HookEventType.notification.rawValue,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        message: payload["message"] as? String,
+                        notificationType: "codex_agent_message",
+                        source: source
+                    ),
+                ]
+            case "user_message":
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: HookEventType.notification.rawValue,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        message: payload["message"] as? String,
+                        notificationType: "codex_user_message",
+                        source: source
+                    ),
+                ]
+            case "agent_reasoning":
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: HookEventType.notification.rawValue,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        message: payload["text"] as? String,
+                        notificationType: "codex_agent_reasoning",
+                        source: source
+                    ),
+                ]
+            case "token_count":
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: HookEventType.notification.rawValue,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        message: codexTokenCountMessage(payload: payload),
+                        notificationType: "codex_token_count",
+                        source: source
+                    ),
+                ]
             case "request_permissions":
                 let toolUseId = payload["call_id"] as? String
                 var toolInput = payload
@@ -424,6 +468,59 @@ enum CodexEventMapper {
                     source: source
                 ),
             ]
+        case "message":
+            guard let message = codexResponseMessageText(payload: payload) else { return [] }
+            let role = payload["role"] as? String
+            let notificationType = role == "assistant" ? "codex_agent_message" : "codex_message"
+            return [
+                ClaudeEvent(
+                    hookEventName: HookEventType.notification.rawValue,
+                    sessionId: sessionId,
+                    cwd: cwd,
+                    message: message,
+                    notificationType: notificationType,
+                    source: source
+                ),
+            ]
+        case "reasoning":
+            guard let summary = codexReasoningSummary(payload: payload) else { return [] }
+            return [
+                ClaudeEvent(
+                    hookEventName: HookEventType.notification.rawValue,
+                    sessionId: sessionId,
+                    cwd: cwd,
+                    message: summary,
+                    notificationType: "codex_agent_reasoning",
+                    source: source
+                ),
+            ]
+        case "web_search_call":
+            let toolUseId = payload["call_id"] as? String ?? payload["id"] as? String
+            let status = (payload["status"] as? String)?.lowercased()
+            let isFailure = status == "failed" || status == "error"
+            let toolName = "web_search_call"
+            var responsePayload = payload
+            responsePayload.removeValue(forKey: "type")
+            return [
+                ClaudeEvent(
+                    hookEventName: HookEventType.preToolUse.rawValue,
+                    sessionId: sessionId,
+                    cwd: cwd,
+                    toolName: toolName,
+                    toolInput: codableMap(payload),
+                    toolUseId: toolUseId,
+                    source: source
+                ),
+                ClaudeEvent(
+                    hookEventName: isFailure ? HookEventType.postToolUseFailure.rawValue : HookEventType.postToolUse.rawValue,
+                    sessionId: sessionId,
+                    cwd: cwd,
+                    toolName: toolName,
+                    toolResponse: codableMap(responsePayload),
+                    toolUseId: toolUseId,
+                    source: source
+                ),
+            ]
 
         default:
             return []
@@ -583,6 +680,73 @@ enum CodexEventMapper {
         if let name = invocation["tool_name"] as? String, !name.isEmpty { return name }
         if let name = invocation["tool"] as? String, !name.isEmpty { return name }
         if let name = invocation["name"] as? String, !name.isEmpty { return name }
+        return nil
+    }
+
+    private static func codexTokenCountMessage(payload: [String: Any]) -> String {
+        guard let limits = payload["rate_limits"] as? [String: Any] else {
+            return "Codex token usage updated"
+        }
+
+        var parts: [String] = []
+        if let primary = limits["primary"] as? [String: Any],
+           let percent = primary["used_percent"] {
+            parts.append("primary \(percent)%")
+        }
+        if let secondary = limits["secondary"] as? [String: Any],
+           let percent = secondary["used_percent"] {
+            parts.append("secondary \(percent)%")
+        }
+        if parts.isEmpty {
+            return "Codex token usage updated"
+        }
+        return "Token usage: " + parts.joined(separator: ", ")
+    }
+
+    private static func codexResponseMessageText(payload: [String: Any]) -> String? {
+        if let content = payload["content"] as? [[String: Any]] {
+            for item in content {
+                if let text = item["text"] as? String, !text.isEmpty {
+                    return text
+                }
+            }
+        }
+        if let content = payload["content"] as? [Any] {
+            for item in content {
+                if let dict = item as? [String: Any],
+                   let text = dict["text"] as? String,
+                   !text.isEmpty {
+                    return text
+                }
+            }
+        }
+        return payload["message"] as? String
+    }
+
+    private static func codexReasoningSummary(payload: [String: Any]) -> String? {
+        if let summary = payload["summary"] as? [[String: Any]] {
+            for item in summary {
+                if let text = item["text"] as? String, !text.isEmpty {
+                    return text
+                }
+            }
+            for item in summary {
+                if let text = item["summary_text"] as? String, !text.isEmpty {
+                    return text
+                }
+            }
+        }
+        if let summary = payload["summary"] as? [Any] {
+            for item in summary {
+                guard let dict = item as? [String: Any] else { continue }
+                if let text = dict["text"] as? String, !text.isEmpty {
+                    return text
+                }
+                if let text = dict["summary_text"] as? String, !text.isEmpty {
+                    return text
+                }
+            }
+        }
         return nil
     }
 
