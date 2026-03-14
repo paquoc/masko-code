@@ -24,9 +24,9 @@ struct ActivityFeedView: View {
                 // Live indicator
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(appStore.localServer.isRunning ? Color.green : Color.red)
+                        .fill(appStore.isAssistantEventIngestionActive ? Color.green : Color.red)
                         .frame(width: 8, height: 8)
-                    Text(appStore.localServer.isRunning ? "Listening on \(appStore.localServer.port)" : "Offline")
+                    Text(appStore.assistantEventIngestionStatusText)
                         .font(.caption)
                         .foregroundColor(Constants.textMuted)
                 }

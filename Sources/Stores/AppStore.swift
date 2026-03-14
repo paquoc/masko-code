@@ -38,6 +38,19 @@ final class AppStore {
     var navigateToMascotId: UUID?
 
     var hasUnreadNotifications: Bool { notificationStore.unreadCount > 0 }
+    var isAssistantEventIngestionActive: Bool { localServer.isRunning || codexSessionMonitor.isRunning }
+    var assistantEventIngestionStatusText: String {
+        switch (localServer.isRunning, codexSessionMonitor.isRunning) {
+        case (true, true):
+            return "Listening on \(localServer.port) + Codex logs"
+        case (true, false):
+            return "Listening on \(localServer.port)"
+        case (false, true):
+            return "Listening to Codex logs"
+        case (false, false):
+            return "Offline"
+        }
+    }
 
     var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }

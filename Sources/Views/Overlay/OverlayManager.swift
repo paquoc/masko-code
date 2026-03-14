@@ -17,6 +17,7 @@ final class TransparentHostingController<Content: View>: NSHostingController<Con
 @MainActor
 @Observable
 final class OverlayManager {
+    private static let hasActivatedMascotKey = "hasActivatedMascot"
     private(set) var isOverlayActive = false
     private(set) var currentURL: URL?
     private(set) var currentConfig: MaskoAnimationConfig?
@@ -30,6 +31,20 @@ final class OverlayManager {
     // Overlay enabled/disabled (notification-only mode)
     // Stored property so @Observable can track it for SwiftUI reactivity
     private(set) var isOverlayEnabled: Bool = UserDefaults.standard.bool(forKey: "overlay_enabled")
+
+    var hasEverActivatedMascot: Bool {
+        UserDefaults.standard.bool(forKey: Self.hasActivatedMascotKey)
+    }
+
+    static func startupMascotConfig(from mascots: [SavedMascot]) -> MaskoAnimationConfig? {
+        if let clippy = mascots.first(where: { $0.templateSlug == "clippy" }) {
+            return clippy.config
+        }
+        if let first = mascots.first {
+            return first.config
+        }
+        return MascotStore.loadBundledConfig(named: "clippy")
+    }
 
     // Snooze state
     private(set) var isSnoozed = false
@@ -126,6 +141,7 @@ final class OverlayManager {
         self.panel = newPanel
         self.currentURL = url
         self.isOverlayActive = true
+        UserDefaults.standard.set(true, forKey: Self.hasActivatedMascotKey)
 
         // Save URL for restore on relaunch
         UserDefaults.standard.set(url.absoluteString, forKey: "overlay_url")
@@ -279,6 +295,7 @@ final class OverlayManager {
         self.statsPanel = newStatsPanel
         self.permissionPanel = newPermPanel
         self.isOverlayActive = true
+        UserDefaults.standard.set(true, forKey: Self.hasActivatedMascotKey)
 
         setupObservers(for: mascotPanel)
 

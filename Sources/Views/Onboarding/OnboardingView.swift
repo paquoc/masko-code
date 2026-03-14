@@ -88,12 +88,12 @@ struct OnboardingView: View {
                 Text("Welcome to Masko")
                     .font(Constants.heading(size: 28, weight: .bold))
                     .foregroundStyle(Constants.textPrimary)
-                Text("for Claude Code")
+                Text("for Claude Code + Codex")
                     .font(Constants.heading(size: 18, weight: .semibold))
                     .foregroundStyle(Constants.textMuted)
             }
 
-            Text("Masko lives on your screen, reacts to Claude Code activity, and lets you approve actions without switching windows.")
+            Text("Masko lives on your screen, reacts to assistant activity, and lets you approve actions without switching windows.")
                 .font(Constants.body(size: 14))
                 .foregroundStyle(Constants.textMuted)
                 .multilineTextAlignment(.center)
@@ -119,7 +119,7 @@ struct OnboardingView: View {
                     .font(Constants.heading(size: 24, weight: .bold))
                     .foregroundStyle(Constants.textPrimary)
 
-                Text("Masko listens to Claude Code events via hooks. This adds a small config to ~/.claude/settings.json.")
+                Text("Masko listens to Claude Code events via hooks and Codex events via local session logs. Claude hooks add a small config to ~/.claude/settings.json.")
                     .font(Constants.body(size: 14))
                     .foregroundStyle(Constants.textMuted)
                     .multilineTextAlignment(.center)
@@ -166,7 +166,7 @@ struct OnboardingView: View {
                     .font(Constants.heading(size: 24, weight: .bold))
                     .foregroundStyle(Constants.textPrimary)
 
-                Text("Get notified when Claude Code needs your attention \u{2014} permission requests, questions, and completed tasks.")
+                Text("Get notified when your assistant needs your attention \u{2014} permission requests, questions, and completed tasks.")
                     .font(Constants.body(size: 14))
                     .foregroundStyle(Constants.textMuted)
                     .multilineTextAlignment(.center)
@@ -299,7 +299,7 @@ struct OnboardingView: View {
                     .font(Constants.heading(size: 24, weight: .bold))
                     .foregroundStyle(Constants.textPrimary)
 
-                Text("Pick a companion that will live on your screen and react to Claude Code.")
+                Text("Pick a companion that will live on your screen and react to assistant activity.")
                     .font(Constants.body(size: 14))
                     .foregroundStyle(Constants.textMuted)
                     .multilineTextAlignment(.center)

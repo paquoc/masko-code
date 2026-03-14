@@ -26,6 +26,8 @@ final class CodexSessionMonitor {
     private var sessionContexts: [String: CodexSessionContext] = [:]
     private var timer: Timer?
 
+    var isRunning: Bool { timer != nil }
+
     var onEventReceived: ((ClaudeEvent) -> Void)?
 
     init(
