@@ -122,31 +122,10 @@ struct PendingPermission: Identifiable {
     /// For AskUserQuestion: parse structured questions with options
     var parsedQuestions: [ParsedQuestion]? {
         guard event.toolName == "AskUserQuestion" else { return nil }
-        guard let input = event.toolInput else { return nil }
-        guard let rawQuestions = input["questions"]?.value else { return nil }
-
-        // Handle both [Any] (from AnyCodable unwrap) and [[String: Any]] casts
-        let questionsArray: [Any]
-        if let arr = rawQuestions as? [[String: Any]] {
-            questionsArray = arr
-        } else if let arr = rawQuestions as? [Any] {
-            questionsArray = arr
-        } else {
-            print("[masko-desktop] parsedQuestions: unexpected type for questions: \(type(of: rawQuestions))")
-            return nil
-        }
+        guard let questionsArray = questionElements else { return nil }
 
         let result = questionsArray.compactMap { element -> ParsedQuestion? in
-            // Handle both [String: Any] and [String: AnyCodable]
-            let q: [String: Any]
-            if let dict = element as? [String: Any] {
-                q = dict
-            } else if let dict = element as? [String: AnyCodable] {
-                q = dict.mapValues(\.value)
-            } else {
-                return nil
-            }
-
+            guard let q = questionDictionary(from: element) else { return nil }
             guard let text = q["question"] as? String else { return nil }
             let header = q["header"] as? String
             let multiSelect = q["multiSelect"] as? Bool ?? false
@@ -193,10 +172,10 @@ struct PendingPermission: Identifiable {
         } else if let path = input["path"]?.value as? String {
             raw = path
         // For AskUserQuestion: show first question text
-        } else if let questions = input["questions"]?.value as? [[String: Any]],
-                  let firstQ = questions.first,
-                  let questionText = firstQ["question"] as? String {
-            raw = questionText
+        } else if let firstQuestionText = questionElements?
+            .compactMap(questionText(from:))
+            .first {
+            raw = firstQuestionText
         // Fallback: first string value
         } else if let first = input.values.first(where: { ($0.value as? String)?.isEmpty == false }),
                   let str = first.value as? String {
@@ -232,11 +211,8 @@ struct PendingPermission: Identifiable {
             } else {
                 raw = path
             }
-        } else if let questions = input["questions"]?.value as? [[String: Any]] {
-            raw = questions.compactMap { q in
-                guard let text = q["question"] as? String else { return nil as String? }
-                return text
-            }.joined(separator: "\n\n")
+        } else if let questions = questionElements {
+            raw = questions.compactMap(questionText(from:)).joined(separator: "\n\n")
         } else if let prompt = input["prompt"]?.value as? String {
             raw = prompt
         } else {
@@ -247,6 +223,38 @@ struct PendingPermission: Identifiable {
             }.joined(separator: "\n")
         }
         return raw.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var questionElements: [Any]? {
+        guard let rawQuestions = event.toolInput?["questions"]?.value else { return nil }
+        if let arr = rawQuestions as? [Any] {
+            return arr
+        }
+        if let arr = rawQuestions as? [[String: Any]] {
+            return arr
+        }
+        if let arr = rawQuestions as? [[String: String]] {
+            return arr
+        }
+        print("[masko-desktop] parsedQuestions: unexpected type for questions: \(type(of: rawQuestions))")
+        return nil
+    }
+
+    private func questionDictionary(from element: Any) -> [String: Any]? {
+        if let dict = element as? [String: Any] {
+            return dict
+        }
+        if let dict = element as? [String: AnyCodable] {
+            return dict.mapValues(\.value)
+        }
+        if let dict = element as? [String: String] {
+            return dict.mapValues { $0 }
+        }
+        return nil
+    }
+
+    private func questionText(from element: Any) -> String? {
+        questionDictionary(from: element)?["question"] as? String
     }
 
     /// For ExitPlanMode: read the plan file content from disk

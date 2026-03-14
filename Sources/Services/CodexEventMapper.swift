@@ -552,11 +552,15 @@ enum CodexEventMapper {
             ]
         case "web_search_call":
             let toolUseId = payload["call_id"] as? String ?? payload["id"] as? String
-            let status = (payload["status"] as? String)?.lowercased()
-            let isFailure = status == "failed" || status == "error"
             let toolName = "web_search_call"
             var responsePayload = payload
             responsePayload.removeValue(forKey: "type")
+            let hookName = isToolOutputFailure(
+                payload: responsePayload,
+                output: toolOutput(responsePayload["output"])
+            )
+                ? HookEventType.postToolUseFailure.rawValue
+                : HookEventType.postToolUse.rawValue
             return [
                 ClaudeEvent(
                     hookEventName: HookEventType.preToolUse.rawValue,
@@ -568,7 +572,7 @@ enum CodexEventMapper {
                     source: source
                 ),
                 ClaudeEvent(
-                    hookEventName: isFailure ? HookEventType.postToolUseFailure.rawValue : HookEventType.postToolUse.rawValue,
+                    hookEventName: hookName,
                     sessionId: sessionId,
                     cwd: cwd,
                     toolName: toolName,

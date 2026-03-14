@@ -554,6 +554,27 @@ final class CodexEventMapperTests: XCTestCase {
         XCTAssertEqual(result.events.last?.toolName, "web_search_call")
     }
 
+    func testResponseItemWebSearchCallMapsPayloadErrorsToFailure() throws {
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let context = CodexSessionContext(
+            sessionId: sessionId,
+            cwd: "/Users/test/project",
+            source: "cli",
+            originator: "codex_cli_rs"
+        )
+        let fileURL = URL(fileURLWithPath: "/tmp/rollout-2026-03-09T23-54-07-\(sessionId).jsonl")
+        let line = #"""
+        {"type":"response_item","payload":{"type":"web_search_call","action":{"type":"search","query":"codex docs"},"error":{"message":"search backend unavailable"}}}
+        """#
+
+        let result = CodexEventMapper.parse(line: line, fileURL: fileURL, context: context)
+
+        XCTAssertEqual(result.events.count, 2)
+        XCTAssertEqual(result.events.first?.hookEventName, HookEventType.preToolUse.rawValue)
+        XCTAssertEqual(result.events.last?.hookEventName, HookEventType.postToolUseFailure.rawValue)
+        XCTAssertEqual(result.events.last?.toolName, "web_search_call")
+    }
+
     func testFunctionCallMapsToToolEvents() throws {
         let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
         let context = CodexSessionContext(

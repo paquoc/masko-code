@@ -143,6 +143,69 @@ final class PendingPermissionStoreTests: XCTestCase {
         XCTAssertEqual(permission.fullToolInputText, "scripts/codex-mascot-smoke.sh")
     }
 
+    func testAskUserQuestionPreviewSupportsGenericQuestionArrayPayload() {
+        let permission = PendingPermission(
+            id: UUID(),
+            event: ClaudeEvent(
+                hookEventName: HookEventType.permissionRequest.rawValue,
+                sessionId: "session-question-preview",
+                cwd: "/tmp/project",
+                toolName: "AskUserQuestion",
+                toolInput: [
+                    "questions": AnyCodable([
+                        [
+                            "id": "remote",
+                            "question": "Which remote should we use?",
+                        ],
+                    ]),
+                ],
+                toolUseId: "call_question_preview",
+                source: "codex-cli"
+            ),
+            connection: nil,
+            localResolutionHandler: nil,
+            receivedAt: Date(),
+            resolvedToolUseId: "call_question_preview"
+        )
+
+        XCTAssertEqual(permission.toolInputPreview, "Which remote should we use?")
+    }
+
+    func testAskUserQuestionFullTextSupportsGenericQuestionArrayPayload() {
+        let permission = PendingPermission(
+            id: UUID(),
+            event: ClaudeEvent(
+                hookEventName: HookEventType.permissionRequest.rawValue,
+                sessionId: "session-question-full",
+                cwd: "/tmp/project",
+                toolName: "AskUserQuestion",
+                toolInput: [
+                    "questions": AnyCodable([
+                        [
+                            "id": "remote",
+                            "question": "Which remote should we use?",
+                        ],
+                        [
+                            "id": "approval",
+                            "question": "Should this be always allowed?",
+                        ],
+                    ]),
+                ],
+                toolUseId: "call_question_full",
+                source: "codex-cli"
+            ),
+            connection: nil,
+            localResolutionHandler: nil,
+            receivedAt: Date(),
+            resolvedToolUseId: "call_question_full"
+        )
+
+        XCTAssertEqual(
+            permission.fullToolInputText,
+            "Which remote should we use?\n\nShould this be always allowed?"
+        )
+    }
+
     private func makeCodexPermissionEvent(toolUseId: String, cmd: String) -> ClaudeEvent {
         ClaudeEvent(
             hookEventName: HookEventType.permissionRequest.rawValue,
