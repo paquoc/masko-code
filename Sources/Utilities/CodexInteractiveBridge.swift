@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Best-effort bridge that sends mascot decisions back to an active Codex terminal session.
@@ -11,6 +12,7 @@ enum CodexInteractiveBridge {
 
     private static let codexProcessMatchers: [[String]] = [
         ["-x", "codex"],
+        ["-x", "Codex"],
         ["-f", "codex_cli_rs"],
         ["-f", "Codex.app"],
         ["-f", "Codex Desktop"],
@@ -23,7 +25,7 @@ enum CodexInteractiveBridge {
         writer: ((String, String) -> Bool)? = nil
     ) -> Bool {
         guard event.assistantClientKind != .claude else { return false }
-        guard let input = inputText(for: resolution), !input.isEmpty else { return false }
+        guard let input = inputText(for: resolution, event: event), !input.isEmpty else { return false }
 
         let infos = processInfos ?? runningCodexProcesses()
         guard let target = selectProcess(for: event, from: infos),
@@ -41,12 +43,34 @@ enum CodexInteractiveBridge {
         return success
     }
 
-    static func inputText(for resolution: LocalPermissionResolution) -> String? {
+    static func focus(
+        event: ClaudeEvent,
+        processInfos: [ProcessInfo]? = nil,
+        activator: ((Int) -> Bool)? = nil
+    ) -> Bool {
+        guard event.assistantClientKind != .claude else { return false }
+
+        let infos = processInfos ?? runningCodexProcesses()
+        guard let target = selectProcess(for: event, from: infos) else {
+            return false
+        }
+
+        let activate = activator ?? defaultActivator
+        let success = activate(target.pid)
+        if success {
+            print("[masko-desktop] Codex bridge focused pid=\(target.pid)")
+        } else {
+            print("[masko-desktop] Codex bridge failed to focus pid=\(target.pid)")
+        }
+        return success
+    }
+
+    static func inputText(for resolution: LocalPermissionResolution, event: ClaudeEvent? = nil) -> String? {
         switch resolution {
         case .decision(let decision):
             return decision == .allow ? "y\n" : "n\n"
         case .answers(let answers):
-            let values = answers.keys.sorted().compactMap { answers[$0] }
+            let values = orderedAnswerValues(answers, event: event)
             guard !values.isEmpty else { return nil }
             return values.joined(separator: "\n") + "\n"
         case .feedback(let feedback):
@@ -97,6 +121,45 @@ enum CodexInteractiveBridge {
         return nil
     }
 
+    private static func orderedAnswerValues(_ answers: [String: String], event: ClaudeEvent?) -> [String] {
+        guard let orderedKeys = orderedAnswerKeys(from: event), !orderedKeys.isEmpty else {
+            return answers.keys.sorted().compactMap { answers[$0] }
+        }
+
+        var values: [String] = []
+        var usedKeys = Set<String>()
+
+        for key in orderedKeys where !usedKeys.contains(key) {
+            guard let value = answers[key] else { continue }
+            values.append(value)
+            usedKeys.insert(key)
+        }
+
+        let remainingKeys = answers.keys
+            .filter { !usedKeys.contains($0) }
+            .sorted()
+        values.append(contentsOf: remainingKeys.compactMap { answers[$0] })
+        return values
+    }
+
+    private static func orderedAnswerKeys(from event: ClaudeEvent?) -> [String]? {
+        guard let questions = event?.toolInput?["questions"]?.value as? [Any] else { return nil }
+
+        var keys: [String] = []
+        for question in questions {
+            guard let dict = question as? [String: Any] ?? (question as? [String: AnyCodable])?.mapValues(\.value) else {
+                continue
+            }
+            if let id = dict["id"] as? String, !id.isEmpty {
+                keys.append(id)
+            }
+            if let text = dict["question"] as? String, !text.isEmpty {
+                keys.append(text)
+            }
+        }
+        return keys.isEmpty ? nil : keys
+    }
+
     private static func runningCodexProcesses() -> [ProcessInfo] {
         let pids = Set(codexProcessMatchers.flatMap(pidsForMatcher))
         let sortedPids = pids.sorted()
@@ -142,6 +205,11 @@ enum CodexInteractiveBridge {
         handle.write(data)
         handle.closeFile()
         return true
+    }
+
+    private static func defaultActivator(pid: Int) -> Bool {
+        guard let app = NSRunningApplication(processIdentifier: pid_t(pid)) else { return false }
+        return app.activate()
     }
 
     private static func runCommand(_ launchPath: String, arguments: [String]) -> String {

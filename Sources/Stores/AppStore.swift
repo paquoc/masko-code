@@ -261,6 +261,12 @@ final class AppStore {
             let reversed = Array(self.pendingPermissionStore.pending.reversed())
             if let topPerm = reversed.first {
                 let sessionDir = self.sessionStore.sessions.first(where: { $0.id == topPerm.event.sessionId })?.projectDir
+                if topPerm.event.assistantClientKind != .claude,
+                   topPerm.event.terminalPid == nil,
+                   topPerm.event.shellPid == nil,
+                   CodexInteractiveBridge.focus(event: topPerm.event) {
+                    return
+                }
                 IDETerminalFocus.focus(
                     terminalPid: topPerm.event.terminalPid,
                     shellPid: topPerm.event.shellPid,
@@ -270,7 +276,9 @@ final class AppStore {
                       let session = self.sessionStore.sessions.first(where: { $0.id == toast.sessionId }) {
                 IDETerminalFocus.focusSession(session)
                 self.sessionFinishedStore.dismiss()
-            } else if let session = self.sessionStore.sessions.last(where: { $0.terminalPid != nil }) {
+            } else if let session = self.sessionStore.activeSessions.last(where: {
+                $0.terminalPid != nil || $0.shellPid != nil || ($0.assistantSource?.lowercased().contains("codex") == true)
+            }) {
                 IDETerminalFocus.focusSession(session)
             } else {
                 self.hotkeyManager.toggleFocus()

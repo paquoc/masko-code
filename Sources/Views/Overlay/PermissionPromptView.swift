@@ -228,8 +228,26 @@ private func markdownText(_ string: String) -> Text {
 /// Activate the terminal running the Claude Code session.
 /// Delegates to shared IDETerminalFocus utility (supports exact tab switching via IDE extension).
 /// Uses the session's stored projectDir (set at session start) to avoid issues when the agent has cd'd.
-private func focusTerminal(pid: Int? = nil, shellPid: Int? = nil, projectDir: String? = nil, sessionId: String? = nil, sessions: [ClaudeSession] = []) {
+private func focusTerminal(
+    pid: Int? = nil,
+    shellPid: Int? = nil,
+    projectDir: String? = nil,
+    sessionId: String? = nil,
+    source: String? = nil,
+    sessions: [ClaudeSession] = []
+) {
     let resolvedDir = sessions.first(where: { $0.id == sessionId })?.projectDir ?? projectDir
+    if pid == nil, shellPid == nil, let source {
+        let event = ClaudeEvent(
+            hookEventName: HookEventType.permissionRequest.rawValue,
+            sessionId: sessionId,
+            cwd: resolvedDir,
+            source: source
+        )
+        if CodexInteractiveBridge.focus(event: event) {
+            return
+        }
+    }
     IDETerminalFocus.focus(terminalPid: pid, shellPid: shellPid, projectDir: resolvedDir)
 }
 
@@ -281,7 +299,7 @@ struct AskUserQuestionView: View {
                 Spacer()
 
                 HStack(spacing: 3) {
-                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
+                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(OverlayStyle.textHint)
@@ -434,7 +452,7 @@ struct AskUserQuestionView: View {
                     if questions.count > 1 {
                         currentQuestionIndex = questionIndex
                     }
-                    focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions)
+                    focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions)
                 }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -614,7 +632,7 @@ struct ExitPlanModeView: View {
                 Spacer()
 
                 HStack(spacing: 3) {
-                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
+                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(OverlayStyle.textHint)
@@ -885,7 +903,7 @@ struct PermissionPromptView: View {
                 Spacer()
 
                 HStack(spacing: 3) {
-                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
+                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(OverlayStyle.textHint)
@@ -1082,7 +1100,7 @@ private struct CollapsedPermissionPill: View {
 
             Spacer(minLength: 0)
 
-            Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
+            Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
                 Image(systemName: "terminal.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(OverlayStyle.textHint)

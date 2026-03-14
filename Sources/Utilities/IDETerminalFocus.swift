@@ -7,6 +7,20 @@ enum IDETerminalFocus {
 
     /// Focus the terminal for a given session.
     static func focusSession(_ session: ClaudeSession) {
+        if session.terminalPid == nil,
+           session.shellPid == nil,
+           let source = session.assistantSource,
+           source.lowercased().contains("codex") {
+            let event = ClaudeEvent(
+                hookEventName: HookEventType.permissionRequest.rawValue,
+                sessionId: session.id,
+                cwd: session.projectDir,
+                source: source
+            )
+            if CodexInteractiveBridge.focus(event: event) {
+                return
+            }
+        }
         focus(terminalPid: session.terminalPid, shellPid: session.shellPid, projectDir: session.projectDir)
     }
 

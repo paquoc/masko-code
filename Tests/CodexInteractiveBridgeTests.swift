@@ -99,6 +99,62 @@ final class CodexInteractiveBridgeTests: XCTestCase {
         XCTAssertEqual(feedbackText, "looks good\n")
     }
 
+    func testInputTextForAnswersUsesQuestionOrderFromEvent() {
+        let event = ClaudeEvent(
+            hookEventName: HookEventType.permissionRequest.rawValue,
+            sessionId: "sid-ordered",
+            cwd: "/Users/test/project",
+            toolName: "AskUserQuestion",
+            toolInput: [
+                "questions": AnyCodable([
+                    [
+                        "id": "question_b",
+                        "question": "Second question?",
+                    ],
+                    [
+                        "id": "question_a",
+                        "question": "First question?",
+                    ],
+                ]),
+            ],
+            source: "codex-cli"
+        )
+
+        let answersText = CodexInteractiveBridge.inputText(
+            for: .answers([
+                "First question?": "first",
+                "Second question?": "second",
+            ]),
+            event: event
+        )
+
+        XCTAssertEqual(answersText, "second\nfirst\n")
+    }
+
+    func testFocusSelectsMatchingCodexDesktopProcess() {
+        let event = ClaudeEvent(
+            hookEventName: HookEventType.permissionRequest.rawValue,
+            sessionId: "sid-focus",
+            cwd: nil,
+            toolName: "exec_command",
+            source: "codex-desktop"
+        )
+
+        let processes = [
+            CodexInteractiveBridge.ProcessInfo(pid: 120, cwd: nil, tty: "/dev/ttys010"),
+            CodexInteractiveBridge.ProcessInfo(pid: 125, cwd: nil, tty: "/dev/ttys011"),
+        ]
+
+        var activatedPid: Int?
+        let ok = CodexInteractiveBridge.focus(event: event, processInfos: processes) { pid in
+            activatedPid = pid
+            return true
+        }
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(activatedPid, 125)
+    }
+
     func testSubmitRejectsClaudeEvents() {
         let event = ClaudeEvent(
             hookEventName: HookEventType.permissionRequest.rawValue,

@@ -4,6 +4,7 @@ struct ClaudeSession: Identifiable, Codable {
     let id: String // session_id from Claude Code
     let projectDir: String?
     let projectName: String?
+    var assistantSource: String?
     var status: Status
     var phase: Phase = .idle
     var eventCount: Int
@@ -310,6 +311,9 @@ final class SessionStore {
             if let toolName = event.toolName {
                 sessions[index].lastToolName = toolName
             }
+            if let source = event.source, !source.isEmpty {
+                sessions[index].assistantSource = source
+            }
             if let path = event.transcriptPath, sessions[index].transcriptPath == nil {
                 sessions[index].transcriptPath = path
             }
@@ -387,6 +391,7 @@ final class SessionStore {
                 id: sessionId,
                 projectDir: event.cwd,
                 projectName: event.projectName,
+                assistantSource: event.source,
                 status: .active,
                 phase: phase,
                 eventCount: 1,
