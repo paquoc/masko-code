@@ -176,6 +176,41 @@ enum CodexEventMapper {
                         source: source
                     ),
                 ]
+            case "exec_command_begin":
+                let toolUseId = payload["call_id"] as? String
+                let toolInput = codexExecApprovalInput(payload: payload)
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: HookEventType.preToolUse.rawValue,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        toolName: "exec_command",
+                        toolInput: codableMap(toolInput),
+                        toolUseId: toolUseId,
+                        source: source
+                    ),
+                ]
+            case "exec_command_end":
+                let toolUseId = payload["call_id"] as? String
+                let exitCode = payload["exit_code"] as? Int
+                let statusValue = (payload["status"] as? String)?.lowercased()
+                let isFailure = (exitCode.map { $0 != 0 } ?? false)
+                    || (statusValue == "failed")
+                    || (statusValue == "error")
+                let hookName = isFailure ? HookEventType.postToolUseFailure.rawValue : HookEventType.postToolUse.rawValue
+                var responsePayload = payload
+                responsePayload.removeValue(forKey: "type")
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: hookName,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        toolName: "exec_command",
+                        toolResponse: codableMap(responsePayload),
+                        toolUseId: toolUseId,
+                        source: source
+                    ),
+                ]
             case "exec_approval_request":
                 let toolUseId = payload["call_id"] as? String
                 let toolInput = codexExecApprovalInput(payload: payload)
@@ -197,6 +232,38 @@ enum CodexEventMapper {
                         toolInput: codableMap(toolInput),
                         toolUseId: toolUseId,
                         message: codexPermissionMessage(toolName: "exec_command", arguments: toolInput),
+                        source: source
+                    ),
+                ]
+            case "mcp_tool_call_begin":
+                let toolUseId = payload["call_id"] as? String
+                let toolName = codexMcpToolName(payload: payload) ?? "mcp_tool"
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: HookEventType.preToolUse.rawValue,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        toolName: toolName,
+                        toolInput: codableMap(payload),
+                        toolUseId: toolUseId,
+                        source: source
+                    ),
+                ]
+            case "mcp_tool_call_end":
+                let toolUseId = payload["call_id"] as? String
+                let toolName = codexMcpToolName(payload: payload)
+                let isFailure = payload["result"] as? String != nil
+                let hookName = isFailure ? HookEventType.postToolUseFailure.rawValue : HookEventType.postToolUse.rawValue
+                var responsePayload = payload
+                responsePayload.removeValue(forKey: "type")
+                result.events = [
+                    ClaudeEvent(
+                        hookEventName: hookName,
+                        sessionId: sessionId,
+                        cwd: workingContext.cwd,
+                        toolName: toolName,
+                        toolResponse: codableMap(responsePayload),
+                        toolUseId: toolUseId,
                         source: source
                     ),
                 ]
@@ -473,5 +540,13 @@ enum CodexEventMapper {
             input["sandbox_permissions"] = "require_escalated"
         }
         return input
+    }
+
+    private static func codexMcpToolName(payload: [String: Any]) -> String? {
+        guard let invocation = payload["invocation"] as? [String: Any] else { return nil }
+        if let name = invocation["tool_name"] as? String, !name.isEmpty { return name }
+        if let name = invocation["tool"] as? String, !name.isEmpty { return name }
+        if let name = invocation["name"] as? String, !name.isEmpty { return name }
+        return nil
     }
 }

@@ -130,6 +130,39 @@ final class CodexEventMapperTests: XCTestCase {
         XCTAssertEqual(permission.message, "Need network access to push")
     }
 
+    func testEventMsgExecCommandBeginAndEndMapToToolLifecycle() throws {
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let context = CodexSessionContext(
+            sessionId: sessionId,
+            cwd: "/Users/test/project",
+            source: "cli",
+            originator: "codex_cli_rs"
+        )
+        let fileURL = URL(fileURLWithPath: "/tmp/rollout-2026-03-09T23-54-07-\(sessionId).jsonl")
+
+        let beginLine = #"""
+        {"type":"event_msg","payload":{"type":"exec_command_begin","call_id":"call_exec_begin","command":["bash","-lc","ls"],"cwd":"/Users/test/project","parsed_cmd":[],"turn_id":"turn_1"}}
+        """#
+        let beginResult = CodexEventMapper.parse(line: beginLine, fileURL: fileURL, context: context)
+        XCTAssertEqual(beginResult.events.count, 1)
+        let preTool = try XCTUnwrap(beginResult.events.first)
+        XCTAssertEqual(preTool.hookEventName, HookEventType.preToolUse.rawValue)
+        XCTAssertEqual(preTool.toolName, "exec_command")
+        XCTAssertEqual(preTool.toolUseId, "call_exec_begin")
+        XCTAssertEqual(preTool.toolInput?["cmd"]?.stringValue, "bash -lc ls")
+
+        let endLine = #"""
+        {"type":"event_msg","payload":{"type":"exec_command_end","call_id":"call_exec_begin","command":["bash","-lc","ls"],"cwd":"/Users/test/project","duration":{"secs":0,"nanos":1},"exit_code":1,"formatted_output":"failed","parsed_cmd":[],"status":"failed","stderr":"permission denied","stdout":"","turn_id":"turn_1"}}
+        """#
+        let endResult = CodexEventMapper.parse(line: endLine, fileURL: fileURL, context: context)
+        XCTAssertEqual(endResult.events.count, 1)
+        let postTool = try XCTUnwrap(endResult.events.first)
+        XCTAssertEqual(postTool.hookEventName, HookEventType.postToolUseFailure.rawValue)
+        XCTAssertEqual(postTool.toolName, "exec_command")
+        XCTAssertEqual(postTool.toolUseId, "call_exec_begin")
+        XCTAssertEqual(postTool.toolResponse?["exit_code"]?.intValue, 1)
+    }
+
     func testCompactedEventMapsToPreCompact() throws {
         let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
         let context = CodexSessionContext(
