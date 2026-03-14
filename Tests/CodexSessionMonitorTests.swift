@@ -258,6 +258,53 @@ final class CodexSessionMonitorTests: XCTestCase {
         XCTAssertEqual(events.last?.reason, "context_compacted")
     }
 
+    func testStartPollsNewFilesCreatedAfterLaunch() throws {
+        let root = try makeTempSessionsRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sessionId = "019cd686-3b91-78a1-9356-21b475548352"
+        let fileURL = root
+            .appendingPathComponent("2026")
+            .appendingPathComponent("03")
+            .appendingPathComponent("14")
+            .appendingPathComponent("rollout-2026-03-14T01-24-49-\(sessionId).jsonl")
+
+        let monitor = CodexSessionMonitor(
+            rootURL: root,
+            pollInterval: 0.05,
+            bootstrapRecentWindow: 0
+        )
+        var events: [ClaudeEvent] = []
+        let expectation = expectation(description: "new Codex session file is polled")
+        monitor.onEventReceived = { event in
+            events.append(event)
+            if event.sessionId == sessionId,
+               event.hookEventName == HookEventType.userPromptSubmit.rawValue {
+                expectation.fulfill()
+            }
+        }
+
+        monitor.start(bootstrapRecentFiles: false)
+        defer { monitor.stop() }
+
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"019cd686-3b91-78a1-9356-21b475548352","cwd":"/Users/test/project","source":"cli","originator":"codex_cli_rs"}}"#,
+            #"{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn_live"}}"#,
+        ], to: fileURL)
+
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertEqual(events.map(\.hookEventName), [
+            HookEventType.sessionStart.rawValue,
+            HookEventType.userPromptSubmit.rawValue,
+        ])
+        XCTAssertEqual(events.first?.source, "codex-cli")
+    }
+
     private func makeTempSessionsRoot() throws -> URL {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("masko-codex-tests-\(UUID().uuidString)")

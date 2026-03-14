@@ -24,9 +24,9 @@ final class CodexSessionMonitor {
     private let bootstrapTailBytes: UInt64
     private var trackedFiles: [String: TrackedFile] = [:]
     private var sessionContexts: [String: CodexSessionContext] = [:]
-    private var timer: Timer?
+    private var pollSource: DispatchSourceTimer?
 
-    var isRunning: Bool { timer != nil }
+    var isRunning: Bool { pollSource != nil }
 
     var onEventReceived: ((ClaudeEvent) -> Void)?
 
@@ -43,18 +43,20 @@ final class CodexSessionMonitor {
     }
 
     func start(bootstrapRecentFiles: Bool = true) {
-        guard timer == nil else { return }
+        guard pollSource == nil else { return }
         bootstrapExistingFiles(bootstrapRecentFiles: bootstrapRecentFiles)
-        let t = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+        let source = DispatchSource.makeTimerSource(queue: .main)
+        source.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
+        source.setEventHandler { [weak self] in
             self?.pollOnce()
         }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+        source.resume()
+        pollSource = source
     }
 
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        pollSource?.cancel()
+        pollSource = nil
         trackedFiles.removeAll()
         sessionContexts.removeAll()
     }
