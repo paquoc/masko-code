@@ -191,24 +191,4 @@ final class CodexInteractiveBridgeTests: XCTestCase {
 
         XCTAssertFalse(ok)
     }
-
-    func testSupportsBackgroundRepliesUsesAppServerSource() {
-        let event = ClaudeEvent(
-            hookEventName: HookEventType.permissionRequest.rawValue,
-            sessionId: "sid-app-server",
-            source: "codex-app-server"
-        )
-
-        XCTAssertTrue(CodexInteractiveBridge.supportsBackgroundReplies(for: event))
-    }
-
-    func testSupportsBackgroundRepliesRemainsFalseForCodexLogs() {
-        let event = ClaudeEvent(
-            hookEventName: HookEventType.permissionRequest.rawValue,
-            sessionId: "sid-log",
-            source: "codex-cli"
-        )
-
-        XCTAssertFalse(CodexInteractiveBridge.supportsBackgroundReplies(for: event))
-    }
 }

@@ -276,7 +276,7 @@ struct AskUserQuestionView: View {
     private var requiresTerminalFallback: Bool {
         permission.connection == nil &&
         permission.event.assistantClientKind != .claude &&
-        !CodexInteractiveBridge.supportsBackgroundReplies(for: permission.event)
+        !CodexInteractiveBridge.supportsBackgroundReplies
     }
 
     private var allAnswered: Bool {
@@ -895,7 +895,7 @@ struct PermissionPromptView: View {
     private var requiresTerminalFallback: Bool {
         permission.connection == nil &&
         permission.event.assistantClientKind != .claude &&
-        !CodexInteractiveBridge.supportsBackgroundReplies(for: permission.event)
+        !CodexInteractiveBridge.supportsBackgroundReplies
     }
 
     init(permission: PendingPermission, onDecision: @escaping (PermissionDecision) -> Void, onAnswers: (([String: String]) -> Void)? = nil, onFeedback: ((String) -> Void)? = nil, onAllowWithPermissions: (([PermissionSuggestion]) -> Void)? = nil, onLater: @escaping () -> Void, showShortcuts: Bool = false) {

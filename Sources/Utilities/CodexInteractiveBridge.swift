@@ -14,13 +14,6 @@ enum CodexInteractiveBridge {
     /// Codex does not currently expose a supported background input transport here.
     static let supportsBackgroundReplies = false
 
-    static func supportsBackgroundReplies(for event: ClaudeEvent) -> Bool {
-        if CodexAppServerClient.supportsBackgroundReplies(for: event) {
-            return true
-        }
-        return supportsBackgroundReplies
-    }
-
     private static let codexProcessMatchers: [[String]] = [
         ["-x", "codex"],
         ["-x", "Codex"],
