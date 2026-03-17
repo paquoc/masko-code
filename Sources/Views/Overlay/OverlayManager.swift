@@ -46,7 +46,7 @@ final class OverlayManager {
     // Auto-hide when no Claude Code sessions are active
     private(set) var isAutoHideEnabled: Bool = UserDefaults.standard.object(forKey: "auto_hide_no_sessions") != nil
         ? UserDefaults.standard.bool(forKey: "auto_hide_no_sessions")
-        : true  // Default on
+        : false  // Default off
     private(set) var isAutoHidden = false
     private var autoHideTimer: Timer?
     private(set) var autoHideDelay: TimeInterval = {
