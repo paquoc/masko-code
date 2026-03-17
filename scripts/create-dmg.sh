@@ -25,7 +25,7 @@ ln -s /Applications "$STAGING/Applications"
 hdiutil create -volname "$VOL_NAME" \
   -srcfolder "$STAGING" \
   -ov -format UDRW -fs HFS+ \
-  -size 20m \
+  -size 40m \
   "$TMP_DMG"
 
 # ── Eject any stale mount ────────────────────────────────────
