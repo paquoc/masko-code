@@ -14,7 +14,9 @@ final class LocalServer {
     var onInputReceived: ((String, ConditionValue) -> Void)?
 
     private var retryCount = 0
-    private static let maxRetries = 10
+    private static let maxRetries = 3
+    /// Max ports to try before giving up (49152..49161)
+    private static let maxPortAttempts: UInt16 = 10
 
     func start() throws {
         stopped = false
@@ -40,20 +42,24 @@ final class LocalServer {
                 case .ready:
                     self.isRunning = true
                     self.retryCount = 0
+                    // If we landed on a different port than default, persist it and reinstall hooks
+                    if self.port != Constants.serverPort {
+                        Constants.setServerPort(self.port)
+                        try? HookInstaller.install()
+                    }
                     print("[masko-desktop] Server listening on port \(self.port)")
                 case .failed(let error):
                     self.isRunning = false
                     self.listener?.cancel()
                     self.listener = nil
-                    self.scheduleRetry(reason: "failed", error: error)
+                    self.tryNextPort(reason: "failed", error: error)
                 case .waiting(let error):
-                    // .waiting means the port is temporarily unavailable (e.g. TIME_WAIT
-                    // after a crash). NWListener stays in this state and won't auto-recover
-                    // reliably, so tear down and retry manually.
+                    // .waiting means the port is unavailable (e.g. held by rapportd
+                    // or in TIME_WAIT after a crash). Try the next port.
                     self.isRunning = false
                     self.listener?.cancel()
                     self.listener = nil
-                    self.scheduleRetry(reason: "waiting", error: error)
+                    self.tryNextPort(reason: "waiting", error: error)
                 case .cancelled:
                     self.isRunning = false
                 default:
@@ -65,19 +71,28 @@ final class LocalServer {
         listener?.start(queue: .global(qos: .userInitiated))
     }
 
-    private func scheduleRetry(reason: String, error: NWError) {
+    /// Try the next port in the range. If all ports exhausted, retry with backoff.
+    private func tryNextPort(reason: String, error: NWError) {
         guard !stopped else { return }
-        guard retryCount < Self.maxRetries else {
-            print("[masko-desktop] Server gave up after \(Self.maxRetries) retries (last: \(reason) — \(error))")
-            return
-        }
-        retryCount += 1
-        // Exponential backoff: 2s, 4s, 8s... capped at 30s
-        let delay = min(Double(2 << retryCount), 30.0)
-        print("[masko-desktop] Server \(reason): \(error) — retry \(retryCount)/\(Self.maxRetries) in \(Int(delay))s...")
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, !self.stopped else { return }
-            try? self.start()
+        let nextPort = port + 1
+        if nextPort < Constants.defaultServerPort + Self.maxPortAttempts {
+            print("[masko-desktop] Port \(port) \(reason): \(error) - trying \(nextPort)...")
+            port = nextPort
+            try? start()
+        } else {
+            // All ports exhausted, retry from default with backoff
+            guard retryCount < Self.maxRetries else {
+                print("[masko-desktop] Server gave up after trying ports \(Constants.defaultServerPort)-\(port) x\(Self.maxRetries)")
+                return
+            }
+            retryCount += 1
+            port = Constants.defaultServerPort
+            let delay = min(Double(2 << retryCount), 30.0)
+            print("[masko-desktop] All ports busy - retry \(retryCount)/\(Self.maxRetries) in \(Int(delay))s...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, !self.stopped else { return }
+                try? self.start()
+            }
         }
     }
 

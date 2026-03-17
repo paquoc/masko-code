@@ -121,12 +121,17 @@ final class GlobalHotkeyManager {
 
     // MARK: - Configurable shortcut (stored in UserDefaults)
 
+    /// Cached key code for "M" on current keyboard layout.
+    /// Computed once at init to avoid calling TIS APIs from background threads
+    /// (TISCopyCurrentKeyboardInputSource requires main thread).
+    private static let detectedKeyCodeForM: Int64 = detectKeyCodeForM()
+
     /// The key code for the focus-toggle shortcut.
     /// Default: auto-detect M key position (46 on QWERTY, 41 on AZERTY).
     var hotkeyKeyCode: Int64 {
         get {
             let saved = UserDefaults.standard.integer(forKey: "hotkey_keyCode")
-            return saved > 0 ? Int64(saved) : Self.detectKeyCodeForM()
+            return saved > 0 ? Int64(saved) : Self.detectedKeyCodeForM
         }
         set {
             UserDefaults.standard.set(Int(newValue), forKey: "hotkey_keyCode")
