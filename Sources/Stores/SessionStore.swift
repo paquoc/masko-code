@@ -17,6 +17,40 @@ struct AgentSession: Identifiable, Codable {
     var shellPid: Int?
     var transcriptPath: String?
 
+    init(
+        id: String,
+        projectDir: String?,
+        projectName: String?,
+        agentSource: AgentSource = .claudeCode,
+        status: Status,
+        phase: Phase = .idle,
+        eventCount: Int,
+        startedAt: Date,
+        lastEventAt: Date?,
+        lastToolName: String? = nil,
+        activeSubagentCount: Int = 0,
+        isCompacting: Bool = false,
+        terminalPid: Int? = nil,
+        shellPid: Int? = nil,
+        transcriptPath: String? = nil
+    ) {
+        self.id = id
+        self.projectDir = projectDir
+        self.projectName = projectName
+        self.agentSource = agentSource
+        self.status = status
+        self.phase = phase
+        self.eventCount = eventCount
+        self.startedAt = startedAt
+        self.lastEventAt = lastEventAt
+        self.lastToolName = lastToolName
+        self.activeSubagentCount = activeSubagentCount
+        self.isCompacting = isCompacting
+        self.terminalPid = terminalPid
+        self.shellPid = shellPid
+        self.transcriptPath = transcriptPath
+    }
+
     enum Status: String, Codable {
         case active, ended
 
@@ -30,6 +64,53 @@ struct AgentSession: Identifiable, Codable {
         case idle       // After Stop or SessionStart — waiting for user input
         case running    // After UserPromptSubmit or tool use — agent is working
         case compacting // After PreCompact — context compaction in progress
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case projectDir
+        case projectName
+        case agentSource
+        case status
+        case phase
+        case eventCount
+        case startedAt
+        case lastEventAt
+        case lastToolName
+        case activeSubagentCount
+        case isCompacting
+        case terminalPid
+        case shellPid
+        case transcriptPath
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        projectDir = try container.decodeIfPresent(String.self, forKey: .projectDir)
+        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        if let source = try container.decodeIfPresent(AgentSource.self, forKey: .agentSource) {
+            agentSource = source
+        } else {
+            enum LegacyCodingKeys: String, CodingKey { case assistantSource }
+            let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            if let legacySource = try legacyContainer.decodeIfPresent(String.self, forKey: .assistantSource) {
+                agentSource = AgentSource(rawSource: legacySource)
+            } else {
+                agentSource = .unknown
+            }
+        }
+        status = try container.decode(Status.self, forKey: .status)
+        phase = try container.decodeIfPresent(Phase.self, forKey: .phase) ?? .idle
+        eventCount = try container.decode(Int.self, forKey: .eventCount)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        lastEventAt = try container.decodeIfPresent(Date.self, forKey: .lastEventAt)
+        lastToolName = try container.decodeIfPresent(String.self, forKey: .lastToolName)
+        activeSubagentCount = try container.decodeIfPresent(Int.self, forKey: .activeSubagentCount) ?? 0
+        isCompacting = try container.decodeIfPresent(Bool.self, forKey: .isCompacting) ?? false
+        terminalPid = try container.decodeIfPresent(Int.self, forKey: .terminalPid)
+        shellPid = try container.decodeIfPresent(Int.self, forKey: .shellPid)
+        transcriptPath = try container.decodeIfPresent(String.self, forKey: .transcriptPath)
     }
 }
 

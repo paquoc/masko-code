@@ -3,109 +3,75 @@ import XCTest
 @testable import masko_code
 
 final class PendingPermissionStoreTests: XCTestCase {
-    func testAddLocalAndResolveAllowInvokesDecisionHandler() throws {
+    func testResolveAllowSendsDecision() throws {
         let store = PendingPermissionStore()
         defer { store.stopTimers() }
 
-        var handledDecisions: [PermissionDecision] = []
+        let transport = MockTransport()
         let event = makeCodexPermissionEvent(toolUseId: "call_1", cmd: "git push")
+        store.add(event: event, transport: transport)
 
-        store.addLocal(event: event) { resolution in
-            guard case .decision(let decision) = resolution else { return false }
-            handledDecisions.append(decision)
-            return true
-        }
-
-        XCTAssertEqual(store.pending.count, 1)
         let id = try XCTUnwrap(store.pending.first?.id)
         store.resolve(id: id, decision: .allow)
 
-        XCTAssertEqual(handledDecisions, [.allow])
+        XCTAssertEqual(transport.decisions, [.allow])
         XCTAssertEqual(store.pending.count, 0)
     }
 
-    func testLocalDecisionFailureKeepsPermissionPending() throws {
-        let store = PendingPermissionStore()
-        defer { store.stopTimers() }
-
-        let event = makeCodexPermissionEvent(toolUseId: "call_2", cmd: "git push")
-        store.addLocal(event: event) { _ in false }
-        let id = try XCTUnwrap(store.pending.first?.id)
-
-        store.resolve(id: id, decision: .deny)
-
-        XCTAssertEqual(store.pending.count, 1)
-    }
-
-    func testAddLocalSkipsDuplicateToolUseId() {
+    func testAddSkipsDuplicateToolUseId() {
         let store = PendingPermissionStore()
         defer { store.stopTimers() }
 
         let first = makeCodexPermissionEvent(toolUseId: "call_dup", cmd: "git push")
         let second = makeCodexPermissionEvent(toolUseId: "call_dup", cmd: "git pull")
 
-        store.addLocal(event: first) { _ in true }
-        store.addLocal(event: second) { _ in true }
+        store.add(event: first, transport: MockTransport())
+        store.add(event: second, transport: MockTransport())
 
         XCTAssertEqual(store.pending.count, 1)
         XCTAssertEqual(store.pending.first?.event.toolInput?["cmd"]?.stringValue, "git push")
     }
 
-    func testResolveWithAnswersUsesLocalResolutionHandler() throws {
+    func testResolveWithAnswersSendsUpdatedInput() throws {
         let store = PendingPermissionStore()
         defer { store.stopTimers() }
 
-        var handled = false
+        let transport = MockTransport()
         let event = makeCodexPermissionEvent(toolUseId: "call_3", cmd: "scripts/codex-mascot-smoke.sh")
-        store.addLocal(event: event) { resolution in
-            if case .answers(let answers) = resolution {
-                handled = answers["q1"] == "yes"
-                return true
-            }
-            return false
-        }
+        store.add(event: event, transport: transport)
         let id = try XCTUnwrap(store.pending.first?.id)
 
         store.resolveWithAnswers(id: id, answers: ["q1": "yes"])
 
-        XCTAssertTrue(handled)
+        let sent = try XCTUnwrap(transport.updatedInputs.first)
+        let answers = sent["answers"] as? [String: String]
+        XCTAssertEqual(answers?["q1"], "yes")
         XCTAssertEqual(store.pending.count, 0)
     }
 
-    func testResolveWithFeedbackUsesLocalResolutionHandler() throws {
+    func testResolveWithFeedbackSendsUpdatedInput() throws {
         let store = PendingPermissionStore()
         defer { store.stopTimers() }
 
-        var handled = false
+        let transport = MockTransport()
         let event = makeCodexPermissionEvent(toolUseId: "call_4", cmd: "update plan")
-        store.addLocal(event: event) { resolution in
-            if case .feedback(let feedback) = resolution {
-                handled = feedback == "Please trim this down."
-                return true
-            }
-            return false
-        }
+        store.add(event: event, transport: transport)
         let id = try XCTUnwrap(store.pending.first?.id)
 
         store.resolveWithFeedback(id: id, feedback: "Please trim this down.")
 
-        XCTAssertTrue(handled)
+        let sent = try XCTUnwrap(transport.updatedInputs.first)
+        XCTAssertEqual(sent["userFeedback"] as? String, "Please trim this down.")
         XCTAssertEqual(store.pending.count, 0)
     }
 
-    func testResolveWithPermissionsUsesLocalResolutionHandler() throws {
+    func testResolveWithPermissionsSendsUpdatedPermissions() throws {
         let store = PendingPermissionStore()
         defer { store.stopTimers() }
 
-        var handled = false
+        let transport = MockTransport()
         let event = makeCodexPermissionEvent(toolUseId: "call_5", cmd: "git push")
-        store.addLocal(event: event) { resolution in
-            if case .permissionSuggestions(let suggestions) = resolution {
-                handled = suggestions.count == 1 && suggestions.first?.type == "setMode"
-                return true
-            }
-            return false
-        }
+        store.add(event: event, transport: transport)
         let id = try XCTUnwrap(store.pending.first?.id)
 
         let suggestions = [
@@ -113,7 +79,9 @@ final class PendingPermissionStoreTests: XCTestCase {
         ]
         store.resolveWithPermissions(id: id, suggestions: suggestions)
 
-        XCTAssertTrue(handled)
+        let sent = try XCTUnwrap(transport.updatedPermissions.first)
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?["type"] as? String, "setMode")
         XCTAssertEqual(store.pending.count, 0)
     }
 
@@ -121,8 +89,7 @@ final class PendingPermissionStoreTests: XCTestCase {
         let permission = PendingPermission(
             id: UUID(),
             event: makeCodexPermissionEvent(toolUseId: "call_preview", cmd: "git push origin feat/codex-support"),
-            connection: nil,
-            localResolutionHandler: nil,
+            transport: MockTransport(),
             receivedAt: Date(),
             resolvedToolUseId: "call_preview"
         )
@@ -134,8 +101,7 @@ final class PendingPermissionStoreTests: XCTestCase {
         let permission = PendingPermission(
             id: UUID(),
             event: makeCodexPermissionEvent(toolUseId: "call_full", cmd: "scripts/codex-mascot-smoke.sh"),
-            connection: nil,
-            localResolutionHandler: nil,
+            transport: MockTransport(),
             receivedAt: Date(),
             resolvedToolUseId: "call_full"
         )
@@ -146,7 +112,7 @@ final class PendingPermissionStoreTests: XCTestCase {
     func testAskUserQuestionPreviewSupportsGenericQuestionArrayPayload() {
         let permission = PendingPermission(
             id: UUID(),
-            event: ClaudeEvent(
+            event: AgentEvent(
                 hookEventName: HookEventType.permissionRequest.rawValue,
                 sessionId: "session-question-preview",
                 cwd: "/tmp/project",
@@ -162,8 +128,7 @@ final class PendingPermissionStoreTests: XCTestCase {
                 toolUseId: "call_question_preview",
                 source: "codex-cli"
             ),
-            connection: nil,
-            localResolutionHandler: nil,
+            transport: MockTransport(),
             receivedAt: Date(),
             resolvedToolUseId: "call_question_preview"
         )
@@ -174,7 +139,7 @@ final class PendingPermissionStoreTests: XCTestCase {
     func testAskUserQuestionFullTextSupportsGenericQuestionArrayPayload() {
         let permission = PendingPermission(
             id: UUID(),
-            event: ClaudeEvent(
+            event: AgentEvent(
                 hookEventName: HookEventType.permissionRequest.rawValue,
                 sessionId: "session-question-full",
                 cwd: "/tmp/project",
@@ -194,8 +159,7 @@ final class PendingPermissionStoreTests: XCTestCase {
                 toolUseId: "call_question_full",
                 source: "codex-cli"
             ),
-            connection: nil,
-            localResolutionHandler: nil,
+            transport: MockTransport(),
             receivedAt: Date(),
             resolvedToolUseId: "call_question_full"
         )
@@ -206,8 +170,8 @@ final class PendingPermissionStoreTests: XCTestCase {
         )
     }
 
-    private func makeCodexPermissionEvent(toolUseId: String, cmd: String) -> ClaudeEvent {
-        ClaudeEvent(
+    private func makeCodexPermissionEvent(toolUseId: String, cmd: String) -> AgentEvent {
+        AgentEvent(
             hookEventName: HookEventType.permissionRequest.rawValue,
             sessionId: "session-test",
             cwd: "/tmp/project",
@@ -219,5 +183,36 @@ final class PendingPermissionStoreTests: XCTestCase {
             toolUseId: toolUseId,
             source: "codex-cli"
         )
+    }
+}
+
+private final class MockTransport: ResponseTransport {
+    var capabilities: Set<ResponseCapability> = [.permissionResponse, .updatedInput, .updatedPermissions]
+    var isAlive: Bool = true
+
+    var decisions: [PermissionDecision] = []
+    var updatedInputs: [[String: Any]] = []
+    var updatedPermissions: [[[String: Any]]] = []
+    private var remoteCloseHandler: (() -> Void)?
+
+    func sendDecision(_ decision: PermissionDecision) {
+        decisions.append(decision)
+    }
+
+    func sendAllowWithUpdatedInput(_ updatedInput: [String: Any]) {
+        updatedInputs.append(updatedInput)
+    }
+
+    func sendAllowWithUpdatedPermissions(_ permissions: [[String: Any]]) {
+        updatedPermissions.append(permissions)
+    }
+
+    func cancel() {
+        isAlive = false
+        remoteCloseHandler?()
+    }
+
+    func onRemoteClose(_ handler: @escaping () -> Void) {
+        remoteCloseHandler = handler
     }
 }

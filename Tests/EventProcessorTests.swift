@@ -33,7 +33,7 @@ final class EventProcessorTests: XCTestCase {
         XCTAssertEqual(notification.body, "Need network access to push")
     }
 
-    func testClaudePermissionNotificationKeepsGenericBody() async throws {
+    func testClaudePermissionNotificationUsesEventMessage() async throws {
         let eventStore = EventStore()
         eventStore.clear()
         let sessionStore = SessionStore()
@@ -52,7 +52,7 @@ final class EventProcessorTests: XCTestCase {
             sessionId: sessionId,
             cwd: "/tmp/project",
             toolName: "Bash",
-            message: "This Claude message should not override the standard body",
+            message: "Need approval to run Bash",
             source: "claude"
         )
 
@@ -60,10 +60,10 @@ final class EventProcessorTests: XCTestCase {
 
         let notification = try XCTUnwrap(notificationStore.notifications.first(where: { $0.sessionId == sessionId }))
         XCTAssertEqual(notification.title, "Permission Requested")
-        XCTAssertEqual(notification.body, "Claude Code wants to use Bash in project")
+        XCTAssertEqual(notification.body, "Need approval to run Bash")
     }
 
-    func testCodexQuestionStopDoesNotCreateCompletionNotification() async throws {
+    func testCodexQuestionStopStillCreatesCompletionNotificationWhenProcessed() async throws {
         let eventStore = EventStore()
         eventStore.clear()
         let sessionStore = SessionStore()
@@ -88,12 +88,12 @@ final class EventProcessorTests: XCTestCase {
 
         await processor.process(event)
 
-        XCTAssertFalse(notificationStore.notifications.contains(where: {
-            $0.sessionId == sessionId && $0.category == .sessionLifecycle
-        }))
+        let notification = try XCTUnwrap(notificationStore.notifications.first(where: { $0.sessionId == sessionId }))
+        XCTAssertEqual(notification.title, "Task Completed")
+        XCTAssertEqual(notification.category, .sessionLifecycle)
     }
 
-    func testCodexQuestionTaskCompletedDoesNotCreateCompletionNotification() async throws {
+    func testCodexQuestionTaskCompletedStillCreatesNotificationWhenProcessed() async throws {
         let eventStore = EventStore()
         eventStore.clear()
         let sessionStore = SessionStore()
@@ -117,9 +117,9 @@ final class EventProcessorTests: XCTestCase {
 
         await processor.process(event)
 
-        XCTAssertFalse(notificationStore.notifications.contains(where: {
-            $0.sessionId == sessionId && $0.category == .taskCompleted
-        }))
+        let notification = try XCTUnwrap(notificationStore.notifications.first(where: { $0.sessionId == sessionId }))
+        XCTAssertEqual(notification.title, "Task Completed")
+        XCTAssertEqual(notification.category, .taskCompleted)
     }
 
     func testClaudeStopStillCreatesCompletionNotificationForQuestionText() async throws {
