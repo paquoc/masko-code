@@ -42,6 +42,9 @@ final class HotkeySharedState: @unchecked Sendable {
 
     /// Reference to the event tap for re-enabling on timeout.
     var eventTap: CFMachPort?
+
+    /// When true, the CGEvent callback passes all events through (for shortcut recording).
+    var isRecording = false
 }
 
 // MARK: - Global Hotkey Manager
@@ -416,6 +419,11 @@ private func globalHotkeyCallback(
 
     // --- keyDown: check for our shortcuts ---
     guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+
+    // When recording a new shortcut, pass all events through to SwiftUI
+    if state.isRecording {
+        return Unmanaged.passUnretained(event)
+    }
 
     // Any keyDown while Cmd is held → Cmd is being used as modifier, not solitary
     if state.cmdHeld {

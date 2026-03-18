@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SessionFinishedToastView: View {
     @Environment(SessionFinishedStore.self) private var store
+    @Environment(GlobalHotkeyManager.self) private var hotkeyManager
     @State private var progress: CGFloat = 1.0
 
     var body: some View {
@@ -24,7 +25,7 @@ struct SessionFinishedToastView: View {
 
                 Spacer(minLength: 4)
 
-                Text("⌘M focus · ⌘↵ dismiss")
+                Text("\(hotkeyManager.shortcutLabel) focus · ⌘↵ dismiss")
                     .font(.system(size: 8, weight: .medium, design: .rounded))
                     .foregroundStyle(Constants.textMuted)
             }

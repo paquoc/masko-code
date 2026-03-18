@@ -581,10 +581,15 @@ struct SettingsView: View {
 struct ShortcutRecorderView: View {
     var hotkeyManager: GlobalHotkeyManager
     @State private var isRecording = false
+    @State private var keyMonitor: Any?
 
     var body: some View {
         Button {
-            isRecording.toggle()
+            if isRecording {
+                stopRecording()
+            } else {
+                startRecording()
+            }
         } label: {
             HStack(spacing: 4) {
                 if isRecording {
@@ -607,26 +612,45 @@ struct ShortcutRecorderView: View {
             )
         }
         .buttonStyle(.plain)
-        .onKeyPress { press in
-            guard isRecording else { return .ignored }
+        .onDisappear { stopRecording() }
+    }
 
-            // Build CGEventFlags from SwiftUI modifiers
+    private func startRecording() {
+        isRecording = true
+        hotkeyManager.shared.isRecording = true
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             var flags: CGEventFlags = []
-            if press.modifiers.contains(.command) { flags.insert(.maskCommand) }
-            if press.modifiers.contains(.shift) { flags.insert(.maskShift) }
-            if press.modifiers.contains(.control) { flags.insert(.maskControl) }
-            if press.modifiers.contains(.option) { flags.insert(.maskAlternate) }
+            if event.modifierFlags.contains(.command) { flags.insert(.maskCommand) }
+            if event.modifierFlags.contains(.shift) { flags.insert(.maskShift) }
+            if event.modifierFlags.contains(.control) { flags.insert(.maskControl) }
+            if event.modifierFlags.contains(.option) { flags.insert(.maskAlternate) }
 
             // Require at least one modifier
-            guard !flags.isEmpty else { return .ignored }
+            guard !flags.isEmpty else { return event }
+
+            // Escape cancels recording
+            if event.keyCode == 53 {
+                stopRecording()
+                return nil
+            }
 
             // Map character to key code
-            if let keyCode = characterToKeyCode(press.characters) {
+            let char = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if let keyCode = characterToKeyCode(char) {
                 hotkeyManager.setShortcut(keyCode: keyCode, modifiers: flags)
-                isRecording = false
-                return .handled
+                stopRecording()
+                return nil
             }
-            return .ignored
+            return event
+        }
+    }
+
+    private func stopRecording() {
+        isRecording = false
+        hotkeyManager.shared.isRecording = false
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
         }
     }
 }

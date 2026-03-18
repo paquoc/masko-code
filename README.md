@@ -127,7 +127,9 @@ Sources/
 ├── Utilities/       # Helpers
 └── Resources/       # Assets, images, app icon
 scripts/             # DMG packaging scripts
-vscode-extension/    # IDE click-to-focus extension
+extensions/
+├── vscode/          # VS Code/Cursor click-to-focus extension
+└── jetbrains/       # JetBrains (PyCharm, IntelliJ, etc.) terminal focus plugin
 ```
 
 ## Contributing

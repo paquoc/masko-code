@@ -141,7 +141,7 @@ struct ExpandedPermissionView: View {
                 .buttonStyle(.plain)
                 .help("Open terminal")
 
-                if showShortcuts { ActionBadge(label: "⌘M") }
+                if showShortcuts { ActionBadge(label: hotkeyManager.shortcutLabel) }
             }
 
             // Later button

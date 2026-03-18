@@ -289,7 +289,7 @@ struct AskUserQuestionView: View {
                     .buttonStyle(.plain)
                     .help("Open terminal")
 
-                    if showShortcuts { ActionBadge(label: "⌘M") }
+                    if showShortcuts { ActionBadge(label: hotkeyManager.shortcutLabel) }
                 }
 
                 HStack(spacing: 3) {
@@ -634,7 +634,7 @@ struct ExitPlanModeView: View {
                     .buttonStyle(.plain)
                     .help("Open terminal")
 
-                    if showShortcuts { ActionBadge(label: "⌘M") }
+                    if showShortcuts { ActionBadge(label: hotkeyManager.shortcutLabel) }
                 }
 
                 HStack(spacing: 3) {
@@ -917,7 +917,7 @@ struct PermissionPromptView: View {
                     .buttonStyle(.plain)
                     .help("Open terminal")
 
-                    if showShortcuts { ActionBadge(label: "⌘M") }
+                    if showShortcuts { ActionBadge(label: hotkeyManager.shortcutLabel) }
                 }
 
                 HStack(spacing: 3) {
@@ -1112,7 +1112,7 @@ private struct CollapsedPermissionPill: View {
             .buttonStyle(.plain)
             .help("Open terminal")
 
-            if showShortcuts { ActionBadge(label: "⌘M") }
+            if showShortcuts { ActionBadge(label: hotkeyManager.shortcutLabel) }
 
             Button { onExpand() } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")

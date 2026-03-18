@@ -25,21 +25,35 @@ enum IDETerminalFocus {
         // Try IDE extension for exact terminal tab focus
         if let shellPid,
            let bundleId,
-           let scheme = ExtensionInstaller.uriScheme(forBundleId: bundleId),
            UserDefaults.standard.bool(forKey: "ideExtensionEnabled") {
-            // Activate the app window by PID (not by workspace path, which can open
-            // new windows when cwd differs from the workspace root)
+            // Activate the app window by PID
             if let pid = terminalPid,
                let app = NSRunningApplication(processIdentifier: pid_t(pid)) {
                 app.activate()
             }
-            // Fire URI to switch to the exact terminal tab matching shellPid
-            let urlString = "\(scheme)://masko.masko-terminal-focus/focus?pid=\(shellPid)"
-            if let url = URL(string: urlString) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NSWorkspace.shared.open(url)
+
+            // JetBrains: activate via AppleScript (works across fullscreen/Spaces),
+            // then HTTP request to built-in server for terminal tab focus
+            if ExtensionInstaller.isJetBrainsIDE(bundleId: bundleId) {
+                activateApp(bundleId: bundleId)
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3) {
+                    let url = URL(string: "http://localhost:63342/api/masko/focus?pid=\(shellPid)")!
+                    var request = URLRequest(url: url, timeoutInterval: 1)
+                    request.httpMethod = "GET"
+                    URLSession.shared.dataTask(with: request).resume()
                 }
                 return
+            }
+
+            // VS Code family: URI scheme to extension
+            if let scheme = ExtensionInstaller.uriScheme(forBundleId: bundleId) {
+                let urlString = "\(scheme)://masko.masko-terminal-focus/focus?pid=\(shellPid)"
+                if let url = URL(string: urlString) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NSWorkspace.shared.open(url)
+                    }
+                    return
+                }
             }
         }
 
@@ -79,6 +93,16 @@ enum IDETerminalFocus {
             "org.alacritty",
             "dev.warp.Warp-Stable",
             "com.google.antigravity",
+            "com.jetbrains.pycharm",
+            "com.jetbrains.pycharm.ce",
+            "com.jetbrains.intellij",
+            "com.jetbrains.intellij.ce",
+            "com.jetbrains.WebStorm",
+            "com.jetbrains.goland",
+            "com.jetbrains.CLion",
+            "com.jetbrains.PhpStorm",
+            "com.jetbrains.rubymine",
+            "com.jetbrains.rider",
         ]
         for id in bundleIDs {
             if NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == id }) {

@@ -1,15 +1,16 @@
 import AppKit
 import Foundation
 
-/// Manages VS Code/Cursor extension installation for IDE terminal switching
+/// Manages VS Code/Cursor/JetBrains extension installation for IDE terminal switching
 enum ExtensionInstaller {
 
     // MARK: - Constants
 
     private static let extensionId = "masko.masko-terminal-focus"
+    private static let jetbrainsPluginId = "ai.masko.terminal-focus"
 
-    /// Supported IDEs: (bundleId, CLI command, URI scheme, common CLI paths)
-    private static let ideConfigs: [(bundleId: String, command: String, scheme: String, paths: [String])] = [
+    /// VS Code-family IDEs: (bundleId, CLI command, URI scheme, common CLI paths)
+    private static let vscodeConfigs: [(bundleId: String, command: String, scheme: String, paths: [String])] = [
         (
             "com.todesktop.230313mzl4w4u92",
             "cursor",
@@ -57,6 +58,20 @@ enum ExtensionInstaller {
         ),
     ]
 
+    /// JetBrains IDEs: (bundleId, display name, URI scheme, app path for detection)
+    private static let jetbrainsConfigs: [(bundleId: String, name: String, scheme: String, appPath: String)] = [
+        ("com.jetbrains.pycharm", "PyCharm", "pycharm", "/Applications/PyCharm.app"),
+        ("com.jetbrains.pycharm.ce", "PyCharm CE", "pycharm", "/Applications/PyCharm CE.app"),
+        ("com.jetbrains.intellij", "IntelliJ IDEA", "idea", "/Applications/IntelliJ IDEA.app"),
+        ("com.jetbrains.intellij.ce", "IntelliJ IDEA CE", "idea", "/Applications/IntelliJ IDEA CE.app"),
+        ("com.jetbrains.WebStorm", "WebStorm", "webstorm", "/Applications/WebStorm.app"),
+        ("com.jetbrains.goland", "GoLand", "goland", "/Applications/GoLand.app"),
+        ("com.jetbrains.CLion", "CLion", "clion", "/Applications/CLion.app"),
+        ("com.jetbrains.PhpStorm", "PhpStorm", "phpstorm", "/Applications/PhpStorm.app"),
+        ("com.jetbrains.rubymine", "RubyMine", "rubymine", "/Applications/RubyMine.app"),
+        ("com.jetbrains.rider", "Rider", "rider", "/Applications/Rider.app"),
+    ]
+
     // MARK: - IDE Status
 
     struct IDEStatus: Identifiable {
@@ -69,7 +84,7 @@ enum ExtensionInstaller {
 
     /// Returns per-IDE detection and installation status for all supported IDEs.
     static func allIDEStatuses() -> [IDEStatus] {
-        ideConfigs.map { ide in
+        var statuses = vscodeConfigs.map { ide -> IDEStatus in
             let cliPath = resolveCommand(ide)
             let detected = cliPath != nil
             let installed = detected && extensionInstalled(cliPath: cliPath!)
@@ -80,6 +95,19 @@ enum ExtensionInstaller {
                 isInstalled: installed
             )
         }
+        // JetBrains IDEs
+        statuses += jetbrainsConfigs.compactMap { jb in
+            let detected = FileManager.default.fileExists(atPath: jb.appPath)
+            guard detected else { return nil }
+            let installed = jetbrainsPluginInstalled(bundleId: jb.bundleId)
+            return IDEStatus(
+                name: jb.name,
+                command: jb.scheme,  // Use scheme as the command identifier
+                isDetected: true,
+                isInstalled: installed
+            )
+        }
+        return statuses
     }
 
     // MARK: - Public API
@@ -104,9 +132,17 @@ enum ExtensionInstaller {
 
     /// Check if the extension is installed in any detected IDE
     static func isInstalled() -> Bool {
-        for ide in ideConfigs {
+        // VS Code family
+        for ide in vscodeConfigs {
             if let path = resolveCommand(ide),
                extensionInstalled(cliPath: path) {
+                return true
+            }
+        }
+        // JetBrains family
+        for jb in jetbrainsConfigs {
+            if FileManager.default.fileExists(atPath: jb.appPath),
+               jetbrainsPluginInstalled(bundleId: jb.bundleId) {
                 return true
             }
         }
@@ -115,32 +151,49 @@ enum ExtensionInstaller {
 
     /// Detect which IDEs are available on the system
     static func availableIDEs() -> [(name: String, command: String)] {
-        ideConfigs.compactMap { ide in
+        var result = vscodeConfigs.compactMap { ide -> (name: String, command: String)? in
             resolveCommand(ide) != nil
                 ? (name: ideName(for: ide.command), command: ide.command)
                 : nil
         }
+        result += jetbrainsConfigs.compactMap { jb in
+            FileManager.default.fileExists(atPath: jb.appPath)
+                ? (name: jb.name, command: jb.scheme)
+                : nil
+        }
+        return result
     }
 
     /// Install the extension into all detected IDEs
     static func install() throws {
+        var installed = false
+
+        // VS Code family: install via CLI
         let vsixPath = bundledVSIXPath()
-        guard FileManager.default.fileExists(atPath: vsixPath) else {
-            throw ExtensionError.vsixNotFound
+        if FileManager.default.fileExists(atPath: vsixPath) {
+            for ide in vscodeConfigs {
+                guard let cliPath = resolveCommand(ide) else { continue }
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: cliPath)
+                process.arguments = ["--install-extension", vsixPath, "--force"]
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                try process.run()
+                process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    installed = true
+                }
+            }
         }
 
-        var installed = false
-        for ide in ideConfigs {
-            guard let cliPath = resolveCommand(ide) else { continue }
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: cliPath)
-            process.arguments = ["--install-extension", vsixPath, "--force"]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                installed = true
+        // JetBrains family: copy plugin to plugins directory
+        let jbPluginPath = bundledJetBrainsPluginPath()
+        if FileManager.default.fileExists(atPath: jbPluginPath) {
+            for jb in jetbrainsConfigs {
+                guard FileManager.default.fileExists(atPath: jb.appPath) else { continue }
+                if (try? installJetBrainsPlugin(jbPluginPath, bundleId: jb.bundleId)) == true {
+                    installed = true
+                }
             }
         }
 
@@ -151,32 +204,44 @@ enum ExtensionInstaller {
 
     /// Install the extension into a single IDE by command name
     static func install(command: String) throws {
-        let vsixPath = bundledVSIXPath()
-        guard FileManager.default.fileExists(atPath: vsixPath) else {
-            throw ExtensionError.vsixNotFound
+        // Check VS Code family first
+        if let ide = vscodeConfigs.first(where: { $0.command == command }),
+           let cliPath = resolveCommand(ide) {
+            let vsixPath = bundledVSIXPath()
+            guard FileManager.default.fileExists(atPath: vsixPath) else {
+                throw ExtensionError.vsixNotFound
+            }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: cliPath)
+            process.arguments = ["--install-extension", vsixPath, "--force"]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                throw ExtensionError.noIDEFound
+            }
+            return
         }
 
-        guard let ide = ideConfigs.first(where: { $0.command == command }),
-              let cliPath = resolveCommand(ide) else {
-            throw ExtensionError.noIDEFound
+        // Check JetBrains family (command = scheme for JetBrains)
+        if let jb = jetbrainsConfigs.first(where: { $0.scheme == command }),
+           FileManager.default.fileExists(atPath: jb.appPath) {
+            let jbPluginPath = bundledJetBrainsPluginPath()
+            guard FileManager.default.fileExists(atPath: jbPluginPath) else {
+                throw ExtensionError.pluginNotFound
+            }
+            try installJetBrainsPlugin(jbPluginPath, bundleId: jb.bundleId)
+            return
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: cliPath)
-        process.arguments = ["--install-extension", vsixPath, "--force"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            throw ExtensionError.noIDEFound
-        }
+        throw ExtensionError.noIDEFound
     }
 
     /// Uninstall the extension from all detected IDEs
     static func uninstall() {
-        for ide in ideConfigs {
+        // VS Code family
+        for ide in vscodeConfigs {
             guard let cliPath = resolveCommand(ide) else { continue }
             let process = Process()
             process.executableURL = URL(fileURLWithPath: cliPath)
@@ -186,15 +251,29 @@ enum ExtensionInstaller {
             try? process.run()
             process.waitUntilExit()
         }
+        // JetBrains family
+        for jb in jetbrainsConfigs {
+            guard let pluginsDir = jetbrainsPluginsDir(bundleId: jb.bundleId) else { continue }
+            let pluginDir = (pluginsDir as NSString).appendingPathComponent("masko-terminal-focus")
+            try? FileManager.default.removeItem(atPath: pluginDir)
+        }
     }
 
-    /// Open a test URI so Cursor/VS Code shows the "allow this extension?" popup right away.
+    /// Open a test URI so the IDE shows the "allow this extension?" popup right away.
     static func triggerPermissionPrompt() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            // Try each installed IDE's URI scheme
-            for ide in ideConfigs {
+            // Try VS Code family first
+            for ide in vscodeConfigs {
                 guard resolveCommand(ide) != nil else { continue }
                 if let url = URL(string: "\(ide.scheme)://masko.masko-terminal-focus/setup") {
+                    NSWorkspace.shared.open(url)
+                    return
+                }
+            }
+            // Try JetBrains family
+            for jb in jetbrainsConfigs {
+                guard FileManager.default.fileExists(atPath: jb.appPath) else { continue }
+                if let url = URL(string: "\(jb.scheme)://masko-terminal-focus/setup") {
                     NSWorkspace.shared.open(url)
                     return
                 }
@@ -205,7 +284,19 @@ enum ExtensionInstaller {
     /// Get the URI scheme for a given terminal PID's IDE bundle
     static func uriScheme(forBundleId bundleId: String?) -> String? {
         guard let bundleId else { return nil }
-        return ideConfigs.first { $0.bundleId == bundleId }?.scheme
+        if let vscode = vscodeConfigs.first(where: { $0.bundleId == bundleId }) {
+            return vscode.scheme
+        }
+        if let jb = jetbrainsConfigs.first(where: { $0.bundleId == bundleId }) {
+            return jb.scheme
+        }
+        return nil
+    }
+
+    /// Whether the given bundle ID belongs to a JetBrains IDE
+    static func isJetBrainsIDE(bundleId: String?) -> Bool {
+        guard let bundleId else { return false }
+        return jetbrainsConfigs.contains { $0.bundleId == bundleId }
     }
 
     // MARK: - Private
@@ -289,14 +380,126 @@ enum ExtensionInstaller {
         }
     }
 
+    // MARK: - JetBrains Plugin Helpers
+
+    /// Find the plugins directory for a JetBrains IDE.
+    /// Path: ~/Library/Application Support/JetBrains/<ProductVersion>/plugins/
+    private static func jetbrainsPluginsDir(bundleId: String) -> String? {
+        let supportDir = NSHomeDirectory() + "/Library/Application Support/JetBrains"
+        guard FileManager.default.fileExists(atPath: supportDir) else { return nil }
+
+        // Map bundle ID to directory prefix (e.g., "com.jetbrains.pycharm" -> "PyCharm")
+        let prefix = jetbrainsDirPrefix(bundleId: bundleId)
+        guard let prefix else { return nil }
+
+        // Find the most recent version directory
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: supportDir) else { return nil }
+        let matching = contents
+            .filter { $0.hasPrefix(prefix) }
+            .sorted()  // Lexicographic sort puts newest version last
+            .last
+
+        guard let dir = matching else { return nil }
+        return (supportDir as NSString).appendingPathComponent(dir + "/plugins")
+    }
+
+    /// Map JetBrains bundle ID to the directory name prefix in ~/Library/Application Support/JetBrains/
+    private static func jetbrainsDirPrefix(bundleId: String) -> String? {
+        let map: [String: String] = [
+            "com.jetbrains.pycharm": "PyCharm",
+            "com.jetbrains.pycharm.ce": "PyCharmCE",
+            "com.jetbrains.intellij": "IntelliJIdea",
+            "com.jetbrains.intellij.ce": "IdeaIC",
+            "com.jetbrains.WebStorm": "WebStorm",
+            "com.jetbrains.goland": "GoLand",
+            "com.jetbrains.CLion": "CLion",
+            "com.jetbrains.PhpStorm": "PhpStorm",
+            "com.jetbrains.rubymine": "RubyMine",
+            "com.jetbrains.rider": "Rider",
+        ]
+        return map[bundleId]
+    }
+
+    /// Check if the Masko plugin is installed in a JetBrains IDE
+    private static func jetbrainsPluginInstalled(bundleId: String) -> Bool {
+        guard let pluginsDir = jetbrainsPluginsDir(bundleId: bundleId) else { return false }
+        let pluginDir = (pluginsDir as NSString).appendingPathComponent("masko-terminal-focus")
+        return FileManager.default.fileExists(atPath: pluginDir)
+    }
+
+    /// Install the JetBrains plugin by extracting it to the plugins directory.
+    /// The plugin zip contains a top-level "masko-terminal-focus/" directory.
+    @discardableResult
+    private static func installJetBrainsPlugin(_ zipPath: String, bundleId: String) throws -> Bool {
+        // Resolve or create the plugins directory
+        let supportDir = NSHomeDirectory() + "/Library/Application Support/JetBrains"
+
+        var pluginsDir: String
+        if let existing = jetbrainsPluginsDir(bundleId: bundleId) {
+            pluginsDir = existing
+        } else {
+            // IDE detected but no support dir yet - create one using the app's version
+            guard let prefix = jetbrainsDirPrefix(bundleId: bundleId),
+                  let version = jetbrainsVersion(bundleId: bundleId) else {
+                return false
+            }
+            pluginsDir = "\(supportDir)/\(prefix)\(version)/plugins"
+        }
+
+        try FileManager.default.createDirectory(atPath: pluginsDir, withIntermediateDirectories: true)
+
+        // Remove old version if present
+        let destDir = (pluginsDir as NSString).appendingPathComponent("masko-terminal-focus")
+        if FileManager.default.fileExists(atPath: destDir) {
+            try FileManager.default.removeItem(atPath: destDir)
+        }
+
+        // Unzip the plugin
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = ["-o", zipPath, "-d", pluginsDir]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        return process.terminationStatus == 0
+    }
+
+    /// Extract the major version from a JetBrains app bundle (e.g., "2025.3")
+    private static func jetbrainsVersion(bundleId: String) -> String? {
+        guard let jb = jetbrainsConfigs.first(where: { $0.bundleId == bundleId }) else { return nil }
+        let plistPath = jb.appPath + "/Contents/Info.plist"
+        guard let plist = NSDictionary(contentsOfFile: plistPath),
+              let version = plist["CFBundleShortVersionString"] as? String else { return nil }
+        // Extract major.minor (e.g., "2025.3.3" -> "2025.3")
+        let parts = version.split(separator: ".")
+        guard parts.count >= 2 else { return version }
+        return "\(parts[0]).\(parts[1])"
+    }
+
+    /// Path to the bundled JetBrains plugin zip
+    private static func bundledJetBrainsPluginPath() -> String {
+        let moduleBundle = Bundle.module
+        if let url = moduleBundle.url(forResource: "masko-terminal-focus-jetbrains", withExtension: "zip", subdirectory: "Extensions") {
+            return url.path
+        }
+        if let path = Bundle.main.path(forResource: "masko-terminal-focus-jetbrains", ofType: "zip") {
+            return path
+        }
+        return NSHomeDirectory() + "/.masko-desktop/extensions/masko-terminal-focus-jetbrains.zip"
+    }
+
     enum ExtensionError: LocalizedError {
         case vsixNotFound
+        case pluginNotFound
         case noIDEFound
 
         var errorDescription: String? {
             switch self {
-            case .vsixNotFound: return "Extension file not found in app bundle"
-            case .noIDEFound: return "No supported IDE found (Cursor, VS Code, Windsurf)"
+            case .vsixNotFound: return "VS Code extension file not found in app bundle"
+            case .pluginNotFound: return "JetBrains plugin file not found in app bundle"
+            case .noIDEFound: return "No supported IDE found (Cursor, VS Code, Windsurf, JetBrains)"
             }
         }
     }

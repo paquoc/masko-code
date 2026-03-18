@@ -198,13 +198,26 @@ struct OnboardingView: View {
                     .font(Constants.heading(size: 24, weight: .bold))
                     .foregroundStyle(Constants.textPrimary)
 
-                Text("Accept permissions with \u{2318}1, toggle focus with \u{2318}\u{21E7}M \u{2014} without switching windows.")
+                Text("Accept permissions with \u{2318}1, toggle focus with a global shortcut - without switching windows.")
                     .font(Constants.body(size: 14))
                     .foregroundStyle(Constants.textMuted)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 20)
             }
+
+            // Focus Toggle shortcut picker
+            HStack(spacing: 10) {
+                Text("Focus Toggle")
+                    .font(Constants.body(size: 13, weight: .medium))
+                    .foregroundStyle(Constants.textPrimary)
+
+                ShortcutRecorderView(hotkeyManager: appStore.hotkeyManager)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Constants.textMuted.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
 
             if accessibilityGranted {
                 HStack(spacing: 6) {

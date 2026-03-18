@@ -6,3 +6,7 @@ Package.resolved
 *.xcodeproj
 xcuserdata/
 DerivedData/
+
+# Gradle (JetBrains plugin)
+.gradle/
+.kotlin/

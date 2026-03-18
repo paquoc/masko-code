@@ -130,7 +130,7 @@ struct PermissionContentView: View {
             Spacer()
 
             // Terminal button
-            headerButton(icon: "terminal.fill", badge: "⌘M", help: "Open terminal") {
+            headerButton(icon: "terminal.fill", badge: hotkeyManager.shortcutLabel, help: "Open terminal") {
                 focusTerminal(
                     pid: permission.event.terminalPid,
                     shellPid: permission.event.shellPid,

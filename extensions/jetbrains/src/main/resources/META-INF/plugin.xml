@@ -1,0 +1,12 @@
+<idea-plugin>
+    <id>ai.masko.terminal-focus</id>
+    <name>Masko Terminal Focus</name>
+    <vendor url="https://masko.ai">Masko</vendor>
+    <description>Allows Masko Code to focus specific terminal tabs in JetBrains IDEs.</description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <httpRequestHandler implementation="ai.masko.terminalfocus.MaskoTerminalFocusHandler"/>
+    </extensions>
+</idea-plugin>
