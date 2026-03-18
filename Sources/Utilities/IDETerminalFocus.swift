@@ -26,8 +26,15 @@ enum IDETerminalFocus {
         if let shellPid,
            let bundleId,
            UserDefaults.standard.bool(forKey: "ideExtensionEnabled") {
-            // Activate the app window by PID
-            if let pid = terminalPid,
+            // Try to raise the specific window by title (works across fullscreen Spaces)
+            if let projectDir, let pid = terminalPid,
+               let app = NSRunningApplication(processIdentifier: pid_t(pid)),
+               let processName = app.localizedName {
+                let folderName = (projectDir as NSString).lastPathComponent
+                if !raiseWindowByTitle(processName: processName, titleContains: folderName) {
+                    app.activate()
+                }
+            } else if let pid = terminalPid,
                let app = NSRunningApplication(processIdentifier: pid_t(pid)) {
                 app.activate()
             }
@@ -60,6 +67,16 @@ enum IDETerminalFocus {
         // Try terminal-specific tab switching (iTerm2, Terminal.app)
         if let shellPid, let bundleId {
             if activateTerminalTab(bundleId: bundleId, shellPid: shellPid) {
+                return
+            }
+        }
+
+        // Try to raise the specific window by title (handles multiple fullscreen windows)
+        if let projectDir, let pid = terminalPid,
+           let app = NSRunningApplication(processIdentifier: pid_t(pid)),
+           let processName = app.localizedName {
+            let folderName = (projectDir as NSString).lastPathComponent
+            if raiseWindowByTitle(processName: processName, titleContains: folderName) {
                 return
             }
         }
@@ -216,6 +233,37 @@ enum IDETerminalFocus {
         process.standardError = FileHandle.nullDevice
         try? process.run()
         process.waitUntilExit()
+    }
+
+    /// Raise a specific window by matching its title. Uses Accessibility API via AppleScript
+    /// which works across fullscreen Spaces. Returns true if a matching window was found and raised.
+    @discardableResult
+    private static func raiseWindowByTitle(processName: String, titleContains: String) -> Bool {
+        let escapedProcess = processName.replacingOccurrences(of: "\"", with: "\\\"")
+        let escapedTitle = titleContains.replacingOccurrences(of: "\"", with: "\\\"")
+        let src = """
+        tell application "System Events"
+            set targetProcess to first process whose name is "\(escapedProcess)"
+            repeat with aWindow in windows of targetProcess
+                if name of aWindow contains "\(escapedTitle)" then
+                    perform action "AXRaise" of aWindow
+                    set frontmost of targetProcess to true
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+        """
+        if let script = NSAppleScript(source: src) {
+            var error: NSDictionary?
+            let result = script.executeAndReturnError(&error)
+            if error == nil {
+                return result.booleanValue
+            }
+            // Try osascript fallback
+            return runOsascript(src)
+        }
+        return false
     }
 
     /// AppleScript `tell application id` — most reliable cross-Space activation on macOS 14+.
