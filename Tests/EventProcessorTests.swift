@@ -17,7 +17,7 @@ final class EventProcessorTests: XCTestCase {
         )
 
         let sessionId = "event-processor-codex-permission"
-        let event = ClaudeEvent(
+        let event = AgentEvent(
             hookEventName: HookEventType.permissionRequest.rawValue,
             sessionId: sessionId,
             cwd: "/tmp/project",
@@ -47,7 +47,7 @@ final class EventProcessorTests: XCTestCase {
         )
 
         let sessionId = "event-processor-claude-permission"
-        let event = ClaudeEvent(
+        let event = AgentEvent(
             hookEventName: HookEventType.permissionRequest.rawValue,
             sessionId: sessionId,
             cwd: "/tmp/project",
@@ -77,7 +77,7 @@ final class EventProcessorTests: XCTestCase {
         )
 
         let sessionId = "event-processor-codex-question-stop"
-        let event = ClaudeEvent(
+        let event = AgentEvent(
             hookEventName: HookEventType.stop.rawValue,
             sessionId: sessionId,
             cwd: "/tmp/project",
@@ -107,7 +107,7 @@ final class EventProcessorTests: XCTestCase {
         )
 
         let sessionId = "event-processor-codex-question-task"
-        let event = ClaudeEvent(
+        let event = AgentEvent(
             hookEventName: HookEventType.taskCompleted.rawValue,
             sessionId: sessionId,
             cwd: "/tmp/project",
@@ -136,7 +136,7 @@ final class EventProcessorTests: XCTestCase {
         )
 
         let sessionId = "event-processor-claude-stop-question"
-        let event = ClaudeEvent(
+        let event = AgentEvent(
             hookEventName: HookEventType.stop.rawValue,
             sessionId: sessionId,
             cwd: "/tmp/project",

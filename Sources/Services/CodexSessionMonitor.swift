@@ -1,6 +1,6 @@
 import Foundation
 
-/// Tails Codex session JSONL logs and maps them to `ClaudeEvent` for reuse in the existing pipeline.
+/// Tails Codex session JSONL logs and maps them to `AgentEvent` for reuse in the existing pipeline.
 final class CodexSessionMonitor {
     private struct TrackedFile {
         var offset: UInt64
@@ -28,7 +28,7 @@ final class CodexSessionMonitor {
 
     var isRunning: Bool { pollSource != nil }
 
-    var onEventReceived: ((ClaudeEvent) -> Void)?
+    var onEventReceived: ((AgentEvent) -> Void)?
 
     init(
         rootURL: URL = CodexSessionMonitor.defaultSessionsRoot,

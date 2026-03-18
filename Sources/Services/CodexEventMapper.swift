@@ -40,7 +40,7 @@ struct CodexSessionContext {
 
 struct CodexParseResult {
     var context: CodexSessionContext?
-    var events: [ClaudeEvent] = []
+    var events: [AgentEvent] = []
 }
 
 enum CodexEventMapper {
@@ -83,7 +83,7 @@ enum CodexEventMapper {
             let mergedContext = merged(existing: context, update: discovered)
             result.context = mergedContext
             result.events = [
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: HookEventType.sessionStart.rawValue,
                     sessionId: sessionId,
                     cwd: mergedContext.cwd,
@@ -126,7 +126,7 @@ enum CodexEventMapper {
             switch messageType {
             case "task_started":
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.userPromptSubmit.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -137,7 +137,7 @@ enum CodexEventMapper {
             case "task_complete":
                 let lastMessage = payload["last_agent_message"] as? String
                 var events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.stop.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -146,9 +146,9 @@ enum CodexEventMapper {
                         lastAssistantMessage: lastMessage
                     ),
                 ]
-                if !ClaudeEvent.looksLikeQuestionPrompt(lastMessage) {
+                if !AgentEvent.looksLikeQuestionPrompt(lastMessage) {
                     events.append(
-                        ClaudeEvent(
+                        AgentEvent(
                             hookEventName: HookEventType.taskCompleted.rawValue,
                             sessionId: sessionId,
                             cwd: workingContext.cwd,
@@ -161,7 +161,7 @@ enum CodexEventMapper {
                 result.events = events
             case "turn_aborted":
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.stop.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -174,7 +174,7 @@ enum CodexEventMapper {
                 var toolInput = payload
                 toolInput.removeValue(forKey: "type")
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.permissionRequest.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -188,7 +188,7 @@ enum CodexEventMapper {
             case "agent_message":
                 guard let message = nonEmptyString(payload["message"]) else { return result }
                 var events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.notification.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -199,7 +199,7 @@ enum CodexEventMapper {
                 ]
                 if shouldSynthesizeQuestionPermission(message: message, phase: payload["phase"] as? String) {
                     events.append(
-                        ClaudeEvent(
+                        AgentEvent(
                             hookEventName: HookEventType.permissionRequest.rawValue,
                             sessionId: sessionId,
                             cwd: workingContext.cwd,
@@ -214,7 +214,7 @@ enum CodexEventMapper {
             case "user_message":
                 guard let message = nonEmptyString(payload["message"]) else { return result }
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.notification.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -226,7 +226,7 @@ enum CodexEventMapper {
             case "agent_reasoning":
                 guard let message = nonEmptyString(payload["text"]) else { return result }
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.notification.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -237,7 +237,7 @@ enum CodexEventMapper {
                 ]
             case "token_count":
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.notification.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -251,7 +251,7 @@ enum CodexEventMapper {
                 var toolInput = payload
                 toolInput.removeValue(forKey: "type")
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.permissionRequest.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -270,7 +270,7 @@ enum CodexEventMapper {
                 let toolUseId = payload["call_id"] as? String
                 let toolInput = codexExecApprovalInput(payload: payload)
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.preToolUse.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -291,7 +291,7 @@ enum CodexEventMapper {
                 var responsePayload = payload
                 responsePayload.removeValue(forKey: "type")
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: hookName,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -305,7 +305,7 @@ enum CodexEventMapper {
                 let toolUseId = payload["call_id"] as? String
                 let toolInput = codexExecApprovalInput(payload: payload)
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.preToolUse.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -314,7 +314,7 @@ enum CodexEventMapper {
                         toolUseId: toolUseId,
                         source: source
                     ),
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.permissionRequest.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -333,7 +333,7 @@ enum CodexEventMapper {
                 let toolUseId = payload["call_id"] as? String
                 let toolName = codexMcpToolName(payload: payload) ?? "mcp_tool"
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.preToolUse.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -351,7 +351,7 @@ enum CodexEventMapper {
                 var responsePayload = payload
                 responsePayload.removeValue(forKey: "type")
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: hookName,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -363,7 +363,7 @@ enum CodexEventMapper {
                 ]
             case "context_compacted":
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.preCompact.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -380,7 +380,7 @@ enum CodexEventMapper {
                 )
             case "entered_review_mode", "exited_review_mode":
                 result.events = [
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.configChange.rawValue,
                         sessionId: sessionId,
                         cwd: workingContext.cwd,
@@ -394,7 +394,7 @@ enum CodexEventMapper {
 
         case "compacted":
             result.events = [
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: HookEventType.preCompact.rawValue,
                     sessionId: sessionId,
                     cwd: workingContext.cwd,
@@ -450,7 +450,7 @@ enum CodexEventMapper {
         cwd: String?,
         source: String,
         context: CodexSessionContext
-    ) -> [ClaudeEvent] {
+    ) -> [AgentEvent] {
         guard let payloadType = payload["type"] as? String else { return [] }
 
         switch payloadType {
@@ -458,8 +458,8 @@ enum CodexEventMapper {
             let arguments = toolArguments(payload: payload, payloadType: payloadType)
             let toolName = payload["name"] as? String ?? "tool"
             let toolUseId = payload["call_id"] as? String ?? payload["id"] as? String
-            var events: [ClaudeEvent] = [
-                ClaudeEvent(
+            var events: [AgentEvent] = [
+                AgentEvent(
                     hookEventName: HookEventType.preToolUse.rawValue,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -475,7 +475,7 @@ enum CodexEventMapper {
             // synthesize a permission request so the existing mascot approval UX can react.
             if requiresEscalatedPermission(arguments) {
                 events.append(
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.permissionRequest.rawValue,
                         sessionId: sessionId,
                         cwd: cwd,
@@ -492,7 +492,7 @@ enum CodexEventMapper {
                 )
             } else if isRequestUserInput(toolName: toolName, arguments: arguments) {
                 events.append(
-                    ClaudeEvent(
+                    AgentEvent(
                         hookEventName: HookEventType.permissionRequest.rawValue,
                         sessionId: sessionId,
                         cwd: cwd,
@@ -513,7 +513,7 @@ enum CodexEventMapper {
                 : HookEventType.postToolUse.rawValue
             let toolName = resolvedToolName(payload: payload, context: context)
             return [
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: hookName,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -529,7 +529,7 @@ enum CodexEventMapper {
             let role = payload["role"] as? String
             let notificationType = role == "assistant" ? "codex_agent_message" : "codex_message"
             return [
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: HookEventType.notification.rawValue,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -541,7 +541,7 @@ enum CodexEventMapper {
         case "reasoning":
             guard let summary = codexReasoningSummary(payload: payload) else { return [] }
             return [
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: HookEventType.notification.rawValue,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -562,7 +562,7 @@ enum CodexEventMapper {
                 ? HookEventType.postToolUseFailure.rawValue
                 : HookEventType.postToolUse.rawValue
             return [
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: HookEventType.preToolUse.rawValue,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -571,7 +571,7 @@ enum CodexEventMapper {
                     toolUseId: toolUseId,
                     source: source
                 ),
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: hookName,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -592,15 +592,15 @@ enum CodexEventMapper {
         sessionId: String,
         cwd: String?,
         source: String
-    ) -> [ClaudeEvent] {
+    ) -> [AgentEvent] {
         let arguments = toolArguments(
             payload: payload,
             payloadType: payload["type"] as? String ?? "function_call"
         )
         let toolName = payload["name"] as? String ?? "tool"
         let toolUseId = payload["call_id"] as? String ?? payload["id"] as? String
-        var events: [ClaudeEvent] = [
-            ClaudeEvent(
+        var events: [AgentEvent] = [
+            AgentEvent(
                 hookEventName: HookEventType.preToolUse.rawValue,
                 sessionId: sessionId,
                 cwd: cwd,
@@ -612,7 +612,7 @@ enum CodexEventMapper {
         ]
         if requiresEscalatedPermission(arguments) {
             events.append(
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: HookEventType.permissionRequest.rawValue,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -629,7 +629,7 @@ enum CodexEventMapper {
             )
         } else if isRequestUserInput(toolName: toolName, arguments: arguments) {
             events.append(
-                ClaudeEvent(
+                AgentEvent(
                     hookEventName: HookEventType.permissionRequest.rawValue,
                     sessionId: sessionId,
                     cwd: cwd,
@@ -650,10 +650,10 @@ enum CodexEventMapper {
         cwd: String?,
         source: String,
         context: CodexSessionContext
-    ) -> [ClaudeEvent] {
+    ) -> [AgentEvent] {
         let output = toolOutput(payload["output"])
         return [
-            ClaudeEvent(
+            AgentEvent(
                 hookEventName: isToolOutputFailure(payload: payload, output: output)
                     ? HookEventType.postToolUseFailure.rawValue
                     : HookEventType.postToolUse.rawValue,
@@ -816,7 +816,7 @@ enum CodexEventMapper {
 
     private static func shouldSynthesizeQuestionPermission(message: String, phase: String?) -> Bool {
         guard let phase = phase?.lowercased(), phase == "commentary" else { return false }
-        return ClaudeEvent.looksLikeQuestionPrompt(message)
+        return AgentEvent.looksLikeQuestionPrompt(message)
     }
 
     private static func isRequestUserInput(toolName: String, arguments: [String: Any]) -> Bool {
@@ -1030,7 +1030,7 @@ enum CodexEventMapper {
         sessionId: String,
         cwd: String?,
         source: String
-    ) -> [ClaudeEvent] {
+    ) -> [AgentEvent] {
         let taskId = payload["turn_id"] as? String
         var subject: String?
         if let item = payload["item"] as? [String: Any] {
@@ -1042,7 +1042,7 @@ enum CodexEventMapper {
         }
 
         return [
-            ClaudeEvent(
+            AgentEvent(
                 hookEventName: HookEventType.taskCompleted.rawValue,
                 sessionId: sessionId,
                 cwd: cwd,

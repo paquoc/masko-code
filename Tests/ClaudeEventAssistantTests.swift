@@ -3,12 +3,12 @@ import XCTest
 
 final class ClaudeEventAssistantTests: XCTestCase {
     func testAssistantDisplayNameDefaultsToClaude() {
-        let event = ClaudeEvent(hookEventName: HookEventType.sessionStart.rawValue)
+        let event = AgentEvent(hookEventName: HookEventType.sessionStart.rawValue)
         XCTAssertEqual(event.assistantDisplayName, "Claude Code")
     }
 
     func testAssistantDisplayNameDetectsCodexCLI() {
-        let event = ClaudeEvent(
+        let event = AgentEvent(
             hookEventName: HookEventType.sessionStart.rawValue,
             source: "codex-cli"
         )
@@ -16,7 +16,7 @@ final class ClaudeEventAssistantTests: XCTestCase {
     }
 
     func testAssistantDisplayNameDetectsCodexDesktop() {
-        let event = ClaudeEvent(
+        let event = AgentEvent(
             hookEventName: HookEventType.sessionStart.rawValue,
             source: "vscode"
         )

@@ -27,7 +27,7 @@ final class CodexSessionMonitorTests: XCTestCase {
             pollInterval: 999,
             bootstrapRecentWindow: 3_600
         )
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         monitor.onEventReceived = { events.append($0) }
 
         monitor.start()
@@ -67,7 +67,7 @@ final class CodexSessionMonitorTests: XCTestCase {
             pollInterval: 999,
             bootstrapRecentWindow: 60
         )
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         monitor.onEventReceived = { events.append($0) }
 
         monitor.start()
@@ -99,7 +99,7 @@ final class CodexSessionMonitorTests: XCTestCase {
             pollInterval: 999,
             bootstrapRecentWindow: 0
         )
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         monitor.onEventReceived = { events.append($0) }
 
         monitor.start()
@@ -139,7 +139,7 @@ final class CodexSessionMonitorTests: XCTestCase {
             pollInterval: 999,
             bootstrapRecentWindow: 3_600
         )
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         monitor.onEventReceived = { events.append($0) }
 
         monitor.start(bootstrapRecentFiles: false)
@@ -173,7 +173,7 @@ final class CodexSessionMonitorTests: XCTestCase {
         try writeLines(lines, to: fileURL)
 
         let monitor = CodexSessionMonitor(rootURL: root, pollInterval: 999)
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         monitor.onEventReceived = { events.append($0) }
 
         monitor.pollOnce()
@@ -211,7 +211,7 @@ final class CodexSessionMonitorTests: XCTestCase {
         ], to: fileURL)
 
         let monitor = CodexSessionMonitor(rootURL: root, pollInterval: 999)
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         monitor.onEventReceived = { events.append($0) }
 
         monitor.pollOnce()
@@ -246,7 +246,7 @@ final class CodexSessionMonitorTests: XCTestCase {
         ], to: fileURL)
 
         let monitor = CodexSessionMonitor(rootURL: root, pollInterval: 999)
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         monitor.onEventReceived = { events.append($0) }
 
         monitor.pollOnce()
@@ -274,7 +274,7 @@ final class CodexSessionMonitorTests: XCTestCase {
             pollInterval: 0.05,
             bootstrapRecentWindow: 0
         )
-        var events: [ClaudeEvent] = []
+        var events: [AgentEvent] = []
         let expectation = expectation(description: "new Codex session file is polled")
         monitor.onEventReceived = { event in
             events.append(event)
