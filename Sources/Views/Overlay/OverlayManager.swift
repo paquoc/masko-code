@@ -272,6 +272,7 @@ final class OverlayManager {
         // Resize/reposition when permissions change (delay lets SwiftUI render)
         pendingPermissionStore.onPendingChange = { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self?.refreshInputs()
                 self?.scheduleHUDReposition()
                 self?.dismissExpandedPermission()
             }
@@ -705,6 +706,7 @@ final class OverlayManager {
 
         pendingPermissionStore.onPendingChange = { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self?.refreshInputs()
                 self?.scheduleHUDReposition()
             }
         }

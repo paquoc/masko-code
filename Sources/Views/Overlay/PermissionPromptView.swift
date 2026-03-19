@@ -520,6 +520,7 @@ struct AskUserQuestionView: View {
                     ? OverlayStyle.orange.opacity(0.12)
                     : (isSelected ? OverlayStyle.selectedBg : Color.clear)
             )
+            .contentShape(Rectangle())
             .clipShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
@@ -562,6 +563,7 @@ struct AskUserQuestionView: View {
                         ? OverlayStyle.orange.opacity(0.12)
                         : (isCustom ? OverlayStyle.selectedBg : Color.clear)
                 )
+                .contentShape(Rectangle())
                 .clipShape(RoundedRectangle(cornerRadius: 7))
             }
             .buttonStyle(.plain)
@@ -743,6 +745,7 @@ struct ExitPlanModeView: View {
                                 ? OverlayStyle.orange.opacity(0.12)
                                 : (selectedOption == idx ? OverlayStyle.selectedBg : Color.clear)
                         )
+                        .contentShape(Rectangle())
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                     }
                     .buttonStyle(.plain)
@@ -804,7 +807,7 @@ struct ExitPlanModeView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
-                    .background(Color.clear)
+                    .contentShape(Rectangle())
                     .clipShape(RoundedRectangle(cornerRadius: 7))
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(OverlayStyle.denyBorder, lineWidth: 1))
                 }
@@ -1013,7 +1016,7 @@ struct PermissionPromptView: View {
                             Spacer(minLength: 0)
                         }
                         .padding(.vertical, 4)
-                        .background(Color.clear)
+                        .contentShape(Rectangle())
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                         .overlay(RoundedRectangle(cornerRadius: 7).stroke(OverlayStyle.denyBorder, lineWidth: 1))
                     }
@@ -1141,6 +1144,7 @@ private struct CollapsedPermissionPill: View {
                     .foregroundStyle(OverlayStyle.denyText)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
+                    .contentShape(Rectangle())
                     .clipShape(RoundedRectangle(cornerRadius: 5))
                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(OverlayStyle.denyBorder, lineWidth: 1))
             }
@@ -1190,6 +1194,9 @@ struct PermissionStackView: View {
                             Text("Allow All")
                                 .font(Constants.heading(size: 10, weight: .semibold))
                                 .foregroundStyle(OverlayStyle.orange)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -1199,6 +1206,9 @@ struct PermissionStackView: View {
                             Text("Deny All")
                                 .font(Constants.heading(size: 10, weight: .semibold))
                                 .foregroundStyle(.red)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }

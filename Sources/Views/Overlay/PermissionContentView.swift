@@ -350,6 +350,7 @@ struct PermissionContentView: View {
                     ? OverlayStyle.orange.opacity(0.12)
                     : (isSelected ? OverlayStyle.selectedBg : Color.clear)
             )
+            .contentShape(Rectangle())
             .clipShape(RoundedRectangle(cornerRadius: isExpanded ? 8 : 7))
         }
         .buttonStyle(.plain)
@@ -391,6 +392,7 @@ struct PermissionContentView: View {
                         ? OverlayStyle.orange.opacity(0.12)
                         : (isCustom ? OverlayStyle.selectedBg : Color.clear)
                 )
+                .contentShape(Rectangle())
                 .clipShape(RoundedRectangle(cornerRadius: isExpanded ? 8 : 7))
             }
             .buttonStyle(.plain)
@@ -689,6 +691,7 @@ struct PermissionContentView: View {
                     .foregroundStyle(OverlayStyle.denyText)
                     .padding(.vertical, buttonPaddingV)
                     .padding(.horizontal, buttonPaddingH)
+                    .contentShape(Rectangle())
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(OverlayStyle.denyBorder, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
@@ -737,7 +740,7 @@ struct PermissionContentView: View {
                         Spacer(minLength: 0)
                     }
                     .padding(.vertical, buttonPaddingV)
-                    .background(Color.clear)
+                    .contentShape(Rectangle())
                     .clipShape(RoundedRectangle(cornerRadius: 7))
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(OverlayStyle.denyBorder, lineWidth: 1))
                 }
