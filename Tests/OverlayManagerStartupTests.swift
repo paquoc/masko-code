@@ -63,7 +63,9 @@ final class OverlayManagerStartupTests: XCTestCase {
                     isLoop: true,
                     duration: 1.0,
                     conditions: nil,
-                    videos: MaskoAnimationVideos(webm: nil, hevc: nil)
+                    videos: MaskoAnimationVideos(webm: nil, hevc: nil),
+                    priority: nil,
+                    speed: nil
                 ),
             ],
             inputs: nil

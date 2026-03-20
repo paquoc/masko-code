@@ -1069,6 +1069,7 @@ enum CodexEventMapper {
     private static func formattedTokenCount(_ value: Int) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: "en_US")
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 }
