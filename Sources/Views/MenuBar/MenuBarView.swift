@@ -32,9 +32,9 @@ struct MenuBarView: View {
             // Server status
             HStack {
                 Circle()
-                    .fill(appStore.localServer.isRunning ? Color.green : Color.red)
+                    .fill(appStore.isAssistantEventIngestionActive ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
-                Text(appStore.localServer.isRunning ? "Listening on port \(appStore.localServer.port)" : "Server offline")
+                Text(appStore.assistantEventIngestionStatusText)
                     .font(Constants.body(size: 12))
                     .foregroundColor(Constants.textMuted)
                 Spacer()

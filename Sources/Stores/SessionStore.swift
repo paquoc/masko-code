@@ -19,6 +19,40 @@ struct AgentSession: Identifiable, Codable {
     var shellPid: Int?
     var transcriptPath: String?
 
+    init(
+        id: String,
+        projectDir: String?,
+        projectName: String?,
+        agentSource: AgentSource = .claudeCode,
+        status: Status,
+        phase: Phase = .idle,
+        eventCount: Int,
+        startedAt: Date,
+        lastEventAt: Date?,
+        lastToolName: String? = nil,
+        activeSubagentCount: Int = 0,
+        isCompacting: Bool = false,
+        terminalPid: Int? = nil,
+        shellPid: Int? = nil,
+        transcriptPath: String? = nil
+    ) {
+        self.id = id
+        self.projectDir = projectDir
+        self.projectName = projectName
+        self.agentSource = agentSource
+        self.status = status
+        self.phase = phase
+        self.eventCount = eventCount
+        self.startedAt = startedAt
+        self.lastEventAt = lastEventAt
+        self.lastToolName = lastToolName
+        self.activeSubagentCount = activeSubagentCount
+        self.isCompacting = isCompacting
+        self.terminalPid = terminalPid
+        self.shellPid = shellPid
+        self.transcriptPath = transcriptPath
+    }
+
     enum Status: String, Codable {
         case active, ended
 
@@ -33,12 +67,69 @@ struct AgentSession: Identifiable, Codable {
         case running    // After UserPromptSubmit or tool use — agent is working
         case compacting // After PreCompact — context compaction in progress
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case projectDir
+        case projectName
+        case agentSource
+        case status
+        case phase
+        case eventCount
+        case startedAt
+        case lastEventAt
+        case lastToolName
+        case activeSubagentCount
+        case isCompacting
+        case terminalPid
+        case shellPid
+        case transcriptPath
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        projectDir = try container.decodeIfPresent(String.self, forKey: .projectDir)
+        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        if let source = try container.decodeIfPresent(AgentSource.self, forKey: .agentSource) {
+            agentSource = source
+        } else {
+            enum LegacyCodingKeys: String, CodingKey { case assistantSource }
+            let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            if let legacySource = try legacyContainer.decodeIfPresent(String.self, forKey: .assistantSource) {
+                agentSource = AgentSource(rawSource: legacySource)
+            } else {
+                agentSource = .unknown
+            }
+        }
+        status = try container.decode(Status.self, forKey: .status)
+        phase = try container.decodeIfPresent(Phase.self, forKey: .phase) ?? .idle
+        eventCount = try container.decode(Int.self, forKey: .eventCount)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        lastEventAt = try container.decodeIfPresent(Date.self, forKey: .lastEventAt)
+        lastToolName = try container.decodeIfPresent(String.self, forKey: .lastToolName)
+        activeSubagentCount = try container.decodeIfPresent(Int.self, forKey: .activeSubagentCount) ?? 0
+        isCompacting = try container.decodeIfPresent(Bool.self, forKey: .isCompacting) ?? false
+        terminalPid = try container.decodeIfPresent(Int.self, forKey: .terminalPid)
+        shellPid = try container.decodeIfPresent(Int.self, forKey: .shellPid)
+        transcriptPath = try container.decodeIfPresent(String.self, forKey: .transcriptPath)
+    }
 }
 
 @Observable
 final class SessionStore {
     private(set) var sessions: [AgentSession] = []
     private static let filename = "sessions.json"
+    static let assistantProcessMatchers: [[String]] = [
+        ["-x", "claude"],
+        ["-x", "codex"],
+        ["-x", "Codex"],
+        ["-f", "codex_cli_rs"],
+        // Codex desktop runs as an app bundle process (not "Codex Desktop").
+        ["-f", "Codex.app"],
+        // Keep legacy matcher for compatibility with older process naming.
+        ["-f", "Codex Desktop"],
+    ]
     private var reconcileTimer: Timer?
     private var interruptWatcherTimer: Timer?
 
@@ -53,7 +144,7 @@ final class SessionStore {
         startInterruptWatcher()
     }
 
-    /// Safety net: check every 2 minutes if Claude processes are still alive.
+    /// Safety net: check every 2 minutes if assistant processes are still alive.
     /// Catches the edge case where SessionEnd hook was never delivered (crash, SIGKILL).
     private func startReconcileTimer() {
         reconcileTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
@@ -188,26 +279,26 @@ final class SessionStore {
 
     // MARK: - Crash Recovery
 
-    /// Check for crashed Claude processes and mark orphaned sessions as ended.
+    /// Check for crashed assistant processes and mark orphaned sessions as ended.
     /// Called on init and when the app comes to foreground.
     func reconcileIfNeeded() {
         guard !activeSessions.isEmpty else { return }
 
-        // Run pgrep on a background thread to avoid blocking the UI
-        checkForClaudeProcesses { [weak self] hasClaudeProcess in
+        // Run process checks on a background thread to avoid blocking the UI
+        checkForAssistantProcesses { [weak self] hasAssistantProcess in
             DispatchQueue.main.async {
-                self?.applyReconciliation(hasClaudeProcess: hasClaudeProcess)
+                self?.applyReconciliation(hasAssistantProcess: hasAssistantProcess)
             }
         }
     }
 
-    private func applyReconciliation(hasClaudeProcess: Bool) {
+    private func applyReconciliation(hasAssistantProcess: Bool) {
         guard !activeSessions.isEmpty else { return }
 
         var changed = false
 
-        // 1. If no Claude process at all, end everything
-        if !hasClaudeProcess {
+        // 1. If no assistant process at all, end everything
+        if !hasAssistantProcess {
             for i in sessions.indices where sessions[i].status == .active {
                 sessions[i].status = .ended
                 sessions[i].phase = .idle
@@ -217,7 +308,7 @@ final class SessionStore {
             }
         } else {
             // 2. End individual sessions that are stale (no events in 1+ hour).
-            // A claude process exists for a different session — but these old ones are dead.
+            // A process exists for a different session - but these old ones are dead.
             let staleThreshold: TimeInterval = 3600 // 1 hour
             let now = Date()
             for i in sessions.indices where sessions[i].status == .active {
@@ -245,22 +336,29 @@ final class SessionStore {
         }
     }
 
-    /// Check if any `claude` CLI processes are running via pgrep (exact name match).
+    /// Check if any Claude or Codex process is running.
     /// Runs on a background thread to avoid blocking the main/UI thread.
-    private func checkForClaudeProcesses(completion: @escaping (Bool) -> Void) {
+    private func checkForAssistantProcesses(completion: @escaping (Bool) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-            process.arguments = ["-x", "claude"] // exact match — won't match masko-desktop
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                process.waitUntilExit()
-                completion(process.terminationStatus == 0) // 0 = found matches
-            } catch {
-                completion(false)
+            let hasAssistant = Self.assistantProcessMatchers.contains { matcher in
+                Self.isProcessRunning(arguments: matcher)
             }
+            completion(hasAssistant)
+        }
+    }
+
+    private static func isProcessRunning(arguments: [String]) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0 // 0 = found matches
+        } catch {
+            return false
         }
     }
 
@@ -302,6 +400,9 @@ final class SessionStore {
             sessions[index].lastEventAt = Date()
             if let toolName = event.toolName {
                 sessions[index].lastToolName = toolName
+            }
+            if let source = event.source, !source.isEmpty {
+                sessions[index].agentSource = AgentSource(rawSource: source)
             }
             if let path = event.transcriptPath, sessions[index].transcriptPath == nil {
                 sessions[index].transcriptPath = path
@@ -385,6 +486,7 @@ final class SessionStore {
                 id: sessionId,
                 projectDir: event.cwd,
                 projectName: event.projectName,
+                agentSource: AgentSource(rawSource: event.source),
                 status: .active,
                 phase: phase,
                 eventCount: 1,

@@ -3,9 +3,15 @@ import Foundation
 
 @Observable
 final class AppStore {
+    struct AssistantEventIngestionStatus {
+        let isActive: Bool
+        let text: String
+    }
+
     let eventBus = MaskoEventBus()
     let claudeCodeAdapter = ClaudeCodeAdapter()
     let copilotAdapter = CopilotAdapter()
+    let codexAdapter = CodexAdapter()
     let eventStore = EventStore()
     let sessionStore = SessionStore()
     let notificationStore = NotificationStore()
@@ -48,7 +54,38 @@ final class AppStore {
     /// Set by URL handler to navigate to a mascot after install
     var navigateToMascotId: UUID?
 
+    static func assistantEventIngestionStatus(
+        localServerRunning: Bool,
+        localServerPort: UInt16,
+        codexMonitorRunning: Bool
+    ) -> AssistantEventIngestionStatus {
+        let text: String
+        switch (localServerRunning, codexMonitorRunning) {
+        case (true, true):
+            text = "Listening on \(localServerPort) + Codex logs"
+        case (true, false):
+            text = "Listening on \(localServerPort)"
+        case (false, true):
+            text = "Listening to Codex logs"
+        case (false, false):
+            text = "Offline"
+        }
+        return AssistantEventIngestionStatus(
+            isActive: localServerRunning || codexMonitorRunning,
+            text: text
+        )
+    }
+
     var hasUnreadNotifications: Bool { notificationStore.unreadCount > 0 }
+    var assistantEventIngestionStatus: AssistantEventIngestionStatus {
+        Self.assistantEventIngestionStatus(
+            localServerRunning: localServer.isRunning,
+            localServerPort: localServer.port,
+            codexMonitorRunning: codexAdapter.isRunning
+        )
+    }
+    var isAssistantEventIngestionActive: Bool { assistantEventIngestionStatus.isActive }
+    var assistantEventIngestionStatusText: String { assistantEventIngestionStatus.text }
 
     var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
@@ -65,6 +102,7 @@ final class AppStore {
         // Register adapters with the event bus
         eventBus.register(claudeCodeAdapter)
         eventBus.register(copilotAdapter)
+        eventBus.register(codexAdapter)
 
         // Wire event bus -> event processor + overlay state machine
         eventBus.onEvent = { [weak self] event in
@@ -311,6 +349,11 @@ final class AppStore {
             guard let self else { return }
             let reversed = Array(self.pendingPermissionStore.pending.reversed())
             if let topPerm = reversed.first {
+                // For Codex events without terminal PID, use the interactive bridge
+                if topPerm.event.terminalPid == nil,
+                   CodexInteractiveBridge.focus(event: topPerm.event) {
+                    return
+                }
                 let sessionDir = self.sessionStore.sessions.first(where: { $0.id == topPerm.event.sessionId })?.projectDir
                 IDETerminalFocus.focus(
                     terminalPid: topPerm.event.terminalPid,

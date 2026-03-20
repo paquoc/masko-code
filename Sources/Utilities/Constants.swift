@@ -1,6 +1,8 @@
 import SwiftUI
 
 enum Constants {
+    private static let serverPortKey = "serverPort"
+
     // Web links (opened in browser)
     #if DEBUG
     static let maskoBaseURL = "http://localhost:3000"
@@ -10,13 +12,23 @@ enum Constants {
     static let githubRepoURL = "https://github.com/RousselPaul/masko-code"
 
     // Local hook server
-    static let defaultServerPort: UInt16 = 49152
+    static let legacyDefaultServerPort: UInt16 = 49152
+    static let defaultServerPort: UInt16 = 45832
     static var serverPort: UInt16 {
-        let stored = UserDefaults.standard.integer(forKey: "serverPort")
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: serverPortKey) != nil else {
+            return defaultServerPort
+        }
+
+        let stored = defaults.integer(forKey: serverPortKey)
+        if stored == Int(legacyDefaultServerPort) {
+            defaults.set(Int(defaultServerPort), forKey: serverPortKey)
+            return defaultServerPort
+        }
         return stored > 0 ? UInt16(stored) : defaultServerPort
     }
     static func setServerPort(_ port: UInt16) {
-        UserDefaults.standard.set(Int(port), forKey: "serverPort")
+        UserDefaults.standard.set(Int(port), forKey: serverPortKey)
     }
 
     // Brand colors — matches masko.ai web design

@@ -7,7 +7,18 @@ enum IDETerminalFocus {
 
     /// Focus the terminal for a given session.
     static func focusSession(_ session: AgentSession) {
-        focus(terminalPid: session.terminalPid, shellPid: session.shellPid, projectDir: session.projectDir, savedBundleId: session.terminalBundleId)
+        var terminalPid = session.terminalPid
+        var shellPid = session.shellPid
+
+        // For Codex sessions without terminal PID, resolve from the process tree
+        if session.agentSource == .codex, terminalPid == nil {
+            if let resolved = CodexInteractiveBridge.resolveTerminalContext(projectDir: session.projectDir) {
+                terminalPid = resolved.terminalPid
+                shellPid = resolved.shellPid
+            }
+        }
+
+        focus(terminalPid: terminalPid, shellPid: shellPid, projectDir: session.projectDir, savedBundleId: session.terminalBundleId)
     }
 
     /// Focus a terminal by PID.

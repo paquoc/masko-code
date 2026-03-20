@@ -169,6 +169,8 @@ struct PendingPermission: Identifiable {
         // For Bash: show command
         if let command = input["command"]?.value as? String {
             raw = command
+        } else if let command = input["cmd"]?.value as? String {
+            raw = command
         // For Edit/Write: show file path
         } else if let path = input["file_path"]?.value as? String {
             raw = path
@@ -203,6 +205,8 @@ struct PendingPermission: Identifiable {
         // Same extraction logic as toolInputPreview but no truncation
         let raw: String
         if let command = input["command"]?.value as? String {
+            raw = command
+        } else if let command = input["cmd"]?.value as? String {
             raw = command
         } else if let content = input["content"]?.value as? String {
             raw = content
@@ -386,6 +390,9 @@ final class PendingPermissionStore {
             let key = "\(sid)|\(event.agentId ?? "")|\(toolName)"
             resolvedToolUseId = preToolUseCache.removeValue(forKey: key)
         }
+        if isDuplicate(event: event, resolvedToolUseId: resolvedToolUseId) {
+            return
+        }
 
         let permission = PendingPermission(
             id: UUID(),
@@ -405,6 +412,43 @@ final class PendingPermissionStore {
         }
 
         print("[masko-desktop] Permission added: \(event.toolName ?? "unknown") toolUseId=\(resolvedToolUseId ?? "nil") (pending: \(pending.count))")
+    }
+
+    private func isDuplicate(event: AgentEvent, resolvedToolUseId: String?) -> Bool {
+        guard let sessionId = event.sessionId else { return false }
+
+        if let toolUseId = resolvedToolUseId,
+           pending.contains(where: {
+               $0.event.sessionId == sessionId &&
+               ($0.event.toolUseId == toolUseId || $0.resolvedToolUseId == toolUseId)
+           }) {
+            print("[masko-desktop] Dropping duplicate permission for toolUseId=\(toolUseId)")
+            return true
+        }
+
+        let incomingSignature = canonicalToolInputSignature(event.toolInput)
+        if pending.contains(where: { existing in
+            existing.event.sessionId == sessionId &&
+            existing.event.agentId == event.agentId &&
+            existing.event.toolName == event.toolName &&
+            canonicalToolInputSignature(existing.event.toolInput) == incomingSignature
+        }) {
+            print("[masko-desktop] Dropping duplicate permission for \(event.toolName ?? "unknown") in session \(sessionId)")
+            return true
+        }
+
+        return false
+    }
+
+    private func canonicalToolInputSignature(_ input: [String: AnyCodable]?) -> String {
+        guard let input else { return "" }
+        let raw = input.mapValues(\.value)
+        guard JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return raw.description
+        }
+        return json
     }
 
     func collapse(id: UUID) {

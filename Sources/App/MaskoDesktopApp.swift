@@ -178,6 +178,16 @@ struct MaskoDesktopApp: App {
                     }
                     await appStore.start()
                     overlayManager.restoreIfNeeded()
+
+                    // First-run fallback: if onboarding is complete but no mascot was ever activated,
+                    // pick Clippy (or first available mascot) so activity is immediately visible.
+                    if appStore.hasCompletedOnboarding,
+                       overlayManager.isOverlayEnabled,
+                       !overlayManager.isOverlayActive,
+                       !overlayManager.hasEverActivatedMascot,
+                       let config = OverlayManager.startupMascotConfig(from: appStore.mascotStore.mascots) {
+                        overlayManager.showOverlayWithConfig(config)
+                    }
                 }
                 .onOpenURL { url in
                     handleMaskoURL(url)

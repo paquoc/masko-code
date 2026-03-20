@@ -30,6 +30,15 @@ struct PermissionContentView: View {
     private var isPlan: Bool { permission.event.toolName == "ExitPlanMode" }
     private var isQuestion: Bool { !(permission.parsedQuestions ?? []).isEmpty }
     private var questions: [ParsedQuestion] { permission.parsedQuestions ?? [] }
+    private var supportsOverlayResponses: Bool {
+        let capabilities = permission.transport.capabilities
+        return capabilities.contains(.permissionResponse)
+            || capabilities.contains(.updatedInput)
+            || capabilities.contains(.updatedPermissions)
+    }
+    private var isOpenTerminalFallback: Bool {
+        !supportsOverlayResponses && permission.transport.capabilities.contains(.openTerminal)
+    }
 
     private var isExpanded: Bool { mode == .expanded }
 
@@ -280,7 +289,7 @@ struct PermissionContentView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if questions.count > 1 { state.currentQuestionIndex = questionIndex }
-                    focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions)
+                    focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions)
                 }
 
             VStack(alignment: .leading, spacing: isExpanded ? 4 : 2) {
@@ -463,12 +472,44 @@ struct PermissionContentView: View {
 
     @ViewBuilder
     private var actionsSection: some View {
-        if isPlan {
+        if isOpenTerminalFallback {
+            terminalFallbackActionsView
+        } else if isPlan {
             planActionsView
         } else if isQuestion {
             questionActionsView
         } else {
             standardActionsView
+        }
+    }
+
+    private var terminalFallbackActionsView: some View {
+        HStack(spacing: isExpanded ? 10 : 6) {
+            Text("Reply in terminal")
+                .font(Constants.body(size: isExpanded ? 12 : 10, weight: .medium))
+                .foregroundStyle(OverlayStyle.textMuted)
+            Spacer()
+            Button {
+                focusTerminal(
+                    pid: permission.event.terminalPid,
+                    shellPid: permission.event.shellPid,
+                    projectDir: permission.event.cwd,
+                    sessionId: permission.event.sessionId,
+                    sessions: sessionStore.sessions
+                )
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "terminal.fill")
+                    Text("Open Terminal")
+                        .font(Constants.heading(size: buttonFont, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.vertical, buttonPaddingV)
+                .padding(.horizontal, buttonPaddingH)
+                .background(OverlayStyle.orange)
+                .clipShape(RoundedRectangle(cornerRadius: isExpanded ? 8 : 7))
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -752,6 +793,9 @@ struct PermissionContentView: View {
     // MARK: - Shortcut Handlers (compact mode only, via CGEvent tap)
 
     private func handleShortcutSelection(_ idx: Int) {
+        if isOpenTerminalFallback {
+            return
+        }
         if isPlan {
             if idx < planOptions.count {
                 state.selectedOption = idx
@@ -786,6 +830,17 @@ struct PermissionContentView: View {
     }
 
     private func handleShortcutConfirm() {
+        if isOpenTerminalFallback {
+            focusTerminal(
+                pid: permission.event.terminalPid,
+                shellPid: permission.event.shellPid,
+                projectDir: permission.event.cwd,
+                sessionId: permission.event.sessionId,
+                source: permission.event.source,
+                sessions: sessionStore.sessions
+            )
+            return
+        }
         if isPlan {
             if state.selectedOption == 3 && !state.feedbackText.isEmpty {
                 onFeedback?(state.feedbackText)

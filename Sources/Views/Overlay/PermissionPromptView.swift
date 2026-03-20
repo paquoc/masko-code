@@ -228,9 +228,27 @@ func markdownText(_ string: String) -> Text {
 /// Activate the terminal running the Claude Code session.
 /// Delegates to shared IDETerminalFocus utility (supports exact tab switching via IDE extension).
 /// Uses the session's stored projectDir (set at session start) to avoid issues when the agent has cd'd.
-func focusTerminal(pid: Int? = nil, shellPid: Int? = nil, projectDir: String? = nil, sessionId: String? = nil, sessions: [AgentSession] = []) {
-    let resolvedDir = sessions.first(where: { $0.id == sessionId })?.projectDir ?? projectDir
-    IDETerminalFocus.focus(terminalPid: pid, shellPid: shellPid, projectDir: resolvedDir)
+func focusTerminal(
+    pid: Int? = nil,
+    shellPid: Int? = nil,
+    projectDir: String? = nil,
+    sessionId: String? = nil,
+    source: String? = nil,
+    sessions: [AgentSession] = []
+) {
+    let matchedSession = sessions.first(where: { $0.id == sessionId })
+    let resolvedDir = matchedSession?.projectDir ?? projectDir
+    let resolvedSource = matchedSession?.agentSource ?? AgentSource(rawSource: source)
+
+    var resolvedPid = pid
+    var resolvedShellPid = shellPid
+    if resolvedPid == nil, resolvedSource == .codex {
+        if let ctx = CodexInteractiveBridge.resolveTerminalContext(projectDir: resolvedDir) {
+            resolvedPid = ctx.terminalPid
+            resolvedShellPid = ctx.shellPid
+        }
+    }
+    IDETerminalFocus.focus(terminalPid: resolvedPid, shellPid: resolvedShellPid, projectDir: resolvedDir)
 }
 
 // MARK: - AskUserQuestion View
@@ -281,7 +299,7 @@ struct AskUserQuestionView: View {
                 Spacer()
 
                 HStack(spacing: 3) {
-                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
+                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(OverlayStyle.textHint)
@@ -446,7 +464,7 @@ struct AskUserQuestionView: View {
                     if questions.count > 1 {
                         currentQuestionIndex = questionIndex
                     }
-                    focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions)
+                    focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions)
                 }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -628,7 +646,7 @@ struct ExitPlanModeView: View {
                 Spacer()
 
                 HStack(spacing: 3) {
-                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
+                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(OverlayStyle.textHint)
@@ -912,7 +930,7 @@ struct PermissionPromptView: View {
                 Spacer()
 
                 HStack(spacing: 3) {
-                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
+                    Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(OverlayStyle.textHint)
@@ -1089,6 +1107,14 @@ private struct CollapsedPermissionPill: View {
     @Environment(GlobalHotkeyManager.self) private var hotkeyManager
     @Environment(SessionStore.self) private var sessionStore
 
+    private var isOpenTerminalFallback: Bool {
+        let capabilities = permission.transport.capabilities
+        let supportsResponses = capabilities.contains(.permissionResponse)
+            || capabilities.contains(.updatedInput)
+            || capabilities.contains(.updatedPermissions)
+        return !supportsResponses && capabilities.contains(.openTerminal)
+    }
+
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: "hand.raised.fill")
@@ -1107,13 +1133,15 @@ private struct CollapsedPermissionPill: View {
 
             Spacer(minLength: 0)
 
-            Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, sessions: sessionStore.sessions) } label: {
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(OverlayStyle.textHint)
+            if !isOpenTerminalFallback {
+                Button { focusTerminal(pid: permission.event.terminalPid, shellPid: permission.event.shellPid, projectDir: permission.event.cwd, sessionId: permission.event.sessionId, source: permission.event.source, sessions: sessionStore.sessions) } label: {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(OverlayStyle.textHint)
+                }
+                .buttonStyle(.plain)
+                .help("Open terminal")
             }
-            .buttonStyle(.plain)
-            .help("Open terminal")
 
             if showShortcuts { ActionBadge(label: hotkeyManager.shortcutLabel) }
 
@@ -1127,28 +1155,47 @@ private struct CollapsedPermissionPill: View {
 
             if showShortcuts { ActionBadge(label: "⌘L") }
 
-            Button { onAllow() } label: {
-                Text("Allow")
-                    .font(Constants.heading(size: 9, weight: .semibold))
+            if isOpenTerminalFallback {
+                Button {
+                    permission.transport.sendDecision(.allow)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "terminal.fill")
+                            .font(.system(size: 8))
+                        Text("Open Terminal")
+                            .font(Constants.heading(size: 9, weight: .semibold))
+                    }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(OverlayStyle.orange)
                     .clipShape(RoundedRectangle(cornerRadius: 5))
-            }
-            .buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button { onAllow() } label: {
+                    Text("Allow")
+                        .font(Constants.heading(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(OverlayStyle.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
 
-            Button { onDeny() } label: {
-                Text("Deny")
-                    .font(Constants.heading(size: 9, weight: .semibold))
-                    .foregroundStyle(OverlayStyle.denyText)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .contentShape(Rectangle())
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(OverlayStyle.denyBorder, lineWidth: 1))
+                Button { onDeny() } label: {
+                    Text("Deny")
+                        .font(Constants.heading(size: 9, weight: .semibold))
+                        .foregroundStyle(OverlayStyle.denyText)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(OverlayStyle.denyBorder, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -1159,7 +1206,18 @@ private struct CollapsedPermissionPill: View {
         .onTapGesture { onExpand() }
         .onChange(of: hotkeyManager.confirmTrigger) { _, _ in
             guard showShortcuts else { return }
-            onAllow()
+            if isOpenTerminalFallback {
+                focusTerminal(
+                    pid: permission.event.terminalPid,
+                    shellPid: permission.event.shellPid,
+                    projectDir: permission.event.cwd,
+                    sessionId: permission.event.sessionId,
+                    source: permission.event.source,
+                    sessions: sessionStore.sessions
+                )
+            } else {
+                onAllow()
+            }
         }
     }
 }
@@ -1179,8 +1237,11 @@ struct PermissionStackView: View {
         #endif
         if !pendingPermissionStore.pending.isEmpty {
             VStack(spacing: 4) {
+                let canBulkResolve = pendingPermissionStore.pending.allSatisfy {
+                    $0.transport.capabilities.contains(.permissionResponse)
+                }
                 // Bulk actions when multiple pending
-                if pendingPermissionStore.pending.count > 1 {
+                if pendingPermissionStore.pending.count > 1 && canBulkResolve {
                     HStack(spacing: 6) {
                         Text("\(pendingPermissionStore.pending.count) pending")
                             .font(Constants.body(size: 10, weight: .medium))
@@ -1331,4 +1392,3 @@ struct DialogScalePreview: View {
         .shadow(color: OverlayStyle.cardShadow, radius: 3, x: 0, y: 2)
     }
 }
-

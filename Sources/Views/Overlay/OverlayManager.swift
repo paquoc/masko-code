@@ -17,6 +17,9 @@ final class TransparentHostingController<Content: View>: NSHostingController<Con
 @MainActor
 @Observable
 final class OverlayManager {
+    private static let hasActivatedMascotKey = "hasActivatedMascot"
+    private static let minMascotSide: CGFloat = 50
+    private static let defaultInset: CGFloat = 40
     private(set) var isOverlayActive = false
     private(set) var currentURL: URL?
     private(set) var currentConfig: MaskoAnimationConfig?
@@ -30,6 +33,20 @@ final class OverlayManager {
     // Overlay enabled/disabled (notification-only mode)
     // Stored property so @Observable can track it for SwiftUI reactivity
     private(set) var isOverlayEnabled: Bool = UserDefaults.standard.bool(forKey: "overlay_enabled")
+
+    var hasEverActivatedMascot: Bool {
+        UserDefaults.standard.bool(forKey: Self.hasActivatedMascotKey)
+    }
+
+    static func startupMascotConfig(from mascots: [SavedMascot]) -> MaskoAnimationConfig? {
+        if let clippy = mascots.first(where: { $0.templateSlug == "clippy" }) {
+            return clippy.config
+        }
+        if let first = mascots.first {
+            return first.config
+        }
+        return MascotStore.loadBundledConfig(named: "clippy")
+    }
 
     // Snooze state
     private(set) var isSnoozed = false
@@ -90,23 +107,16 @@ final class OverlayManager {
         hideOverlay()
 
         let px = currentSizePixels
-        let size = CGSize(width: px, height: px)
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
 
-        // Restore position or default to bottom-right
         let savedX = UserDefaults.standard.double(forKey: "overlay_x")
         let savedY = UserDefaults.standard.double(forKey: "overlay_y")
-        let origin: CGPoint
-        if savedX > 0 || savedY > 0 {
-            origin = CGPoint(x: savedX, y: savedY)
-        } else {
-            origin = CGPoint(
-                x: screenFrame.maxX - size.width - 40,
-                y: screenFrame.minY + 40
-            )
-        }
-
-        let rect = NSRect(origin: origin, size: size)
+        let rect = Self.startingMascotRect(
+            savedX: savedX,
+            savedY: savedY,
+            sidePixels: px,
+            screenFrame: screenFrame
+        )
         let newPanel = OverlayPanel(contentRect: rect)
 
         let view = OverlayMascotView(
@@ -119,6 +129,7 @@ final class OverlayManager {
         )
 
         let controller = TransparentHostingController(rootView: view)
+        controller.sizingOptions = []
         newPanel.contentView = controller.view
         newPanel.contentViewController = controller
 
@@ -140,11 +151,16 @@ final class OverlayManager {
         self.panel = newPanel
         self.currentURL = url
         self.isOverlayActive = true
+        UserDefaults.standard.set(true, forKey: Self.hasActivatedMascotKey)
 
         // Save URL for restore on relaunch
         UserDefaults.standard.set(url.absoluteString, forKey: "overlay_url")
 
         setupObservers(for: newPanel)
+        DispatchQueue.main.async { [weak self, weak newPanel] in
+            guard let self, let newPanel else { return }
+            self.repairMascotPanelIfNeeded(newPanel)
+        }
     }
 
     /// Show overlay using a canvas config with a full state machine.
@@ -174,22 +190,16 @@ final class OverlayManager {
 
         // --- Mascot panel (fixed size, just the video) ---
         let px = currentSizePixels
-        let size = CGSize(width: px, height: px)
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
 
         let savedX = UserDefaults.standard.double(forKey: "overlay_x")
         let savedY = UserDefaults.standard.double(forKey: "overlay_y")
-        let origin: CGPoint
-        if savedX > 0 || savedY > 0 {
-            origin = CGPoint(x: savedX, y: savedY)
-        } else {
-            origin = CGPoint(
-                x: screenFrame.maxX - size.width - 40,
-                y: screenFrame.minY + 40
-            )
-        }
-
-        let mascotRect = NSRect(origin: origin, size: size)
+        let mascotRect = Self.startingMascotRect(
+            savedX: savedX,
+            savedY: savedY,
+            sidePixels: px,
+            screenFrame: screenFrame
+        )
         let mascotPanel = OverlayPanel(contentRect: mascotRect)
 
         let mascotView = OverlayStateMachineView(
@@ -202,6 +212,7 @@ final class OverlayManager {
         )
 
         let mascotController = TransparentHostingController(rootView: mascotView)
+        mascotController.sizingOptions = []
         mascotPanel.contentView = mascotController.view
         mascotPanel.contentViewController = mascotController
 
@@ -222,6 +233,7 @@ final class OverlayManager {
 
         let statsWidth: CGFloat = 180
         let statsController = TransparentHostingController(rootView: statsView)
+        statsController.sizingOptions = []
         let statsHeight = max(statsController.view.fittingSize.height, 20)
         let statsRect = NSRect(
             x: mascotRect.midX - statsWidth / 2,
@@ -295,8 +307,13 @@ final class OverlayManager {
         self.statsPanel = newStatsPanel
         self.permissionPanel = newPermPanel
         self.isOverlayActive = true
+        UserDefaults.standard.set(true, forKey: Self.hasActivatedMascotKey)
 
         setupObservers(for: mascotPanel)
+        DispatchQueue.main.async { [weak self, weak mascotPanel] in
+            guard let self, let mascotPanel else { return }
+            self.repairMascotPanelIfNeeded(mascotPanel)
+        }
 
         // Also reposition HUD when mascot moves (child windows move together,
         // but we need to keep the HUD anchored to the top)
@@ -1303,5 +1320,53 @@ final class OverlayManager {
             Task { @MainActor in self?.reassertPanel() }
         }
         workspaceObservers.append(appObserver)
+    }
+
+    private func repairMascotPanelIfNeeded(_ mascotPanel: OverlayPanel) {
+        let frame = mascotPanel.frame
+        let screen = mascotPanel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        let hasValidSize = frame.width >= Self.minMascotSide && frame.height >= Self.minMascotSide
+        let intersectsScreen = screen.intersects(frame)
+        guard !(hasValidSize && intersectsScreen) else { return }
+
+        let repaired = Self.clampedMascotRect(
+            origin: frame.origin,
+            side: CGFloat(currentSizePixels),
+            screenFrame: screen
+        )
+        mascotPanel.setFrame(repaired, display: true, animate: false)
+        savePosition()
+        scheduleHUDReposition()
+        print("[masko-desktop] Repaired mascot frame from \(frame) to \(repaired)")
+    }
+
+    static func startingMascotRect(savedX: Double, savedY: Double, sidePixels: Int, screenFrame: NSRect) -> NSRect {
+        let side = max(CGFloat(sidePixels), minMascotSide)
+        let hasSavedOrigin = savedX > 0 || savedY > 0
+        let fallbackOrigin = CGPoint(
+            x: screenFrame.maxX - side - defaultInset,
+            y: screenFrame.minY + defaultInset
+        )
+        let origin = hasSavedOrigin ? CGPoint(x: savedX, y: savedY) : fallbackOrigin
+        return clampedMascotRect(origin: origin, side: side, screenFrame: screenFrame)
+    }
+
+    static func clampedMascotRect(origin: CGPoint, side: CGFloat, screenFrame: NSRect) -> NSRect {
+        let requestedSide = max(side, minMascotSide)
+        let validScreen = normalizedScreenFrame(screenFrame, minimumSide: requestedSide)
+        let maxSideForScreen = max(min(validScreen.width, validScreen.height), minMascotSide)
+        let clampedSide = min(requestedSide, maxSideForScreen)
+        let maxX = max(validScreen.minX, validScreen.maxX - clampedSide)
+        let maxY = max(validScreen.minY, validScreen.maxY - clampedSide)
+        let clampedX = max(validScreen.minX, min(origin.x, maxX))
+        let clampedY = max(validScreen.minY, min(origin.y, maxY))
+        return NSRect(x: clampedX, y: clampedY, width: clampedSide, height: clampedSide)
+    }
+
+    private static func normalizedScreenFrame(_ screenFrame: NSRect, minimumSide: CGFloat) -> NSRect {
+        if screenFrame.width > 0, screenFrame.height > 0 {
+            return screenFrame
+        }
+        return NSRect(x: 0, y: 0, width: minimumSide, height: minimumSide)
     }
 }
