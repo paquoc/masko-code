@@ -3,11 +3,41 @@ import SwiftUI
 struct NotificationCenterView: View {
     @Environment(AppStore.self) var appStore
     @Environment(ViewClock.self) var clock
+    @State private var showClearAllConfirmation = false
 
     var body: some View {
         let _ = clock.tick
+        let isEmpty = appStore.notificationStore.notifications.isEmpty
+        let hasUnread = appStore.notificationStore.unreadCount > 0
+
         VStack(spacing: 0) {
-            if appStore.notificationStore.notifications.isEmpty {
+            HStack {
+                Text("Notifications")
+                    .font(Constants.heading(size: 22, weight: .semibold))
+                    .foregroundColor(Constants.textPrimary)
+                Spacer()
+                Button("Mark All Read") {
+                    appStore.notificationStore.markAllAsRead()
+                }
+                .buttonStyle(.plain)
+                .font(Constants.body(size: 13, weight: .medium))
+                .foregroundColor(hasUnread ? Constants.orangePrimary : Constants.textMuted)
+                .disabled(!hasUnread)
+
+                Button("Clear All") {
+                    showClearAllConfirmation = true
+                }
+                .buttonStyle(.plain)
+                .font(Constants.body(size: 13, weight: .medium))
+                .foregroundColor(isEmpty ? Constants.textMuted : Constants.destructiveRed)
+                .disabled(isEmpty)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider().overlay(Constants.border)
+
+            if isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "bell")
@@ -36,15 +66,13 @@ struct NotificationCenterView: View {
             }
         }
         .background(Constants.lightBackground)
-        .navigationTitle("Notifications")
-        .toolbar {
-            ToolbarItem {
-                Button("Mark All Read") {
-                    appStore.notificationStore.markAllAsRead()
-                }
-                .foregroundColor(Constants.orangePrimary)
-                .disabled(appStore.notificationStore.unreadCount == 0)
+        .alert("Clear All Notifications", isPresented: $showClearAllConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) {
+                appStore.notificationStore.clearAll()
             }
+        } message: {
+            Text("This will permanently delete all notifications. This action cannot be undone.")
         }
     }
 }

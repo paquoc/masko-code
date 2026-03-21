@@ -47,6 +47,7 @@ enum Constants {
     static let stage = Color(red: 35/255, green: 17/255, blue: 60/255).opacity(0.04)          // subtle hover
     static let orangePrimaryLight = Color(red: 249/255, green: 93/255, blue: 2/255).opacity(0.10)  // active item bg
     static let orangePrimarySubtle = Color(red: 249/255, green: 93/255, blue: 2/255).opacity(0.08) // selected row bg
+    static let destructiveRed = Color(.sRGB, red: 220/255, green: 38/255, blue: 38/255)         // #dc2626
 
     // MARK: - Typography
 
