@@ -25,7 +25,8 @@ enum ResolutionOutcome: String, Codable {
     case unknown  // answered from terminal — outcome not tracked
 }
 
-struct AppNotification: Identifiable, Codable {
+struct AppNotification: Identifiable, Codable, Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     let id: UUID
     let title: String
     let body: String?

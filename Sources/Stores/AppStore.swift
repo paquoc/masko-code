@@ -21,6 +21,7 @@ final class AppStore {
     let hotkeyManager = GlobalHotkeyManager()
     let sessionSwitcherStore = SessionSwitcherStore()
     let sessionFinishedStore = SessionFinishedStore()
+    let approvalHistoryStore = ApprovalHistoryStore()
 
     private(set) var eventProcessor: EventProcessor!
     private(set) var isReady = false
@@ -378,16 +379,21 @@ final class AppStore {
             }
         }
 
-        // Update permission notification with resolution outcome
+        // Write resolved permission to approval history
         pendingPermissionStore.onResolved = { [weak self] event, outcome in
             guard let self else { return }
-            for notification in self.notificationStore.notifications where
-                notification.resolutionOutcome == .pending &&
-                notification.category == .permissionRequest &&
-                notification.sessionId == event.sessionId {
-                self.notificationStore.updateResolution(notification.id, outcome: outcome)
-                break
-            }
+            let record = ApprovalRecord(
+                id: UUID(),
+                toolName: event.toolName ?? "Unknown",
+                toolInputSummary: event.toolInput?["command"]?.value as? String ?? event.toolInput?["file_path"]?.value as? String,
+                projectName: event.projectName,
+                assistantName: event.assistantDisplayName,
+                outcome: outcome,
+                createdAt: event.receivedAt,
+                resolvedAt: Date(),
+                sessionId: event.sessionId
+            )
+            self.approvalHistoryStore.append(record)
         }
     }
 

@@ -2,9 +2,11 @@ import SwiftUI
 
 struct SessionListView: View {
     @Environment(AppStore.self) var appStore
+    @Environment(ViewClock.self) var clock
     @State private var selectedSession: AgentSession?
 
     var body: some View {
+        let _ = clock.tick
         VStack(spacing: 0) {
             if appStore.sessionStore.sessions.isEmpty {
                 VStack(spacing: 12) {
@@ -73,7 +75,7 @@ private struct SessionRow: View {
                         .font(Constants.body(size: 11))
                         .foregroundColor(Constants.textMuted)
                     if let lastEvent = session.lastEventAt {
-                        Text("Last: \(lastEvent, style: .relative)")
+                        Text("Last: \(relativeTimeString(from: lastEvent))")
                             .font(Constants.body(size: 11))
                             .foregroundColor(Constants.textMuted)
                     }

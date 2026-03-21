@@ -2,24 +2,15 @@ import SwiftUI
 
 struct ApprovalRequestView: View {
     @Environment(AppStore.self) var appStore
-
-    var permissionNotifications: [AppNotification] {
-        appStore.notificationStore.notifications.filter {
-            $0.category == .permissionRequest
-        }
-    }
-
-    var pendingItems: [AppNotification] {
-        permissionNotifications.filter { $0.resolutionOutcome == .pending }
-    }
-
-    var historyItems: [AppNotification] {
-        permissionNotifications.filter { $0.resolutionOutcome != .pending }
-    }
+    @Environment(ViewClock.self) var clock
 
     var body: some View {
+        let _ = clock.tick
+        let pendingItems = appStore.pendingPermissionStore.pending
+        let historyItems = appStore.approvalHistoryStore.history
+
         VStack(spacing: 0) {
-            if permissionNotifications.isEmpty {
+            if pendingItems.isEmpty && historyItems.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "hand.raised")
@@ -41,8 +32,8 @@ struct ApprovalRequestView: View {
                         // Pending section
                         if !pendingItems.isEmpty {
                             sectionHeader("Pending", count: pendingItems.count)
-                            ForEach(pendingItems) { notification in
-                                ApprovalRow(notification: notification, isPending: true)
+                            ForEach(pendingItems) { permission in
+                                PendingApprovalRow(permission: permission)
                                     .environment(appStore)
                                 Divider().overlay(Constants.border)
                             }
@@ -51,9 +42,8 @@ struct ApprovalRequestView: View {
                         // History section
                         if !historyItems.isEmpty {
                             sectionHeader("History", count: historyItems.count)
-                            ForEach(historyItems) { notification in
-                                ApprovalRow(notification: notification, isPending: false)
-                                    .environment(appStore)
+                            ForEach(historyItems) { record in
+                                HistoryApprovalRow(record: record)
                                 Divider().overlay(Constants.border)
                             }
                         }
@@ -83,64 +73,106 @@ struct ApprovalRequestView: View {
     }
 }
 
-// MARK: - Approval Row
+// MARK: - Pending Approval Row
 
-private struct ApprovalRow: View {
+private struct PendingApprovalRow: View {
     @Environment(AppStore.self) var appStore
-    let notification: AppNotification
-    let isPending: Bool
+    let permission: PendingPermission
 
     var body: some View {
         HStack(spacing: 12) {
             // Icon
-            Image(systemName: isPending ? "exclamationmark.triangle.fill" : outcomeIcon)
+            Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 14))
-                .foregroundColor(isPending ? Constants.orangePrimary : outcomeColor)
+                .foregroundColor(Constants.orangePrimary)
                 .frame(width: 24)
 
             // Content
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(notification.title)
+                    Text(permission.toolName)
                         .font(Constants.heading(size: 14, weight: .semibold))
                         .foregroundColor(Constants.textPrimary)
                     Spacer()
-                    if !isPending {
-                        outcomeBadge
-                    }
                 }
 
-                if let body = notification.body {
-                    Text(body)
+                if let projectName = permission.event.projectName {
+                    Text(projectName)
                         .font(Constants.body(size: 13))
                         .foregroundColor(Constants.textMuted)
                         .lineLimit(2)
                 }
 
                 HStack {
-                    Text(notification.createdAt, style: .relative)
+                    Text(relativeTimeString(from: permission.event.receivedAt))
                         .font(Constants.body(size: 11))
                         .foregroundColor(Constants.textMuted)
 
-                    if let resolvedAt = notification.resolvedAt {
-                        Text("·")
-                            .foregroundColor(Constants.textMuted)
-                        Text("resolved ")
-                            .font(Constants.body(size: 11))
-                            .foregroundColor(Constants.textMuted)
-                        + Text(resolvedAt, style: .relative)
-                            .font(Constants.body(size: 11))
-                            .foregroundColor(Constants.textMuted)
-                    }
+                    Text("·")
+                        .foregroundColor(Constants.textMuted)
+                    Text(permission.event.assistantDisplayName)
+                        .font(Constants.body(size: 11))
+                        .foregroundColor(Constants.textMuted)
 
                     Spacer()
 
-                    if isPending {
-                        Button("Dismiss") {
-                            appStore.notificationStore.markAsRead(notification.id)
-                        }
-                        .buttonStyle(BrandGhostButton(color: Constants.orangePrimary))
+                    Button("Deny") {
+                        appStore.pendingPermissionStore.resolve(id: permission.id, decision: .deny)
                     }
+                    .buttonStyle(BrandGhostButton(color: Color(.sRGB, red: 220/255, green: 38/255, blue: 38/255)))
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: - History Approval Row
+
+private struct HistoryApprovalRow: View {
+    let record: ApprovalRecord
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: outcomeIcon)
+                .font(.system(size: 14))
+                .foregroundColor(outcomeColor)
+                .frame(width: 24)
+
+            // Content
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(record.toolName)
+                        .font(Constants.heading(size: 14, weight: .semibold))
+                        .foregroundColor(Constants.textPrimary)
+                    Spacer()
+                    outcomeBadge
+                }
+
+                if let summary = record.toolInputSummary {
+                    Text(summary)
+                        .font(Constants.body(size: 13))
+                        .foregroundColor(Constants.textMuted)
+                        .lineLimit(2)
+                }
+
+                HStack {
+                    Text(relativeTimeString(from: record.createdAt))
+                        .font(Constants.body(size: 11))
+                        .foregroundColor(Constants.textMuted)
+
+                    Text("·")
+                        .foregroundColor(Constants.textMuted)
+                    Text("resolved ")
+                        .font(Constants.body(size: 11))
+                        .foregroundColor(Constants.textMuted)
+                    + Text(relativeTimeString(from: record.resolvedAt))
+                        .font(Constants.body(size: 11))
+                        .foregroundColor(Constants.textMuted)
+
+                    Spacer()
                 }
             }
         }
@@ -151,7 +183,7 @@ private struct ApprovalRow: View {
     // MARK: - Outcome helpers
 
     private var outcomeIcon: String {
-        switch notification.resolutionOutcome {
+        switch record.outcome {
         case .allowed: return "checkmark.circle.fill"
         case .denied: return "xmark.circle.fill"
         case .expired: return "clock.fill"
@@ -161,7 +193,7 @@ private struct ApprovalRow: View {
     }
 
     private var outcomeColor: Color {
-        switch notification.resolutionOutcome {
+        switch record.outcome {
         case .allowed: return Color(.sRGB, red: 22/255, green: 163/255, blue: 74/255)
         case .denied: return Color(.sRGB, red: 220/255, green: 38/255, blue: 38/255)
         case .expired: return Constants.textMuted
@@ -182,7 +214,7 @@ private struct ApprovalRow: View {
     }
 
     private var badgeConfig: (String, Color) {
-        switch notification.resolutionOutcome {
+        switch record.outcome {
         case .allowed:
             return ("Allowed", Color(.sRGB, red: 22/255, green: 163/255, blue: 74/255))
         case .denied:

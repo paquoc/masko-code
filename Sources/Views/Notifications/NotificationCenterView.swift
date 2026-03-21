@@ -2,8 +2,10 @@ import SwiftUI
 
 struct NotificationCenterView: View {
     @Environment(AppStore.self) var appStore
+    @Environment(ViewClock.self) var clock
 
     var body: some View {
+        let _ = clock.tick
         VStack(spacing: 0) {
             if appStore.notificationStore.notifications.isEmpty {
                 VStack(spacing: 12) {
@@ -82,7 +84,7 @@ struct NotificationRow: View {
 
                         Spacer()
 
-                        Text(notification.createdAt, style: .relative)
+                        Text(relativeTimeString(from: notification.createdAt))
                             .font(Constants.body(size: 11))
                             .foregroundColor(Constants.textMuted)
                     }

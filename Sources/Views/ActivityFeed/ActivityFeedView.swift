@@ -2,10 +2,12 @@ import SwiftUI
 
 struct ActivityFeedView: View {
     @Environment(AppStore.self) var appStore
+    @Environment(ViewClock.self) var clock
     @State private var filterType: HookEventType?
     @State private var searchText = ""
 
     var body: some View {
+        let _ = clock.tick
         VStack(spacing: 0) {
             // Filter bar
             HStack {
@@ -119,7 +121,7 @@ struct EventRow: View {
                             .foregroundColor(Constants.textMuted)
                     }
                     Spacer()
-                    Text(event.receivedAt, style: .relative)
+                    Text(relativeTimeString(from: event.receivedAt))
                         .font(Constants.body(size: 11))
                         .foregroundColor(Constants.textMuted)
                 }

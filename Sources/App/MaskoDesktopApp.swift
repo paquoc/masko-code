@@ -142,6 +142,7 @@ struct MaskoDesktopApp: App {
                 .environment(appStore)
                 .environment(overlayManager)
                 .environment(appUpdater)
+                .environment(ViewClock.shared)
                 .frame(minWidth: 800, minHeight: 500)
                 .preferredColorScheme(.light)
                 .task {
@@ -227,6 +228,7 @@ struct MaskoDesktopApp: App {
                 .environment(appStore)
                 .environment(overlayManager)
                 .environment(appUpdater)
+                .environment(ViewClock.shared)
         }
     }
 

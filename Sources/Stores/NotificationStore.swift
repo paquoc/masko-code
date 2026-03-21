@@ -7,8 +7,11 @@ final class NotificationStore {
     private var persistTimer: Timer?
     private var isDirty = false
 
+    private(set) var unreadCount: Int = 0
+
     init() {
         notifications = LocalStorage.load([AppNotification].self, from: Self.filename) ?? []
+        recalculateUnreadCount()
     }
 
     /// Debounced persist — batches rapid writes
@@ -27,14 +30,8 @@ final class NotificationStore {
         LocalStorage.save(notifications, to: Self.filename)
     }
 
-    var unreadCount: Int {
-        notifications.filter { !$0.isRead }.count
-    }
-
-    var pendingApprovalCount: Int {
-        notifications.filter {
-            $0.category == .permissionRequest && $0.resolutionOutcome == .pending
-        }.count
+    private func recalculateUnreadCount() {
+        unreadCount = notifications.filter { !$0.isRead }.count
     }
 
     var recent: [AppNotification] {
@@ -48,6 +45,7 @@ final class NotificationStore {
             notifications.removeLast(notifications.count - 500)
         }
         schedulePersist()
+        recalculateUnreadCount()
     }
 
     func markAsRead(_ id: UUID) {
@@ -55,16 +53,7 @@ final class NotificationStore {
             notifications[index].isRead = true
             notifications[index].readAt = Date()
             schedulePersist()
-        }
-    }
-
-    func updateResolution(_ id: UUID, outcome: ResolutionOutcome) {
-        if let index = notifications.firstIndex(where: { $0.id == id }) {
-            notifications[index].resolutionOutcome = outcome
-            notifications[index].resolvedAt = Date()
-            notifications[index].isRead = true
-            notifications[index].readAt = notifications[index].readAt ?? Date()
-            schedulePersist()
+            recalculateUnreadCount()
         }
     }
 
@@ -76,5 +65,6 @@ final class NotificationStore {
             changed = true
         }
         if changed { schedulePersist() }
+        recalculateUnreadCount()
     }
 }

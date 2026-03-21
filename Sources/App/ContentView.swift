@@ -94,7 +94,7 @@ struct ContentView: View {
     private func badgeCount(for section: SidebarSection) -> Int {
         switch section {
         case .notifications: appStore.notificationStore.unreadCount
-        case .approvals: appStore.notificationStore.pendingApprovalCount
+        case .approvals: appStore.pendingPermissionStore.pending.count
         default: 0
         }
     }
