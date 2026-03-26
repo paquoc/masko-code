@@ -11,6 +11,7 @@
 <p align="center">
   <a href="https://github.com/RousselPaul/masko-code/releases/latest"><img src="https://img.shields.io/github/v/release/RousselPaul/masko-code?style=flat-square&color=f95d02" alt="Release" /></a>
   <img src="https://img.shields.io/badge/macOS-14.0%2B-black?style=flat-square&logo=apple" alt="macOS 14+" />
+  <img src="https://img.shields.io/badge/Windows-11%2B-0078D4?style=flat-square&logo=windows" alt="Windows 11+" />
   <img src="https://img.shields.io/badge/Universal-arm64%20%2B%20x86__64-black?style=flat-square" alt="Universal Binary" />
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" />
 </p>
@@ -98,22 +99,42 @@ Click a session in the dashboard or click the mascot overlay to jump to the righ
 
 ## Requirements
 
+**macOS:**
 - macOS 14.0+ (Sonoma)
 - Apple Silicon or Intel Mac
+
+**Windows:**
+- Windows 11 (or Windows 10 1803+)
+- WebView2 runtime (pre-installed on Windows 11)
+
+**Both platforms:**
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and/or [Codex CLI](https://github.com/openai/codex) installed
 
 ## Install
 
-Download the latest `.dmg` from [**Releases**](https://github.com/RousselPaul/masko-code/releases/latest).
+**macOS:** Download the latest `.dmg` from [**Releases**](https://github.com/RousselPaul/masko-code/releases/latest).
+
+**Windows:** Download the `.exe` installer from [**Releases**](https://github.com/RousselPaul/masko-code/releases/latest). *(coming soon)*
 
 ## Build from Source
 
+**macOS (Swift):**
 ```bash
 git clone https://github.com/RousselPaul/masko-code.git
 cd masko-code
 swift build
 swift run
 ```
+
+**Windows (Tauri v2):**
+```bash
+git clone https://github.com/RousselPaul/masko-code.git
+cd masko-code/masko-windows
+npm install
+npm run tauri dev
+```
+
+Prerequisites: [Rust](https://rustup.rs/), [Node.js 18+](https://nodejs.org/), [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with C++ workload.
 
 ## Local Codex Smoke Test
 
@@ -144,6 +165,7 @@ The automated mode drives Codex through its own PTY and verifies Masko ingestion
 
 ## Project Structure
 
+**macOS (Swift):**
 ```
 Sources/
 ├── App/             # App entry point & lifecycle
@@ -158,6 +180,44 @@ extensions/
 ├── vscode/          # VS Code/Cursor click-to-focus extension
 └── jetbrains/       # JetBrains (PyCharm, IntelliJ, etc.) terminal focus plugin
 ```
+
+**Windows (Tauri v2):**
+```
+masko-windows/
+├── src/                    # SolidJS frontend
+│   ├── models/             # TypeScript interfaces (ported from Swift)
+│   ├── stores/             # SolidJS reactive stores
+│   ├── services/           # Event processor, state machine, IPC
+│   ├── components/         # UI components (overlay, dashboard)
+│   └── assets/             # Fonts, images, bundled mascot configs
+├── src-tauri/              # Rust backend
+│   └── src/
+│       ├── server.rs       # Axum HTTP server (port 45832)
+│       ├── hook_installer.rs # Hook script + settings.json management
+│       ├── tray.rs         # System tray
+│       └── commands.rs     # Tauri IPC commands
+└── plans/                  # Implementation plan & research
+```
+
+## Windows Port Status
+
+The Windows version is built with **Tauri v2** (Rust + SolidJS + WebView2). Current progress:
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Project scaffolding | Done | Tauri v2 + SolidJS + Tailwind CSS v4 |
+| Core models & state | Done | All Swift models/stores ported to TypeScript |
+| HTTP server | Done | Axum on port 45832, permission connection holding |
+| Hook installer | Done | Bash hook script, auto-install into `~/.claude/settings.json` |
+| Overlay window | Done | Transparent always-on-top window, WebM VP9 alpha video |
+| Animation state machine | Done | Full port (280 lines), condition evaluation, Any State edges |
+| System tray | Done | Tray icon + context menu |
+| Permission UI | Pending | Speech bubbles, approve/deny, question answering |
+| Global hotkeys | Pending | Ctrl+M toggle, Ctrl+1-9 select, double-tap Ctrl |
+| Dashboard | Partial | Basic layout, needs full session/notification views |
+| Auto-update & packaging | Pending | NSIS installer, updater plugin |
+
+See [plans/20260326-1400-tauri-v2-windows-port/plan.md](plans/20260326-1400-tauri-v2-windows-port/plan.md) for the full implementation plan.
 
 ## Contributing
 
