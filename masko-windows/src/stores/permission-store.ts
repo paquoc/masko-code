@@ -40,11 +40,24 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
   const perm = pending.find((p) => p.id === id);
   if (!perm) return;
 
-  // Build decision payload
-  const payload: any = { permission: decision };
+  // Build Claude Code hook response format:
+  // {"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow|deny",...}}}
+  const hookDecision: any = { behavior: decision };
   if (suggestion) {
-    payload.suggestion = suggestion;
+    // Permission suggestions (e.g. "always allow in folder")
+    if (suggestion.type === "updatedInput") {
+      hookDecision.updatedInput = suggestion;
+    } else if (suggestion.rules) {
+      hookDecision.updatedPermissions = [suggestion];
+    }
   }
+
+  const payload = {
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: hookDecision,
+    },
+  };
 
   // Send resolution to Rust backend → HTTP response to hook script
   try {

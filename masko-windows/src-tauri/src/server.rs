@@ -102,8 +102,13 @@ async fn handle_hook(
         match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
             Ok(Ok(decision)) => {
                 let body = serde_json::to_string(&decision).unwrap_or_default();
-                // Check if decision is a deny
-                if decision.get("permission").and_then(|v| v.as_str()) == Some("deny") {
+                println!("[masko] Permission resolved, body: {}", body);
+                // Check if decision contains deny behavior
+                let is_deny = decision
+                    .pointer("/hookSpecificOutput/decision/behavior")
+                    .and_then(|v| v.as_str())
+                    == Some("deny");
+                if is_deny {
                     return (StatusCode::FORBIDDEN, body);
                 }
                 (StatusCode::OK, body)
