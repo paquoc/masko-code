@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/ts-json-schema-generator/refs/heads/master/tauri-v2-schema.json",
+  "identifier": "main-capability",
+  "description": "Main window and overlay permissions",
+  "windows": ["main", "overlay"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-focus",
+    "core:window:allow-center",
+    "core:webview:allow-create-webview-window",
+    "global-shortcut:default",
+    "notification:default"
+  ]
+}
