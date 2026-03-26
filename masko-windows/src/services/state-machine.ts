@@ -342,6 +342,8 @@ export class OverlayStateMachine {
 
   // --- Transition Playback ---
 
+  private transitionTimeout?: ReturnType<typeof setTimeout>;
+
   private playTransition(edge: MaskoAnimationEdge): void {
     if (this.phase !== "looping" && this.phase !== "idle") return;
 
@@ -352,11 +354,24 @@ export class OverlayStateMachine {
     }
 
     this.nodeTimeGeneration++;
+    if (this.transitionTimeout) clearTimeout(this.transitionTimeout);
     this.pendingEdge = edge;
     this._currentVideoUrl[1](videoUrl);
     this._playbackRate[1](edge.speed ?? 1.0);
     this._isLoopVideo[1](false);
     this._phase[1]("transitioning");
+
+    // Fallback: if video ended event never fires (network error, codec issue),
+    // force arrival after duration + 2s
+    const timeoutMs = (edge.duration || 4) * 1000 + 2000;
+    const gen = this.nodeTimeGeneration;
+    this.transitionTimeout = setTimeout(() => {
+      if (this.nodeTimeGeneration === gen && this.phase === "transitioning" && this.pendingEdge === edge) {
+        console.warn(`[masko] Transition timeout — forcing arrival at ${edge.target}`);
+        this.pendingEdge = undefined;
+        this.arriveAtNode(edge.target);
+      }
+    }, timeoutMs);
   }
 
   /** Get video URL — prefer webm for Windows, fallback to hevc */

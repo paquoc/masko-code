@@ -76,6 +76,8 @@ function MascotOverlay() {
       win.setSize(new LogicalSize(320, 520)).catch(() => {});
     } else {
       win.setSize(new LogicalSize(200, 200)).catch(() => {});
+      // All permissions resolved — reset alert state so mascot returns to idle/working
+      stateMachine()?.setAgentStateInput("isAlert", conditionBool(false));
     }
   });
 
