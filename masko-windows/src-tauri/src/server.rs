@@ -25,8 +25,7 @@ pub struct AppState {
     pub port: u16,
 }
 
-pub async fn start(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let pending_permissions: PendingPermissions = Arc::new(Mutex::new(HashMap::new()));
+pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermissions) -> Result<(), Box<dyn std::error::Error>> {
 
     for offset in 0..MAX_PORT_ATTEMPTS {
         let port = DEFAULT_PORT + offset;

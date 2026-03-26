@@ -11,12 +11,13 @@ pub async fn get_server_status() -> Result<serde_json::Value, String> {
     }))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn resolve_permission(
     pending: State<'_, PendingPermissions>,
     request_id: String,
     decision: serde_json::Value,
 ) -> Result<(), String> {
+    println!("[masko] resolve_permission called: id={}", request_id);
     crate::server::resolve(&pending, request_id, decision).await
 }
 
