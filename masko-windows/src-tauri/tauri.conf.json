@@ -37,6 +37,7 @@
         "resizable": false,
         "visible": false,
         "focus": false,
+        "shadow": false,
         "x": 100,
         "y": 100
       }
