@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ConnectionDoctorView: View {
     @Environment(AppStore.self) var appStore
+    @Environment(\.dismiss) private var dismiss
     @State private var doctor: ConnectionDoctor?
     @State private var reportCode: String?
     @State private var isSendingReport = false
@@ -23,6 +24,12 @@ struct ConnectionDoctorView: View {
                         .foregroundStyle(Constants.textMuted)
                 }
                 Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Constants.textMuted)
+                }
+                .buttonStyle(.plain)
             }
             .padding()
 
