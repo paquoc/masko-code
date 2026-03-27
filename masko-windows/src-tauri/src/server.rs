@@ -50,6 +50,19 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                     .emit("server-status", serde_json::json!({"running": true, "port": port}))
                     .ok();
 
+                // Fetch usage on startup so the bar is visible immediately
+                {
+                    let handle = app_handle.clone();
+                    tokio::spawn(async move {
+                        if let Some(usage) = crate::usage::fetch_usage().await {
+                            handle.emit("usage-update", &usage).ok();
+                            println!("[masko] Initial usage: session={:?}%, weekly={:?}%",
+                                usage.session_percent.map(|v| (v * 100.0).round()),
+                                usage.weekly_percent.map(|v| (v * 100.0).round()));
+                        }
+                    });
+                }
+
                 axum::serve(listener, app).await?;
                 return Ok(());
             }
@@ -123,8 +136,8 @@ async fn handle_hook(
         // Fire-and-forget: emit to frontend and respond immediately
         state.app_handle.emit("hook-event", &event).ok();
 
-        // On Stop events, fetch usage data in background and emit to frontend
-        if event.hook_event_name == "Stop" {
+        // On Stop/SessionStart events, fetch usage data in background and emit to frontend
+        if event.hook_event_name == "Stop" || event.hook_event_name == "SessionStart" {
             let handle = state.app_handle.clone();
             tokio::spawn(async move {
                 if let Some(usage) = crate::usage::fetch_usage().await {

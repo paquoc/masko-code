@@ -83,7 +83,7 @@ function MascotOverlay() {
     if (hasPending) {
       win.setSize(new LogicalSize(320, 520)).catch(() => {});
     } else {
-      win.setSize(new LogicalSize(200, 220)).catch(() => {});
+      win.setSize(new LogicalSize(200, 240)).catch(() => {});
       // All permissions resolved — reset alert state so mascot returns to idle/working
       stateMachine()?.setAgentStateInput("isAlert", conditionBool(false));
     }
@@ -173,6 +173,7 @@ function MascotOverlay() {
   // Listen for usage updates (emitted on Stop events)
   onMount(async () => {
     const unlisten = await listen<UsageData>("usage-update", (e) => {
+      console.log("[masko] usage-update received:", JSON.stringify(e.payload));
       setUsage(e.payload);
     });
     onCleanup(unlisten);
