@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store";
 import { createSignal } from "solid-js";
+import { emit } from "@tauri-apps/api/event";
 import type { SavedMascot, MaskoAnimationConfig } from "../models/mascot-config";
 import { parseMascotConfig } from "../models/mascot-config";
 
@@ -25,20 +26,23 @@ const [activeMascotId, setActiveMascotId] = createSignal<string | null>(
   localStorage.getItem(ACTIVE_KEY),
 );
 
-/** Load bundled mascot configs from assets */
+const BUNDLED_SLUGS = ["clippy", "masko", "otto", "nugget", "rusty", "cupidon", "madame-patate"];
+
+/** Load bundled mascot configs from assets, adding any missing ones */
 export async function loadBundledMascots(): Promise<void> {
-  if (mascots.length > 0) return; // Already loaded
+  const existingSlugs = new Set(mascots.map((m) => m.templateSlug));
+  const missingSlugs = BUNDLED_SLUGS.filter((s) => !existingSlugs.has(s));
 
-  const slugs = ["clippy", "masko", "otto", "nugget", "rusty", "cupidon", "madame-patate"];
-  const loaded: SavedMascot[] = [];
+  if (missingSlugs.length === 0) return; // All bundled mascots present
 
-  for (const slug of slugs) {
+  const newMascots: SavedMascot[] = [];
+  for (const slug of missingSlugs) {
     try {
       const resp = await fetch(`/src/assets/mascots/${slug}.json`);
       if (!resp.ok) continue;
       const raw = await resp.json();
       const config = parseMascotConfig(raw);
-      loaded.push({
+      newMascots.push({
         id: crypto.randomUUID(),
         name: config.name,
         config,
@@ -50,9 +54,12 @@ export async function loadBundledMascots(): Promise<void> {
     }
   }
 
-  if (loaded.length > 0) {
-    setMascots(loaded);
-    persistMascots(loaded);
+  if (newMascots.length > 0) {
+    setMascots((prev) => {
+      const next = [...prev, ...newMascots];
+      persistMascots(next);
+      return next;
+    });
   }
 }
 
@@ -87,6 +94,11 @@ export function setActiveMascot(id: string | null): void {
   setActiveMascotId(id);
   if (id) {
     localStorage.setItem(ACTIVE_KEY, id);
+    // Notify overlay window about mascot change
+    const mascot = mascots.find((m) => m.id === id);
+    if (mascot) {
+      emit("mascot-changed", { slug: mascot.templateSlug, config: mascot.config }).catch(() => {});
+    }
   } else {
     localStorage.removeItem(ACTIVE_KEY);
   }

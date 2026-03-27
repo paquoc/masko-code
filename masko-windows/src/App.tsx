@@ -1,19 +1,41 @@
-import { createSignal, onMount, For, Show } from "solid-js";
+import { createSignal, onMount, Show, type JSX } from "solid-js";
 import { appStore } from "./stores/app-store";
+import SessionList from "./components/dashboard/SessionList";
+import NotificationCenter from "./components/dashboard/NotificationCenter";
+import MascotGallery from "./components/dashboard/MascotGallery";
+import ActivityFeed from "./components/dashboard/ActivityFeed";
+import SettingsPanel from "./components/dashboard/SettingsPanel";
+
+type Tab = "sessions" | "notifications" | "mascots" | "activity" | "settings";
+
+const TAB_META: Record<Tab, { label: string; icon: string }> = {
+  sessions: { label: "Sessions", icon: "⚡" },
+  notifications: { label: "Notifications", icon: "🔔" },
+  mascots: { label: "Mascots", icon: "🎭" },
+  activity: { label: "Activity", icon: "📋" },
+  settings: { label: "Settings", icon: "⚙️" },
+};
 
 function App() {
-  const [serverStatus, setServerStatus] = createSignal("Starting...");
+  const [activeTab, setActiveTab] = createSignal<Tab>("sessions");
 
   onMount(async () => {
     await appStore.start();
-    setServerStatus("Listening on 45832");
   });
 
+  const tabContent: Record<Tab, () => JSX.Element> = {
+    sessions: () => <SessionList />,
+    notifications: () => <NotificationCenter />,
+    mascots: () => <MascotGallery />,
+    activity: () => <ActivityFeed />,
+    settings: () => <SettingsPanel />,
+  };
+
   return (
-    <div class="min-h-screen bg-bg-light">
-      {/* Header */}
+    <div class="h-screen flex flex-col bg-bg-light">
+      {/* Title bar */}
       <header
-        class="h-10 flex items-center px-4 bg-surface border-b border-border select-none"
+        class="h-10 flex items-center px-4 bg-surface border-b border-border select-none shrink-0"
         data-tauri-drag-region
       >
         <img src="/src/assets/images/logo.png" alt="Masko" class="h-5 w-5 mr-2" />
@@ -23,133 +45,67 @@ function App() {
         <Show when={appStore.hasUnreadNotifications}>
           <div class="w-2 h-2 rounded-full bg-orange-primary ml-1" />
         </Show>
-        <span class="ml-auto text-xs text-text-muted font-body">
-          {serverStatus()}
-        </span>
       </header>
 
-      {/* Dashboard content */}
-      <main class="p-6">
-        <h1 class="font-heading text-2xl font-bold text-text-primary mb-4">
-          Dashboard
-        </h1>
+      {/* Main layout: sidebar + content */}
+      <div class="flex flex-1 min-h-0">
+        {/* Sidebar */}
+        <nav class="w-48 bg-surface border-r border-border flex flex-col py-2 shrink-0">
+          {(Object.keys(TAB_META) as Tab[]).map((tab) => (
+            <SidebarItem
+              tab={tab}
+              active={activeTab() === tab}
+              onClick={() => setActiveTab(tab)}
+              badge={tabBadge(tab)}
+            />
+          ))}
+        </nav>
 
-        <div class="grid grid-cols-2 gap-4">
-          {/* Sessions card */}
-          <div class="bg-surface rounded-[--radius-card] border border-border p-4 shadow-sm">
-            <h2 class="font-heading text-lg font-semibold mb-2">
-              Sessions
-              <Show when={appStore.sessions.activeSessions.length > 0}>
-                <span class="ml-2 text-xs bg-orange-primary text-white px-1.5 py-0.5 rounded-full">
-                  {appStore.sessions.activeSessions.length}
-                </span>
-              </Show>
-            </h2>
-            <Show
-              when={appStore.sessions.sessions.length > 0}
-              fallback={<p class="text-text-muted text-sm">No active sessions</p>}
-            >
-              <div class="space-y-2">
-                <For each={appStore.sessions.sessions}>
-                  {(session) => (
-                    <div class="flex items-center gap-2 text-sm">
-                      <div
-                        class="w-2 h-2 rounded-full"
-                        classList={{
-                          "bg-green-500": session.status === "active" && session.phase === "working",
-                          "bg-yellow-500": session.status === "active" && session.phase === "waiting",
-                          "bg-gray-400": session.status === "active" && session.phase === "idle",
-                          "bg-red-400": session.status === "ended",
-                        }}
-                      />
-                      <span class="font-body text-text-primary">
-                        {session.projectName || "Unknown"}
-                      </span>
-                      <span class="text-text-muted text-xs ml-auto">
-                        {session.eventCount} events
-                      </span>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-
-          {/* Notifications card */}
-          <div class="bg-surface rounded-[--radius-card] border border-border p-4 shadow-sm">
-            <h2 class="font-heading text-lg font-semibold mb-2">
-              Notifications
-              <Show when={appStore.notifications.unreadCount > 0}>
-                <span class="ml-2 text-xs bg-orange-primary text-white px-1.5 py-0.5 rounded-full">
-                  {appStore.notifications.unreadCount}
-                </span>
-              </Show>
-            </h2>
-            <Show
-              when={appStore.notifications.notifications.length > 0}
-              fallback={<p class="text-text-muted text-sm">No notifications</p>}
-            >
-              <div class="space-y-2 max-h-48 overflow-y-auto">
-                <For each={appStore.notifications.notifications.slice(0, 5)}>
-                  {(notif) => (
-                    <div class="text-sm border-l-2 pl-2" classList={{
-                      "border-orange-primary": notif.priority === "urgent" || notif.priority === "high",
-                      "border-blue-400": notif.priority === "normal",
-                      "border-gray-300": notif.priority === "low",
-                    }}>
-                      <div class="font-body font-medium text-text-primary">{notif.title}</div>
-                      <div class="text-text-muted text-xs truncate">{notif.body}</div>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-
-          {/* Mascots card */}
-          <div class="bg-surface rounded-[--radius-card] border border-border p-4 shadow-sm">
-            <h2 class="font-heading text-lg font-semibold mb-2">Mascots</h2>
-            <Show
-              when={appStore.mascots.mascots.length > 0}
-              fallback={<p class="text-text-muted text-sm">Loading mascots...</p>}
-            >
-              <div class="flex flex-wrap gap-2">
-                <For each={appStore.mascots.mascots}>
-                  {(mascot) => (
-                    <button
-                      class="px-3 py-1.5 rounded-[--radius-card-sm] text-sm font-body border transition-colors"
-                      classList={{
-                        "bg-orange-primary text-white border-orange-primary":
-                          appStore.mascots.activeMascotId === mascot.id,
-                        "bg-surface text-text-primary border-border hover:border-border-hover":
-                          appStore.mascots.activeMascotId !== mascot.id,
-                      }}
-                      onClick={() => appStore.mascots.setActiveMascot(mascot.id)}
-                    >
-                      {mascot.name}
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-
-          {/* Server status card */}
-          <div class="bg-surface rounded-[--radius-card] border border-border p-4 shadow-sm">
-            <h2 class="font-heading text-lg font-semibold mb-2">Server</h2>
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full bg-green-500" />
-              <span class="text-sm text-text-muted font-body">{serverStatus()}</span>
-            </div>
-            <div class="mt-3 space-y-1 text-xs text-text-muted">
-              <div>Events received: {appStore.events.events.length}</div>
-              <div>Active sessions: {appStore.sessions.activeSessions.length}</div>
-              <div>Pending permissions: {appStore.permissions.pending.length}</div>
-            </div>
-          </div>
-        </div>
-      </main>
+        {/* Content */}
+        <main class="flex-1 overflow-y-auto p-6">
+          <h2 class="font-heading text-xl font-bold text-text-primary mb-4">
+            {TAB_META[activeTab()].label}
+          </h2>
+          {tabContent[activeTab()]()}
+        </main>
+      </div>
     </div>
+  );
+}
+
+function tabBadge(tab: Tab): number {
+  switch (tab) {
+    case "sessions": return appStore.sessions.activeSessions.length;
+    case "notifications": return appStore.notifications.unreadCount;
+    case "activity": return 0;
+    default: return 0;
+  }
+}
+
+function SidebarItem(props: {
+  tab: Tab;
+  active: boolean;
+  onClick: () => void;
+  badge: number;
+}) {
+  const meta = TAB_META[props.tab];
+  return (
+    <button
+      class="flex items-center gap-2.5 px-4 py-2 text-sm font-body text-left transition-colors w-full"
+      classList={{
+        "bg-orange-subtle text-orange-primary font-medium": props.active,
+        "text-text-muted hover:bg-orange-subtle/50 hover:text-text-primary": !props.active,
+      }}
+      onClick={props.onClick}
+    >
+      <span class="text-base w-5 text-center">{meta.icon}</span>
+      <span class="flex-1">{meta.label}</span>
+      <Show when={props.badge > 0}>
+        <span class="text-[10px] bg-orange-primary text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+          {props.badge}
+        </span>
+      </Show>
+    </button>
   );
 }
 

@@ -40,19 +40,50 @@ function MascotOverlay() {
   // Track current video src to avoid reloading the same URL
   let currentVideoSrc = "";
 
-  // Load default mascot config
-  onMount(async () => {
+  // Load mascot config from a slug (fetches the bundled JSON)
+  async function loadMascotBySlug(slug: string) {
     try {
-      const resp = await fetch("/src/assets/mascots/clippy.json");
+      const resp = await fetch(`/src/assets/mascots/${slug}.json`);
       if (!resp.ok) return;
       const raw = await resp.json();
-      const config = parseMascotConfig(raw);
-      const sm = new OverlayStateMachine(config);
-      setStateMachine(sm);
-      sm.start();
+      applyMascotConfig(parseMascotConfig(raw));
     } catch (e) {
-      console.error("[masko] Failed to load mascot config:", e);
+      console.error(`[masko] Failed to load mascot "${slug}":`, e);
     }
+  }
+
+  // Apply a parsed mascot config — creates new state machine
+  function applyMascotConfig(config: ReturnType<typeof parseMascotConfig>) {
+    // Previous state machine will be GC'd when replaced
+    const sm = new OverlayStateMachine(config);
+    setStateMachine(sm);
+    sm.start();
+  }
+
+  // Load persisted mascot on startup, fallback to clippy
+  onMount(async () => {
+    // Check if dashboard has stored a mascot slug preference
+    // We can't access localStorage across windows, so read from the
+    // mascot-changed event or fall back to stored slug
+    const storedId = localStorage.getItem("overlay_mascot_slug");
+    const slug = storedId || "clippy";
+    await loadMascotBySlug(slug);
+  });
+
+  // Listen for mascot changes from dashboard window
+  onMount(async () => {
+    const unlisten = await listen<{ slug?: string; config?: any }>("mascot-changed", (e) => {
+      const { slug, config } = e.payload;
+      if (config) {
+        // Dashboard sent the full config — use it directly
+        applyMascotConfig(parseMascotConfig(config));
+        if (slug) localStorage.setItem("overlay_mascot_slug", slug);
+      } else if (slug) {
+        loadMascotBySlug(slug);
+        localStorage.setItem("overlay_mascot_slug", slug);
+      }
+    });
+    onCleanup(unlisten);
   });
 
   // Sync state machine → video signals (only when changed)
