@@ -517,6 +517,25 @@ final class ConnectionDoctor {
             lastEventAge = nil
         }
 
+        // Claude Code version
+        let claudeVersion = Self.getClaudeCodeVersion()
+
+        // Check for settings overrides
+        let settingsLocalExists = FileManager.default.fileExists(
+            atPath: NSHomeDirectory() + "/.claude/settings.local.json"
+        )
+
+        // Hash of settings.json for debugging (not full content for privacy)
+        let settingsHash: String
+        if let settingsData = try? Data(contentsOf: URL(fileURLWithPath: NSHomeDirectory() + "/.claude/settings.json")) {
+            settingsHash = "\(settingsData.count) bytes"
+        } else {
+            settingsHash = "missing"
+        }
+
+        // Check for other hook managers (non-masko hooks in settings.json)
+        let otherHooks = Self.detectOtherHookManagers()
+
         return [
             "app_version": "\(appVersion) (\(buildNumber))",
             "os_version": osVersion,
@@ -524,6 +543,12 @@ final class ConnectionDoctor {
             "active_sessions": sessionStore.activeSessions.count,
             "total_events": eventStore.events.count,
             "last_event_age_seconds": lastEventAge as Any,
+            "claude_code_version": claudeVersion as Any,
+            "settings_local_exists": settingsLocalExists,
+            "settings_json_size": settingsHash,
+            "other_hook_managers": otherHooks,
+            "claude_hook_logs": Self.getRecentClaudeHookLogs(),
+            "hooks_config": Self.getHooksConfig(),
         ]
     }
 
@@ -554,6 +579,92 @@ final class ConnectionDoctor {
             print("[ConnectionDoctor] Failed to send report: \(error)")
             return nil
         }
+    }
+
+    /// Get Claude Code version via `claude --version`
+    private static func getClaudeCodeVersion() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["claude", "--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        guard (try? process.run()) != nil else { return nil }
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return output?.isEmpty == false ? output : nil
+    }
+
+    /// Detect non-masko hook commands in settings.json
+    private static func detectOtherHookManagers() -> [String] {
+        let settingsPath = NSHomeDirectory() + "/.claude/settings.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: settingsPath)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = json["hooks"] as? [String: Any] else { return [] }
+
+        var others: Set<String> = []
+        for (_, value) in hooks {
+            guard let entries = value as? [[String: Any]] else { continue }
+            for entry in entries {
+                guard let innerHooks = entry["hooks"] as? [[String: Any]] else { continue }
+                for hook in innerHooks {
+                    if let command = hook["command"] as? String,
+                       !command.contains("masko-desktop") {
+                        // Extract just the script name, not full path
+                        let name = (command as NSString).lastPathComponent
+                        others.insert(name)
+                    }
+                }
+            }
+        }
+        return Array(others).sorted()
+    }
+
+    /// Extract the "hooks" section from ~/.claude/settings.json
+    private static func getHooksConfig() -> Any {
+        let settingsPath = NSHomeDirectory() + "/.claude/settings.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: settingsPath)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = json["hooks"] else { return "missing" }
+        return hooks
+    }
+
+    /// Extract recent hook-related lines from Claude Code debug logs (last 50 lines matching "hook")
+    private static func getRecentClaudeHookLogs() -> [String] {
+        let debugDir = NSHomeDirectory() + "/.claude/debug"
+        let latestLink = debugDir + "/latest"
+        let fm = FileManager.default
+
+        // Resolve the "latest" symlink or find the most recent file
+        let logPath: String
+        if let resolved = try? fm.destinationOfSymbolicLink(atPath: latestLink) {
+            logPath = resolved.hasPrefix("/") ? resolved : debugDir + "/" + resolved
+        } else {
+            // No symlink, find newest file
+            guard let files = try? fm.contentsOfDirectory(atPath: debugDir) else { return [] }
+            let sorted = files
+                .filter { $0.hasSuffix(".txt") }
+                .compactMap { name -> (String, Date)? in
+                    let path = debugDir + "/" + name
+                    guard let attrs = try? fm.attributesOfItem(atPath: path),
+                          let date = attrs[.modificationDate] as? Date else { return nil }
+                    return (path, date)
+                }
+                .sorted { $0.1 > $1.1 }
+            guard let newest = sorted.first else { return [] }
+            logPath = newest.0
+        }
+
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: logPath)),
+              let content = String(data: data, encoding: .utf8) else { return [] }
+
+        // Get last 50 lines containing "hook" (case-insensitive)
+        let lines = content.components(separatedBy: "\n")
+        let hookLines = lines.filter { $0.localizedCaseInsensitiveContains("hook") }
+        return Array(hookLines.suffix(50))
     }
 
     private func statusString(_ status: Check.Status) -> String {
