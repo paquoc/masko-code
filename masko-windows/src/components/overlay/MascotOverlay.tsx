@@ -24,6 +24,19 @@ function MascotOverlay() {
   const [usage, setUsage] = createSignal<UsageData | null>(null);
 
   let videoRef: HTMLVideoElement | undefined;
+  // Idle timeout: if no hook event in 20s, assume agent stopped (e.g. user interrupted)
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const resetIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      const sm = stateMachine();
+      if (sm) {
+        sm.setAgentStateInput("isWorking", conditionBool(false));
+        sm.setAgentStateInput("isIdle", conditionBool(true));
+        sm.setAgentStateInput("isAlert", conditionBool(false));
+      }
+    }, 20_000);
+  };
   // Track current video src to avoid reloading the same URL
   let currentVideoSrc = "";
 
@@ -101,6 +114,9 @@ function MascotOverlay() {
       if (!eventType) return;
       if (eventType === HookEventType.PermissionRequest) return;
 
+      // Reset idle timer on every hook event (detects interrupt → idle after 20s)
+      resetIdleTimer();
+
       // PostToolUse means CLI already accepted — dismiss matching permission
       if (eventType === HookEventType.PostToolUse && event.session_id && event.tool_name) {
         permissionStore.dismissIfCliAccepted(event.session_id, event.tool_name);
@@ -120,6 +136,7 @@ function MascotOverlay() {
           break;
         case HookEventType.Stop:
         case HookEventType.SessionEnd:
+          if (idleTimer) clearTimeout(idleTimer);
           sm.setAgentStateInput("isWorking", conditionBool(false));
           sm.setAgentStateInput("isIdle", conditionBool(true));
           sm.setAgentStateInput("isAlert", conditionBool(false));

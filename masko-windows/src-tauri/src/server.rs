@@ -50,7 +50,7 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                     .emit("server-status", serde_json::json!({"running": true, "port": port}))
                     .ok();
 
-                // Poll usage every 60s so the bar stays up-to-date
+                // Poll usage every 5 min so the bar stays up-to-date (avoid rate limits)
                 {
                     let handle = app_handle.clone();
                     tokio::spawn(async move {
@@ -58,7 +58,7 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                             if let Some(usage) = crate::usage::fetch_usage().await {
                                 handle.emit("usage-update", &usage).ok();
                             }
-                            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                         }
                     });
                 }
