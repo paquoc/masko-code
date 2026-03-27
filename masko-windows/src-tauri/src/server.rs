@@ -50,15 +50,15 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                     .emit("server-status", serde_json::json!({"running": true, "port": port}))
                     .ok();
 
-                // Fetch usage on startup so the bar is visible immediately
+                // Poll usage every 60s so the bar stays up-to-date
                 {
                     let handle = app_handle.clone();
                     tokio::spawn(async move {
-                        if let Some(usage) = crate::usage::fetch_usage().await {
-                            handle.emit("usage-update", &usage).ok();
-                            println!("[masko] Initial usage: session={:?}%, weekly={:?}%",
-                                usage.session_percent.map(|v| (v * 100.0).round()),
-                                usage.weekly_percent.map(|v| (v * 100.0).round()));
+                        loop {
+                            if let Some(usage) = crate::usage::fetch_usage().await {
+                                handle.emit("usage-update", &usage).ok();
+                            }
+                            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                         }
                     });
                 }
@@ -127,8 +127,10 @@ async fn handle_hook(
                 (StatusCode::OK, body)
             }
             _ => {
-                // Timeout or channel dropped — clean up
+                // Timeout or channel dropped — clean up and notify frontend
                 state.pending_permissions.lock().await.remove(&request_id);
+                state.app_handle.emit("permission-dismissed",
+                    serde_json::json!({"request_id": request_id})).ok();
                 (StatusCode::REQUEST_TIMEOUT, "timeout".to_string())
             }
         }

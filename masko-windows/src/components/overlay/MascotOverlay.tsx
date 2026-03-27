@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { OverlayStateMachine } from "../../services/state-machine";
@@ -89,20 +89,8 @@ function MascotOverlay() {
     }
   });
 
-  // Prevent window activation on click — re-strip focus when it happens
-  onMount(async () => {
-    const win = getCurrentWindow();
-    const unlisten = await win.onFocusChanged(({ payload: focused }) => {
-      if (focused) {
-        // Window got focused (user clicked) — immediately unfocus
-        // This prevents Windows from drawing the active title bar
-        win.setFocus().catch(() => {}); // no-op but triggers internal state
-        // Use blur trick: set to not-focusable
-        win.setAlwaysOnTop(true).catch(() => {});
-      }
-    });
-    onCleanup(unlisten);
-  });
+  // Focus handling is done entirely on the Rust side (strip_overlay_frame)
+  // WS_EX_NOACTIVATE prevents window activation; Rust re-strips frame on every focus change
 
   // Listen for hook events → state machine
   onMount(async () => {
@@ -112,6 +100,11 @@ function MascotOverlay() {
       const eventType = getEventType(event);
       if (!eventType) return;
       if (eventType === HookEventType.PermissionRequest) return;
+
+      // PostToolUse means CLI already accepted — dismiss matching permission
+      if (eventType === HookEventType.PostToolUse && event.session_id && event.tool_name) {
+        permissionStore.dismissIfCliAccepted(event.session_id, event.tool_name);
+      }
 
       if (!sm) return;
       switch (eventType) {
@@ -170,6 +163,14 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
+  // Listen for permission dismissals from backend (timeout / CLI accepted)
+  onMount(async () => {
+    const unlisten = await listen<{ request_id: string }>("permission-dismissed", (e) => {
+      permissionStore.dismissByRequestId(e.payload.request_id);
+    });
+    onCleanup(unlisten);
+  });
+
   // Listen for usage updates (emitted on Stop events)
   onMount(async () => {
     const unlisten = await listen<UsageData>("usage-update", (e) => {
@@ -204,47 +205,30 @@ function MascotOverlay() {
     if (!isLoop()) stateMachine()?.handleVideoEnded();
   };
 
-  const visiblePermissions = () =>
-    permissionStore.pending.filter((p) => !p.collapsed).slice().reverse();
+  // Queue: show only the first uncollapsed permission
+  const currentPermission = () =>
+    permissionStore.pending.find((p) => !p.collapsed) || null;
+  const queueCount = () =>
+    permissionStore.pending.filter((p) => !p.collapsed).length;
 
   return (
     <div
       class="w-full h-full flex flex-col items-center justify-end select-none"
       style={{ background: "transparent" }}
     >
-      {/* Permission bubbles — stacked above mascot */}
-      <Show when={visiblePermissions().length > 0}>
-        <div class="flex-1 flex flex-col justify-end items-center w-full px-2 pb-1 overflow-hidden">
-          <For each={visiblePermissions().slice(0, 3)}>
-            {(perm, idx) => (
-              <div
-                classList={{
-                  "opacity-50 scale-95 -mb-2": idx() > 0,
-                  "opacity-100": idx() === 0,
-                }}
-                style={{ transition: "all 0.2s ease" }}
-              >
-                <Show
-                  when={idx() === 0}
-                  fallback={
-                    <div
-                      class="w-64 h-6 bg-white rounded-t-lg border border-border opacity-60 mx-auto"
-                      style={{ "box-shadow": "0 -1px 4px rgba(35,17,60,0.08)" }}
-                    />
-                  }
-                >
-                  <PermissionPrompt permission={perm} />
-                </Show>
-              </div>
-            )}
-          </For>
+      {/* Permission bubble — one at a time, queued */}
+      <Show when={currentPermission()}>
+        {(perm) => (
+          <div class="flex-1 flex flex-col justify-end items-center w-full px-2 pb-1 overflow-hidden">
+            <PermissionPrompt permission={perm()} />
 
-          <Show when={permissionStore.pending.length > 1}>
-            <div class="absolute top-1 right-1 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-              {permissionStore.pending.length}
-            </div>
-          </Show>
-        </div>
+            <Show when={queueCount() > 1}>
+              <div class="absolute top-1 right-1 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {queueCount()}
+              </div>
+            </Show>
+          </div>
+        )}
       </Show>
 
       {/* Mascot video */}
@@ -288,9 +272,9 @@ function MascotOverlay() {
           <div
             class="flex gap-1.5 items-center px-2 py-0.5 rounded-full pointer-events-none"
             style={{
-              background: "rgba(0,0,0,0.55)",
+              background: "rgba(0,0,0,0.75)",
               "backdrop-filter": "blur(6px)",
-              "font-size": "10px",
+              "font-size": "12px",
               "font-family": "monospace",
               "margin-top": "-8px",
               "z-index": 10,

@@ -10,15 +10,53 @@ use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
-/// Strip all window frame/border/shadow from the overlay HWND.
-/// Called at init and on every focus event (WebView2 re-applies styles).
 #[cfg(target_os = "windows")]
-fn strip_overlay_frame(hwnd_raw: *mut std::ffi::c_void) {
-    use windows::Win32::Foundation::HWND;
+mod win_overlay {
+    use std::sync::atomic::{AtomicIsize, Ordering};
+    use windows::Win32::Foundation::*;
     use windows::Win32::Graphics::Dwm::*;
     use windows::Win32::UI::WindowsAndMessaging::*;
-    let hwnd = HWND(hwnd_raw);
-    unsafe {
+
+    static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
+
+    const WM_NCACTIVATE: u32 = 0x0086;
+    const WM_NCPAINT: u32 = 0x0085;
+
+    unsafe extern "system" fn overlay_wndproc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        let original: WNDPROC = std::mem::transmute(ORIGINAL_WNDPROC.load(Ordering::Relaxed));
+
+        match msg {
+            // Prevent Windows/WebView2 from painting the ghost titlebar on focus change
+            WM_NCACTIVATE => {
+                // Pass wparam (active state) but set lparam=-1 to suppress NC redraw
+                return CallWindowProcW(original, hwnd, msg, wparam, LPARAM(-1));
+            }
+            // Suppress non-client paint entirely
+            WM_NCPAINT => {
+                return LRESULT(0);
+            }
+            _ => {}
+        }
+
+        CallWindowProcW(original, hwnd, msg, wparam, lparam)
+    }
+
+    /// Subclass the overlay window to intercept NC messages that cause ghost titlebar.
+    pub unsafe fn subclass_overlay(hwnd_raw: *mut std::ffi::c_void) {
+        let hwnd = HWND(hwnd_raw);
+        let original = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, overlay_wndproc as isize);
+        ORIGINAL_WNDPROC.store(original, Ordering::Relaxed);
+    }
+
+    /// Strip all window frame/border/shadow from the overlay HWND.
+    pub unsafe fn strip_frame(hwnd_raw: *mut std::ffi::c_void) {
+        let hwnd = HWND(hwnd_raw);
+
         let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
         let clean = (style
             & !(WS_CAPTION.0
@@ -59,7 +97,6 @@ fn strip_overlay_frame(hwnd_raw: *mut std::ffi::c_void) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Single shared PendingPermissions — used by both HTTP server and IPC commands
     let pending_permissions: server::PendingPermissions =
         Arc::new(Mutex::new(HashMap::new()));
 
@@ -70,10 +107,8 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
-            // Set up system tray
             tray::create_tray(app.handle())?;
 
-            // Start the HTTP server — pass the SAME PendingPermissions instance
             let handle = app.handle().clone();
             let pp = pp_for_server.clone();
             tauri::async_runtime::spawn(async move {
@@ -82,24 +117,28 @@ pub fn run() {
                 }
             });
 
-            // Auto-install hooks on startup
             match hook_installer::install(45832) {
                 Ok(()) => println!("[masko] Hooks installed/updated"),
                 Err(e) => eprintln!("[masko] Hook install failed: {e}"),
             }
 
-            // Show overlay window — strip decorations and shadow on Windows
             if let Some(overlay) = app.get_webview_window("overlay") {
                 #[cfg(target_os = "windows")]
                 {
                     let hwnd_raw = overlay.hwnd().unwrap().0 as usize;
-                    strip_overlay_frame(hwnd_raw as *mut std::ffi::c_void);
+                    let hwnd_ptr = hwnd_raw as *mut std::ffi::c_void;
 
-                    // WebView2 re-applies frame styles on focus/resize — re-strip on focus
+                    unsafe {
+                        win_overlay::strip_frame(hwnd_ptr);
+                        win_overlay::subclass_overlay(hwnd_ptr);
+                    }
+
                     let hwnd_clone = hwnd_raw;
                     overlay.on_window_event(move |event| {
-                        if let tauri::WindowEvent::Focused(true) = event {
-                            strip_overlay_frame(hwnd_clone as *mut std::ffi::c_void);
+                        if matches!(event, tauri::WindowEvent::Focused(_)) {
+                            unsafe {
+                                win_overlay::strip_frame(hwnd_clone as *mut std::ffi::c_void);
+                            }
                         }
                     });
                 }

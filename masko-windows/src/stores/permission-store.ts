@@ -106,6 +106,25 @@ export function dismissByToolUseId(sessionId: string, toolUseId: string): void {
   }
 }
 
+/** Dismiss a permission by its backend request ID (e.g. on timeout) */
+export function dismissByRequestId(requestId: string): void {
+  const perm = pending.find((p) => p.requestId === requestId);
+  if (perm) {
+    setPending((prev) => prev.filter((p) => p.requestId !== requestId));
+    setOnPendingCountChange((v) => v + 1);
+  }
+}
+
+/** Dismiss pending permission when CLI already accepted (PostToolUse for same session+tool) */
+export function dismissIfCliAccepted(sessionId: string, toolName: string): void {
+  const toRemove = pending.filter(
+    (p) => p.event.session_id === sessionId && p.event.tool_name === toolName,
+  );
+  for (const p of toRemove) {
+    resolve(p.id, "allow").catch(() => {});
+  }
+}
+
 export const permissionStore = {
   get pending() { return pending; },
   get pendingCountChanged() { return onPendingCountChange(); },
@@ -115,5 +134,7 @@ export const permissionStore = {
   expand,
   dismissForAgent,
   dismissByToolUseId,
+  dismissByRequestId,
+  dismissIfCliAccepted,
   cachePreToolUse,
 };
