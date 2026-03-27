@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/RousselPaul/masko-code/releases/latest"><img src="https://img.shields.io/github/v/release/RousselPaul/masko-code?style=flat-square&color=f95d02" alt="Release" /></a>
+  <a href="https://github.com/paquoc/masko-code/releases/latest"><img src="https://img.shields.io/github/v/release/paquoc/masko-code?style=flat-square&color=f95d02" alt="Release" /></a>
   <img src="https://img.shields.io/badge/macOS-14.0%2B-black?style=flat-square&logo=apple" alt="macOS 14+" />
   <img src="https://img.shields.io/badge/Windows-11%2B-0078D4?style=flat-square&logo=windows" alt="Windows 11+" />
   <img src="https://img.shields.io/badge/Universal-arm64%20%2B%20x86__64-black?style=flat-square" alt="Universal Binary" />
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/RousselPaul/masko-code/releases/latest"><strong>Download</strong></a> · <a href="https://masko.ai/claude-code"><strong>Website</strong></a> · <a href="https://masko.ai"><strong>Custom Mascots</strong></a>
+  <a href="https://github.com/paquoc/masko-code/releases/latest"><strong>Download</strong></a> · <a href="https://masko.ai/claude-code"><strong>Website</strong></a> · <a href="https://masko.ai"><strong>Custom Mascots</strong></a>
 </p>
 
 ---
@@ -112,15 +112,22 @@ Click a session in the dashboard or click the mascot overlay to jump to the righ
 
 ## Install
 
-**macOS:** Download the latest `.dmg` from [**Releases**](https://github.com/RousselPaul/masko-code/releases/latest).
+**macOS:** Download the latest `.dmg` from [**Releases**](https://github.com/paquoc/masko-code/releases/latest).
 
-**Windows:** Download the `.exe` installer from [**Releases**](https://github.com/RousselPaul/masko-code/releases/latest). *(coming soon)*
+**Windows (one-liner):**
+```powershell
+irm https://raw.githubusercontent.com/paquoc/masko-code/main/scripts/install.ps1 | iex
+```
+
+This downloads the latest release, runs the installer, writes the hook script, and registers all Claude Code hooks in `~/.claude/settings.json` automatically.
+
+Or download the `.exe` installer manually from [**Releases**](https://github.com/paquoc/masko-code/releases/latest).
 
 ## Build from Source
 
 **macOS (Swift):**
 ```bash
-git clone https://github.com/RousselPaul/masko-code.git
+git clone https://github.com/paquoc/masko-code.git
 cd masko-code
 swift build
 swift run
@@ -128,10 +135,11 @@ swift run
 
 **Windows (Tauri v2):**
 ```bash
-git clone https://github.com/RousselPaul/masko-code.git
+git clone https://github.com/paquoc/masko-code.git
 cd masko-code/masko-windows
 npm install
-npm run tauri dev
+npm run tauri dev       # development with hot-reload
+npm run tauri build     # production NSIS installer → src-tauri/target/release/bundle/nsis/
 ```
 
 Prerequisites: [Rust](https://rustup.rs/), [Node.js 18+](https://nodejs.org/), [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with C++ workload.
