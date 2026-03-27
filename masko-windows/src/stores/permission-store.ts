@@ -40,11 +40,13 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
   const perm = pending.find((p) => p.id === id);
   if (!perm) return;
 
-  // Build Claude Code hook response format:
-  // {"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow|deny",...}}}
+  // Remove from pending IMMEDIATELY so UI updates before await
+  setPending((prev) => prev.filter((p) => p.id !== id));
+  setOnPendingCountChange((v) => v + 1);
+
+  // Build Claude Code hook response format
   const hookDecision: any = { behavior: decision };
   if (suggestion) {
-    // Permission suggestions (e.g. "always allow in folder")
     if (suggestion.type === "updatedInput") {
       hookDecision.updatedInput = suggestion;
     } else if (suggestion.rules) {
@@ -68,10 +70,6 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
   } catch (e) {
     console.error("[masko] Failed to resolve permission:", e);
   }
-
-  // Remove from pending
-  setPending((prev) => prev.filter((p) => p.id !== id));
-  setOnPendingCountChange((v) => v + 1);
 }
 
 export function collapse(id: string): void {

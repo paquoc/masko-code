@@ -94,6 +94,14 @@ export class OverlayStateMachine {
     console.log(
       `[masko] State machine starting — initial node: ${this.currentNodeName}`,
     );
+    // Log agent inputs at start
+    const agentInputs: Record<string, any> = {};
+    for (const [k, v] of this.inputs.entries()) {
+      if (k.startsWith("agent::") || k.startsWith("claudeCode::")) {
+        agentInputs[k] = v;
+      }
+    }
+    console.log("[masko] Inputs at start:", JSON.stringify(agentInputs));
     this.arriveAtNode(this.config.initialNode);
   }
 
@@ -212,9 +220,10 @@ export class OverlayStateMachine {
     }
 
     // Step 5: Normal evaluation
+    const isNodeArrival = changedInput === "nodeArrival";
     for (const edge of this.config.edges) {
       if (edge.source !== this.currentNodeId || edge.isLoop) continue;
-      if (this.evaluateConditions(edge.conditions)) {
+      if (this.evaluateConditions(edge.conditions, isNodeArrival)) {
         this.resetTriggerInput(changedInput);
         this.playTransition(edge);
         return;
@@ -235,12 +244,17 @@ export class OverlayStateMachine {
     );
   }
 
-  private evaluateConditions(conditions?: MaskoAnimationCondition[]): boolean {
+  private evaluateConditions(conditions?: MaskoAnimationCondition[], debug = false): boolean {
     if (!conditions || conditions.length === 0) return false;
     return conditions.every((c) => {
       const inputValue = this.inputs.get(c.input);
-      if (!inputValue) return false;
-      return this.compare(inputValue, c.op, c.value);
+      if (!inputValue) {
+        if (debug) console.log(`[masko] condition fail: ${c.input} not found`);
+        return false;
+      }
+      const result = this.compare(inputValue, c.op, c.value);
+      if (debug) console.log(`[masko] condition: ${c.input} ${JSON.stringify(inputValue)} ${c.op} ${JSON.stringify(c.value)} = ${result}`);
+      return result;
     });
   }
 

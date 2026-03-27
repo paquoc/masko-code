@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { OverlayStateMachine } from "../../services/state-machine";
@@ -68,12 +68,13 @@ function MascotOverlay() {
   function applyMascotConfig(config: ReturnType<typeof parseMascotConfig>) {
     const sm = new OverlayStateMachine(config);
     setStateMachine(sm);
-    sm.start();
-    // Restore tracked agent state into the new state machine
+    // Set agent state BEFORE start() so initial evaluation uses correct state
     sm.setAgentStateInput("isWorking", conditionBool(agentState.isWorking));
     sm.setAgentStateInput("isIdle", conditionBool(agentState.isIdle));
     sm.setAgentStateInput("isAlert", conditionBool(agentState.isAlert));
     sm.setAgentStateInput("isCompacting", conditionBool(agentState.isCompacting));
+    sm.start(); // arriveAtNode → evaluateAndFire with correct inputs
+    console.log("[masko] Mascot switched — restored state:", JSON.stringify(agentState));
   }
 
   // Load persisted mascot on startup, fallback to clippy
@@ -136,15 +137,11 @@ function MascotOverlay() {
     videoRef.play().catch(() => {});
   });
 
-  // Resize window when permissions appear/disappear
+  // Window is always 320x520 — no resize needed, just show/hide bubble via CSS
+  // Reset alert state when all permissions are resolved
   createEffect(() => {
     const hasPending = permissionStore.pending.filter((p) => !p.collapsed).length > 0;
-    const win = getCurrentWindow();
-    if (hasPending) {
-      win.setSize(new LogicalSize(320, 520)).catch(() => {});
-    } else {
-      win.setSize(new LogicalSize(200, 260)).catch(() => {});
-      // All permissions resolved — reset alert state so mascot returns to idle/working
+    if (!hasPending) {
       agentState.isAlert = false;
       stateMachine()?.setAgentStateInput("isAlert", conditionBool(false));
     }
@@ -290,17 +287,19 @@ function MascotOverlay() {
 
   return (
     <div
-      class="w-full h-full flex flex-col items-center justify-end select-none"
+      class="fixed inset-0 select-none"
       style={{ background: "transparent" }}
     >
-      {/* Permission bubble — one at a time, queued */}
+      {/* Permission bubble — floats above mascot */}
       <Show when={currentPermission()}>
         {(perm) => (
-          <div class="flex-1 flex flex-col justify-end items-center w-full px-2 pb-1 overflow-hidden">
+          <div class="absolute bottom-[200px] left-0 right-0 px-2 pb-1 overflow-hidden"
+            style={{ "z-index": 20 }}
+          >
             <PermissionPrompt permission={perm()} />
 
             <Show when={queueCount() > 1}>
-              <div class="absolute top-1 right-1 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+              <div class="absolute top-1 right-3 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                 {queueCount()}
               </div>
             </Show>
@@ -308,9 +307,9 @@ function MascotOverlay() {
         )}
       </Show>
 
-      {/* Mascot video */}
+      {/* Mascot video — pinned to bottom */}
       <div
-        class="w-[200px] h-[200px] flex-shrink-0 cursor-grab"
+        class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[200px] h-[200px] cursor-grab"
         classList={{ "cursor-grabbing": isDragging() }}
         onMouseDown={handleMouseDown}
         onClick={handleClick}
@@ -341,32 +340,31 @@ function MascotOverlay() {
             }}
           />
         </Show>
-      </div>
 
-      {/* Usage bar — shown below mascot */}
-      <Show when={usage()}>
-        {(u) => (
-          <div
-            class="flex gap-1.5 items-center px-2 py-0.5 rounded-full pointer-events-none"
-            style={{
-              background: "rgba(0,0,0,0.75)",
-              "backdrop-filter": "blur(6px)",
-              "font-size": "12px",
-              "font-family": "monospace",
-              "margin-top": "-8px",
-              "z-index": 10,
-            }}
-          >
-            <span style={{ color: usageColor(u().session_percent) }}>
-              S {formatPercent(u().session_percent)}
-            </span>
-            <span style={{ color: "#555" }}>|</span>
-            <span style={{ color: usageColor(u().weekly_percent) }}>
-              W {formatPercent(u().weekly_percent)}
-            </span>
-          </div>
-        )}
-      </Show>
+        {/* Usage bar — overlaid at bottom of mascot */}
+        <Show when={usage()}>
+          {(u) => (
+            <div
+              class="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-1.5 items-center px-2 py-0.5 rounded-full pointer-events-none whitespace-nowrap"
+              style={{
+                background: "rgba(0,0,0,0.75)",
+                "backdrop-filter": "blur(6px)",
+                "font-size": "12px",
+                "font-family": "monospace",
+                "z-index": 10,
+              }}
+            >
+              <span style={{ color: usageColor(u().session_percent) }}>
+                S {formatPercent(u().session_percent)}
+              </span>
+              <span style={{ color: "#555" }}>|</span>
+              <span style={{ color: usageColor(u().weekly_percent) }}>
+                W {formatPercent(u().weekly_percent)}
+              </span>
+            </div>
+          )}
+        </Show>
+      </div>
     </div>
   );
 }
