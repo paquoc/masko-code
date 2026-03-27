@@ -8,12 +8,20 @@ import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
 import PermissionPrompt from "./PermissionPrompt";
 
+interface UsageData {
+  session_percent: number | null;
+  session_resets_at: string | null;
+  weekly_percent: number | null;
+  weekly_resets_at: string | null;
+}
+
 function MascotOverlay() {
   const [stateMachine, setStateMachine] = createSignal<OverlayStateMachine | null>(null);
   const [videoUrl, setVideoUrl] = createSignal<string | null>(null);
   const [isLoop, setIsLoop] = createSignal(true);
   const [playbackRate, setPlaybackRate] = createSignal(1.0);
   const [isDragging, setIsDragging] = createSignal(false);
+  const [usage, setUsage] = createSignal<UsageData | null>(null);
 
   let videoRef: HTMLVideoElement | undefined;
   // Track current video src to avoid reloading the same URL
@@ -75,7 +83,7 @@ function MascotOverlay() {
     if (hasPending) {
       win.setSize(new LogicalSize(320, 520)).catch(() => {});
     } else {
-      win.setSize(new LogicalSize(200, 200)).catch(() => {});
+      win.setSize(new LogicalSize(200, 220)).catch(() => {});
       // All permissions resolved — reset alert state so mascot returns to idle/working
       stateMachine()?.setAgentStateInput("isAlert", conditionBool(false));
     }
@@ -161,6 +169,24 @@ function MascotOverlay() {
     });
     onCleanup(unlisten);
   });
+
+  // Listen for usage updates (emitted on Stop events)
+  onMount(async () => {
+    const unlisten = await listen<UsageData>("usage-update", (e) => {
+      setUsage(e.payload);
+    });
+    onCleanup(unlisten);
+  });
+
+  const formatPercent = (v: number | null) =>
+    v != null ? `${Math.round(v * 100)}%` : "--";
+
+  const usageColor = (v: number | null) => {
+    if (v == null) return "#888";
+    if (v >= 0.8) return "#ef4444"; // red
+    if (v >= 0.5) return "#f59e0b"; // amber
+    return "#22c55e"; // green
+  };
 
   const handleMouseDown = async (e: MouseEvent) => {
     if (e.buttons === 1) {
@@ -254,6 +280,31 @@ function MascotOverlay() {
           />
         </Show>
       </div>
+
+      {/* Usage bar — shown below mascot */}
+      <Show when={usage()}>
+        {(u) => (
+          <div
+            class="flex gap-1.5 items-center px-2 py-0.5 rounded-full pointer-events-none"
+            style={{
+              background: "rgba(0,0,0,0.55)",
+              "backdrop-filter": "blur(6px)",
+              "font-size": "10px",
+              "font-family": "monospace",
+              "margin-top": "-8px",
+              "z-index": 10,
+            }}
+          >
+            <span style={{ color: usageColor(u().session_percent) }}>
+              S {formatPercent(u().session_percent)}
+            </span>
+            <span style={{ color: "#555" }}>|</span>
+            <span style={{ color: usageColor(u().weekly_percent) }}>
+              W {formatPercent(u().weekly_percent)}
+            </span>
+          </div>
+        )}
+      </Show>
     </div>
   );
 }

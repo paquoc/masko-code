@@ -122,6 +122,20 @@ async fn handle_hook(
     } else {
         // Fire-and-forget: emit to frontend and respond immediately
         state.app_handle.emit("hook-event", &event).ok();
+
+        // On Stop events, fetch usage data in background and emit to frontend
+        if event.hook_event_name == "Stop" {
+            let handle = state.app_handle.clone();
+            tokio::spawn(async move {
+                if let Some(usage) = crate::usage::fetch_usage().await {
+                    handle.emit("usage-update", &usage).ok();
+                    println!("[masko] Usage: session={:?}%, weekly={:?}%",
+                        usage.session_percent.map(|v| (v * 100.0).round()),
+                        usage.weekly_percent.map(|v| (v * 100.0).round()));
+                }
+            });
+        }
+
         (StatusCode::OK, "OK".to_string())
     }
 }

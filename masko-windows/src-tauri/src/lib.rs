@@ -3,6 +3,7 @@ mod hook_installer;
 mod models;
 mod server;
 mod tray;
+mod usage;
 
 use std::collections::HashMap;
 use std::sync::Arc;
