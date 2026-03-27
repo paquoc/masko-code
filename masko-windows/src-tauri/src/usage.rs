@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
 
 /// Rate limit usage data emitted to the frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]

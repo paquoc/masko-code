@@ -24,12 +24,23 @@ function MascotOverlay() {
   const [isDragging, setIsDragging] = createSignal(false);
   const [usage, setUsage] = createSignal<UsageData | null>(null);
 
+  // Track agent state so we can restore it when switching mascots
+  const agentState = {
+    isWorking: false,
+    isIdle: true,
+    isAlert: false,
+    isCompacting: false,
+  };
+
   let videoRef: HTMLVideoElement | undefined;
   // Idle timeout: if no hook event in 20s, assume agent stopped (e.g. user interrupted)
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
+      agentState.isWorking = false;
+      agentState.isIdle = true;
+      agentState.isAlert = false;
       const sm = stateMachine();
       if (sm) {
         sm.setAgentStateInput("isWorking", conditionBool(false));
@@ -53,12 +64,16 @@ function MascotOverlay() {
     }
   }
 
-  // Apply a parsed mascot config — creates new state machine
+  // Apply a parsed mascot config — creates new state machine, restores agent state
   function applyMascotConfig(config: ReturnType<typeof parseMascotConfig>) {
-    // Previous state machine will be GC'd when replaced
     const sm = new OverlayStateMachine(config);
     setStateMachine(sm);
     sm.start();
+    // Restore tracked agent state into the new state machine
+    sm.setAgentStateInput("isWorking", conditionBool(agentState.isWorking));
+    sm.setAgentStateInput("isIdle", conditionBool(agentState.isIdle));
+    sm.setAgentStateInput("isAlert", conditionBool(agentState.isAlert));
+    sm.setAgentStateInput("isCompacting", conditionBool(agentState.isCompacting));
   }
 
   // Load persisted mascot on startup, fallback to clippy
@@ -130,6 +145,7 @@ function MascotOverlay() {
     } else {
       win.setSize(new LogicalSize(200, 260)).catch(() => {});
       // All permissions resolved — reset alert state so mascot returns to idle/working
+      agentState.isAlert = false;
       stateMachine()?.setAgentStateInput("isAlert", conditionBool(false));
     }
   });
@@ -157,11 +173,15 @@ function MascotOverlay() {
       if (!sm) return;
       switch (eventType) {
         case HookEventType.SessionStart:
+          agentState.isWorking = true;
+          agentState.isIdle = false;
           sm.setAgentStateInput("isWorking", conditionBool(true));
           sm.setAgentStateInput("isIdle", conditionBool(false));
           break;
         case HookEventType.PreToolUse:
         case HookEventType.UserPromptSubmit:
+          agentState.isWorking = true;
+          agentState.isIdle = false;
           sm.setAgentStateInput("isWorking", conditionBool(true));
           sm.setAgentStateInput("isIdle", conditionBool(false));
           sm.setAgentEventTrigger(eventType);
@@ -169,14 +189,19 @@ function MascotOverlay() {
         case HookEventType.Stop:
         case HookEventType.SessionEnd:
           if (idleTimer) clearTimeout(idleTimer);
+          agentState.isWorking = false;
+          agentState.isIdle = true;
+          agentState.isAlert = false;
           sm.setAgentStateInput("isWorking", conditionBool(false));
           sm.setAgentStateInput("isIdle", conditionBool(true));
           sm.setAgentStateInput("isAlert", conditionBool(false));
           break;
         case HookEventType.PreCompact:
+          agentState.isCompacting = true;
           sm.setAgentStateInput("isCompacting", conditionBool(true));
           break;
         case HookEventType.PostCompact:
+          agentState.isCompacting = false;
           sm.setAgentStateInput("isCompacting", conditionBool(false));
           break;
         default:
@@ -193,6 +218,7 @@ function MascotOverlay() {
       const event = parseAgentEvent(e.payload);
       if (event.request_id) {
         permissionStore.add(event, event.request_id);
+        agentState.isAlert = true;
         stateMachine()?.setAgentStateInput("isAlert", conditionBool(true));
         stateMachine()?.setAgentEventTrigger("PermissionRequest");
       }

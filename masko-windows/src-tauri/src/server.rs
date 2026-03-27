@@ -22,6 +22,7 @@ pub type PendingPermissions = Arc<Mutex<HashMap<String, oneshot::Sender<serde_js
 pub struct AppState {
     pub app_handle: AppHandle,
     pub pending_permissions: PendingPermissions,
+    #[allow(dead_code)]
     pub port: u16,
 }
 

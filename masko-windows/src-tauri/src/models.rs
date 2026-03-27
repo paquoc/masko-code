@@ -42,10 +42,3 @@ pub struct ServerStatus {
     pub running: bool,
     pub port: u16,
 }
-
-/// Permission resolution from frontend
-#[derive(Debug, Deserialize)]
-pub struct PermissionResolution {
-    pub request_id: String,
-    pub decision: serde_json::Value,
-}
