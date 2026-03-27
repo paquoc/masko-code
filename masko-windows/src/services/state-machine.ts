@@ -33,6 +33,7 @@ export class OverlayStateMachine {
   private loopCount = 0;
   private nodeArrivalTime?: Date;
   private nodeTimeGeneration = 0;
+  private started = false;
 
   // Reactive signals for UI
   private _phase = createSignal<StateMachinePhase>("idle");
@@ -83,6 +84,10 @@ export class OverlayStateMachine {
   setAgentStateInput(name: string, value: ConditionValue): void {
     this.inputs.set(AGENT_PREFIX + name, value);
     this.inputs.set(LEGACY_PREFIX + name, value);
+    // Trigger evaluation only after start() has been called
+    if (this.started) {
+      this.evaluateAndFire(LEGACY_PREFIX + name);
+    }
   }
 
   setAgentEventTrigger(eventName: string): void {
@@ -91,6 +96,7 @@ export class OverlayStateMachine {
   }
 
   start(): void {
+    this.started = true;
     console.log(
       `[masko] State machine starting — initial node: ${this.currentNodeName}`,
     );
