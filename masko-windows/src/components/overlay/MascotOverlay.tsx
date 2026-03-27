@@ -1,6 +1,7 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { OverlayStateMachine } from "../../services/state-machine";
 import { parseMascotConfig } from "../../models/mascot-config";
 import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent-event";
@@ -43,7 +44,7 @@ function MascotOverlay() {
   // Load mascot config from a slug (fetches the bundled JSON)
   async function loadMascotBySlug(slug: string) {
     try {
-      const resp = await fetch(`/src/assets/mascots/${slug}.json`);
+      const resp = await fetch(`/mascots/${slug}.json`);
       if (!resp.ok) return;
       const raw = await resp.json();
       applyMascotConfig(parseMascotConfig(raw));
@@ -127,7 +128,7 @@ function MascotOverlay() {
     if (hasPending) {
       win.setSize(new LogicalSize(320, 520)).catch(() => {});
     } else {
-      win.setSize(new LogicalSize(200, 240)).catch(() => {});
+      win.setSize(new LogicalSize(200, 260)).catch(() => {});
       // All permissions resolved — reset alert state so mascot returns to idle/working
       stateMachine()?.setAgentStateInput("isAlert", conditionBool(false));
     }
@@ -219,13 +220,15 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
-  // Listen for usage updates (emitted on Stop events)
+  // Listen for usage updates, then request initial fetch
   onMount(async () => {
     const unlisten = await listen<UsageData>("usage-update", (e) => {
-      console.log("[masko] usage-update received:", JSON.stringify(e.payload));
+      console.log("[masko-overlay] usage-update received:", JSON.stringify(e.payload));
       setUsage(e.payload);
     });
     onCleanup(unlisten);
+    // Request usage now that listener is ready
+    invoke("fetch_usage").catch((e) => console.warn("[masko-overlay] fetch_usage failed:", e));
   });
 
   const formatPercent = (v: number | null) =>

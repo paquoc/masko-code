@@ -38,7 +38,7 @@ function App() {
         class="h-10 flex items-center px-4 bg-surface border-b border-border select-none shrink-0"
         data-tauri-drag-region
       >
-        <img src="/src/assets/images/logo.png" alt="Masko" class="h-5 w-5 mr-2" />
+        <img src="/logo.png" alt="Masko" class="h-5 w-5 mr-2" />
         <span class="font-heading font-semibold text-sm text-text-primary">
           Masko Code
         </span>

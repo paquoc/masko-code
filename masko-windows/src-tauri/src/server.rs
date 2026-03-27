@@ -50,15 +50,22 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                     .emit("server-status", serde_json::json!({"running": true, "port": port}))
                     .ok();
 
-                // Poll usage every 5 min so the bar stays up-to-date (avoid rate limits)
+                // Fetch usage immediately on start, then poll every 5 min
                 {
                     let handle = app_handle.clone();
                     tokio::spawn(async move {
+                        // Initial fetch right away
+                        if let Some(usage) = crate::usage::fetch_usage().await {
+                            handle.emit("usage-update", &usage).ok();
+                            println!("[masko] Initial usage: session={:?}%, weekly={:?}%",
+                                usage.session_percent.map(|v| (v * 100.0).round()),
+                                usage.weekly_percent.map(|v| (v * 100.0).round()));
+                        }
                         loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                             if let Some(usage) = crate::usage::fetch_usage().await {
                                 handle.emit("usage-update", &usage).ok();
                             }
-                            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                         }
                     });
                 }

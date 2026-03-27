@@ -2,6 +2,16 @@ import { For, Show } from "solid-js";
 import { appStore } from "../../stores/app-store";
 import type { SavedMascot } from "../../models/mascot-config";
 
+/** Get the first node's thumbnail URL from a mascot config */
+function getThumbnail(mascot: SavedMascot): string | undefined {
+  const nodes = mascot.config?.nodes;
+  if (!nodes || nodes.length === 0) return undefined;
+  // Prefer the initial node, fallback to first node
+  const initialId = mascot.config.initialNode;
+  const node = nodes.find((n) => n.id === initialId) || nodes[0];
+  return node.transparentThumbnailUrl;
+}
+
 export default function MascotGallery() {
   const mascots = () => appStore.mascots.mascots;
   const activeId = () => appStore.mascots.activeMascotId;
@@ -47,6 +57,8 @@ export default function MascotGallery() {
 }
 
 function MascotCard(props: { mascot: SavedMascot; isActive: boolean; onSelect: () => void }) {
+  const thumb = () => getThumbnail(props.mascot);
+
   return (
     <button
       class="bg-surface rounded-[--radius-card] border-2 p-4 text-center transition-all hover:shadow-sm"
@@ -56,9 +68,19 @@ function MascotCard(props: { mascot: SavedMascot; isActive: boolean; onSelect: (
       }}
       onClick={props.onSelect}
     >
-      {/* Mascot preview circle */}
-      <div class="w-14 h-14 mx-auto mb-2 rounded-full bg-orange-subtle flex items-center justify-center text-2xl">
-        {getMascotEmoji(props.mascot.templateSlug)}
+      {/* Mascot preview */}
+      <div class="w-16 h-16 mx-auto mb-2 rounded-full bg-orange-subtle flex items-center justify-center overflow-hidden">
+        <Show
+          when={thumb()}
+          fallback={<span class="text-2xl">{getMascotEmoji(props.mascot.templateSlug)}</span>}
+        >
+          <img
+            src={thumb()!}
+            alt={props.mascot.name}
+            class="w-full h-full object-contain"
+            loading="lazy"
+          />
+        </Show>
       </div>
       <span class="font-body font-medium text-sm text-text-primary block">
         {props.mascot.name}

@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::hook_installer;
 use crate::server::PendingPermissions;
@@ -34,4 +34,12 @@ pub async fn uninstall_hooks() -> Result<(), String> {
 #[tauri::command]
 pub async fn is_hooks_registered() -> Result<bool, String> {
     Ok(hook_installer::is_registered())
+}
+
+#[tauri::command]
+pub async fn fetch_usage(app: AppHandle) -> Result<(), String> {
+    if let Some(usage) = crate::usage::fetch_usage().await {
+        app.emit("usage-update", &usage).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

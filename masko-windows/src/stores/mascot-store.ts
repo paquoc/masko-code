@@ -38,7 +38,7 @@ export async function loadBundledMascots(): Promise<void> {
   const newMascots: SavedMascot[] = [];
   for (const slug of missingSlugs) {
     try {
-      const resp = await fetch(`/src/assets/mascots/${slug}.json`);
+      const resp = await fetch(`/mascots/${slug}.json`);
       if (!resp.ok) continue;
       const raw = await resp.json();
       const config = parseMascotConfig(raw);
