@@ -17,8 +17,24 @@ export function cachePreToolUse(sessionId: string, agentId: string | undefined, 
 }
 
 export function add(event: AgentEvent, requestId: string): void {
-  // Deduplicate: ignore if this requestId is already pending
-  if (pending.some((p) => p.requestId === requestId)) return;
+  const sessionId = event.session_id || requestId;
+
+  // Deduplicate: one permission per session — replace existing if same session
+  const existingIdx = pending.findIndex((p) => p.id === sessionId);
+  if (existingIdx !== -1) {
+    // Update the existing permission with the new request (keeps queue position)
+    setPending(existingIdx, {
+      event,
+      requestId,
+      receivedAt: new Date(),
+      resolvedToolUseId: event.tool_use_id || preToolUseCache.get(
+        `${event.session_id || ""}:${event.agent_id || ""}:${event.tool_name || ""}`,
+      ),
+      collapsed: false,
+    });
+    setOnPendingCountChange((v) => v + 1);
+    return;
+  }
 
   // Try to resolve toolUseId from cache
   const key = `${event.session_id || ""}:${event.agent_id || ""}:${event.tool_name || ""}`;
@@ -28,7 +44,7 @@ export function add(event: AgentEvent, requestId: string): void {
   }
 
   const perm: PendingPermission = {
-    id: crypto.randomUUID(),
+    id: sessionId,
     event,
     requestId,
     receivedAt: new Date(),
