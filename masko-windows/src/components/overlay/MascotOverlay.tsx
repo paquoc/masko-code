@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+// import { invoke } from "@tauri-apps/api/core"; // temporarily disabled — usage API
 import { OverlayStateMachine } from "../../services/state-machine";
 import { parseMascotConfig } from "../../models/mascot-config";
 import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent-event";
@@ -9,12 +9,12 @@ import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
 import PermissionPrompt from "./PermissionPrompt";
 
-interface UsageData {
-  session_percent: number | null;
-  session_resets_at: string | null;
-  weekly_percent: number | null;
-  weekly_resets_at: string | null;
-}
+// interface UsageData {
+//   session_percent: number | null;
+//   session_resets_at: string | null;
+//   weekly_percent: number | null;
+//   weekly_resets_at: string | null;
+// }
 
 function MascotOverlay() {
   const [stateMachine, setStateMachine] = createSignal<OverlayStateMachine | null>(null);
@@ -22,7 +22,7 @@ function MascotOverlay() {
   const [isLoop, setIsLoop] = createSignal(true);
   const [playbackRate, setPlaybackRate] = createSignal(1.0);
   const [isDragging, setIsDragging] = createSignal(false);
-  const [usage, setUsage] = createSignal<UsageData | null>(null);
+  // const [usage, setUsage] = createSignal<UsageData | null>(null); // temporarily disabled
 
   // Track agent state so we can restore it when switching mascots
   const agentState = {
@@ -243,26 +243,25 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
-  // Listen for usage updates, then request initial fetch
-  onMount(async () => {
-    const unlisten = await listen<UsageData>("usage-update", (e) => {
-      console.log("[masko-overlay] usage-update received:", JSON.stringify(e.payload));
-      setUsage(e.payload);
-    });
-    onCleanup(unlisten);
-    // Request usage now that listener is ready
-    invoke("fetch_usage").catch((e) => console.warn("[masko-overlay] fetch_usage failed:", e));
-  });
+  // TODO: temporarily disabled — usage API not ready yet
+  // onMount(async () => {
+  //   const unlisten = await listen<UsageData>("usage-update", (e) => {
+  //     console.log("[masko-overlay] usage-update received:", JSON.stringify(e.payload));
+  //     setUsage(e.payload);
+  //   });
+  //   onCleanup(unlisten);
+  //   invoke("fetch_usage").catch((e) => console.warn("[masko-overlay] fetch_usage failed:", e));
+  // });
 
-  const formatPercent = (v: number | null) =>
-    v != null ? `${Math.round(v * 100)}%` : "--";
-
-  const usageColor = (v: number | null) => {
-    if (v == null) return "#888";
-    if (v >= 0.8) return "#ef4444"; // red
-    if (v >= 0.5) return "#f59e0b"; // amber
-    return "#22c55e"; // green
-  };
+  // const formatPercent = (v: number | null) =>
+  //   v != null ? `${Math.round(v * 100)}%` : "--";
+  //
+  // const usageColor = (v: number | null) => {
+  //   if (v == null) return "#888";
+  //   if (v >= 0.8) return "#ef4444"; // red
+  //   if (v >= 0.5) return "#f59e0b"; // amber
+  //   return "#22c55e"; // green
+  // };
 
   const handleMouseDown = async (e: MouseEvent) => {
     if (e.buttons === 1) {
@@ -341,29 +340,7 @@ function MascotOverlay() {
           />
         </Show>
 
-        {/* Usage bar — overlaid at bottom of mascot */}
-        <Show when={usage()}>
-          {(u) => (
-            <div
-              class="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-1.5 items-center px-2 py-0.5 rounded-full pointer-events-none whitespace-nowrap"
-              style={{
-                background: "rgba(0,0,0,0.75)",
-                "backdrop-filter": "blur(6px)",
-                "font-size": "12px",
-                "font-family": "monospace",
-                "z-index": 10,
-              }}
-            >
-              <span style={{ color: usageColor(u().session_percent) }}>
-                S {formatPercent(u().session_percent)}
-              </span>
-              <span style={{ color: "#555" }}>|</span>
-              <span style={{ color: usageColor(u().weekly_percent) }}>
-                W {formatPercent(u().weekly_percent)}
-              </span>
-            </div>
-          )}
-        </Show>
+        {/* Usage bar — temporarily disabled */}
       </div>
     </div>
   );

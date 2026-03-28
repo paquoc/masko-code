@@ -3,7 +3,7 @@ mod hook_installer;
 mod models;
 mod server;
 mod tray;
-mod usage;
+// mod usage; // temporarily disabled
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -154,7 +154,6 @@ pub fn run() {
             commands::install_hooks,
             commands::uninstall_hooks,
             commands::is_hooks_registered,
-            commands::fetch_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");
