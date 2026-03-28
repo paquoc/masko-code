@@ -47,3 +47,26 @@ pub fn set_overlay_permission_visible(visible: bool) -> Result<(), String> {
     let _ = visible;
     Ok(())
 }
+
+#[tauri::command]
+pub fn set_overlay_working_bubble_visible(visible: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::win_overlay::WORKING_BUBBLE_VISIBLE
+            .store(visible, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = visible;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn focus_terminal(pid: u32) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::win_overlay::focus_window_by_pid(pid);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = pid;
+    Ok(())
+}

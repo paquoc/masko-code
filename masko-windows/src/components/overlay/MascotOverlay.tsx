@@ -7,8 +7,10 @@ import { parseMascotConfig } from "../../models/mascot-config";
 import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent-event";
 import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
+import { workingBubbleStore } from "../../stores/working-bubble-store";
 import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
+import WorkingBubble from "./WorkingBubble";
 
 // interface UsageData {
 //   session_percent: number | null;
@@ -35,7 +37,7 @@ function MascotOverlay() {
   };
 
   let videoRef: HTMLVideoElement | undefined;
-  // Idle timeout: if no hook event in 20s, assume agent stopped (e.g. user interrupted)
+  // Idle timeout: if no hook event in 2min, assume agent stopped (e.g. user interrupted)
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
@@ -43,13 +45,14 @@ function MascotOverlay() {
       agentState.isWorking = false;
       agentState.isIdle = true;
       agentState.isAlert = false;
+      workingBubbleStore.hide();
       const sm = stateMachine();
       if (sm) {
         sm.setAgentStateInput("isWorking", conditionBool(false));
         sm.setAgentStateInput("isIdle", conditionBool(true));
         sm.setAgentStateInput("isAlert", conditionBool(false));
       }
-    }, 20_000);
+    }, 120_000);
   };
   // Track current video src to avoid reloading the same URL
   let currentVideoSrc = "";
@@ -155,6 +158,12 @@ function MascotOverlay() {
     invoke("set_overlay_permission_visible", { visible }).catch(() => {});
   });
 
+  // Sync working bubble visibility to Rust hit-test zone
+  createEffect(() => {
+    const visible = workingBubbleStore.state.visible;
+    invoke("set_overlay_working_bubble_visible", { visible }).catch(() => {});
+  });
+
   // Click-through: Rust polls cursor and emits zone changes.
   // WM_STYLECHANGING on Rust side prevents frame flash from setIgnoreCursorEvents.
   onMount(async () => {
@@ -190,8 +199,32 @@ function MascotOverlay() {
           sm.setAgentStateInput("isWorking", conditionBool(true));
           sm.setAgentStateInput("isIdle", conditionBool(false));
           break;
-        case HookEventType.PreToolUse:
+        case HookEventType.PreToolUse: {
+          agentState.isWorking = true;
+          agentState.isIdle = false;
+          sm.setAgentStateInput("isWorking", conditionBool(true));
+          sm.setAgentStateInput("isIdle", conditionBool(false));
+          sm.setAgentEventTrigger(eventType);
+          // Show working bubble
+          const projectName = event.cwd ? event.cwd.replace(/\\/g, "/").split("/").pop() || "" : "";
+          workingBubbleStore.show(
+            event.tool_name || "Working",
+            projectName,
+            event.session_id || "",
+            event.terminal_pid,
+          );
+          break;
+        }
         case HookEventType.PostToolUse:
+        case HookEventType.PostToolUseFailure:
+          agentState.isWorking = true;
+          agentState.isIdle = false;
+          sm.setAgentStateInput("isWorking", conditionBool(true));
+          sm.setAgentStateInput("isIdle", conditionBool(false));
+          sm.setAgentEventTrigger(eventType);
+          // Hide working bubble — tool finished
+          workingBubbleStore.hide();
+          break;
         case HookEventType.UserPromptSubmit:
           agentState.isWorking = true;
           agentState.isIdle = false;
@@ -205,6 +238,7 @@ function MascotOverlay() {
           agentState.isWorking = false;
           agentState.isIdle = true;
           agentState.isAlert = false;
+          workingBubbleStore.showDone();
           sm.setAgentStateInput("isWorking", conditionBool(false));
           sm.setAgentStateInput("isIdle", conditionBool(true));
           sm.setAgentStateInput("isAlert", conditionBool(false));
@@ -231,6 +265,7 @@ function MascotOverlay() {
       const event = parseAgentEvent(e.payload);
       if (event.request_id) {
         permissionStore.add(event, event.request_id);
+        workingBubbleStore.hide();
         agentState.isAlert = true;
         stateMachine()?.setAgentStateInput("isAlert", conditionBool(true));
         stateMachine()?.setAgentEventTrigger("PermissionRequest");
@@ -305,6 +340,15 @@ function MascotOverlay() {
       class="fixed inset-0 select-none"
       style={{ background: "transparent" }}
     >
+      {/* Working bubble — floats above mascot when tool is running */}
+      <Show when={workingBubbleStore.state.visible && !currentPermission()}>
+        <div class="absolute bottom-[200px] left-0 right-0 pb-1 overflow-hidden"
+          style={{ "z-index": 15, "padding-left": "40px" }}
+        >
+          <WorkingBubble />
+        </div>
+      </Show>
+
       {/* Permission bubble — floats above mascot */}
       <Show when={currentPermission()}>
         {(perm) => (

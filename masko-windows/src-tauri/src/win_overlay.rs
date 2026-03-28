@@ -15,6 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 
 static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 pub static PERMISSION_HIT_VISIBLE: AtomicBool = AtomicBool::new(false);
+pub static WORKING_BUBBLE_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 const WM_NCPAINT: u32 = 0x0085;
 const WM_NCACTIVATE: u32 = 0x0086;
@@ -22,6 +23,7 @@ const WM_STYLECHANGING: u32 = 0x007C;
 
 const MASCOT_HEIGHT_PX: i32 = 200;
 const PERMISSION_BAND_PX: i32 = 280;
+const WORKING_BUBBLE_PX: i32 = 60;
 
 // Style bits that would show a frame — strip these on every style change
 const BANNED_STYLE: u32 = WS_CAPTION.0
@@ -141,6 +143,54 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
         let in_perm = perm_on
             && client_y >= (h - MASCOT_HEIGHT_PX - PERMISSION_BAND_PX).max(0)
             && client_y < h - MASCOT_HEIGHT_PX;
-        in_mascot || in_perm
+        let bubble_on = WORKING_BUBBLE_VISIBLE.load(Ordering::Relaxed);
+        let in_bubble = bubble_on
+            && client_y >= (h - MASCOT_HEIGHT_PX - WORKING_BUBBLE_PX).max(0)
+            && client_y < h - MASCOT_HEIGHT_PX;
+        in_mascot || in_perm || in_bubble
     }
+}
+
+#[repr(C)]
+struct FindWindowData {
+    target_pid: u32,
+    found_hwnd: isize, // 0 = not found
+}
+
+/// Bring the window belonging to the given process ID to the foreground.
+pub fn focus_window_by_pid(pid: u32) {
+    unsafe {
+        let mut data = FindWindowData {
+            target_pid: pid,
+            found_hwnd: 0,
+        };
+        let _ = EnumWindows(
+            Some(enum_windows_cb),
+            LPARAM(&mut data as *mut FindWindowData as isize),
+        );
+        if data.found_hwnd != 0 {
+            let hwnd = HWND(data.found_hwnd as *mut std::ffi::c_void);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+}
+
+unsafe extern "system" fn enum_windows_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let data = &mut *(lparam.0 as *mut FindWindowData);
+
+    let mut proc_id: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut proc_id));
+
+    if proc_id == data.target_pid && IsWindowVisible(hwnd).as_bool() {
+        // Pick the main window (has no owner)
+        if let Ok(owner) = GetWindow(hwnd, GW_OWNER) {
+            if !owner.0.is_null() {
+                return BOOL(1); // has owner — skip
+            }
+        }
+        data.found_hwnd = hwnd.0 as isize;
+        return BOOL(0); // stop enumeration
+    }
+    BOOL(1) // continue
 }

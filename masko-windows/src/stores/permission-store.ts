@@ -3,7 +3,7 @@ import { createSignal } from "solid-js";
 import type { AgentEvent } from "../models/agent-event";
 import type { PendingPermission, PermissionDecision } from "../models/permission";
 import { invoke } from "@tauri-apps/api/core";
-import { error } from "../services/log";
+import { log, error } from "../services/log";
 
 const [pending, setPending] = createStore<PendingPermission[]>([]);
 const [onPendingCountChange, setOnPendingCountChange] = createSignal(0);
@@ -73,9 +73,12 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
   if (suggestion) {
     if (suggestion.type === "updatedInput") {
       hookDecision.updatedInput = suggestion;
-    } else if (suggestion.rules) {
+    } else if (suggestion.type === "addRules" && suggestion.rules) {
+      hookDecision.updatedPermissions = [suggestion];
+    } else if (suggestion.type === "setMode" && suggestion.mode) {
       hookDecision.updatedPermissions = [suggestion];
     }
+    log("Permission suggestion applied:", JSON.stringify(suggestion));
   }
 
   const payload = {
@@ -84,6 +87,8 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
       decision: hookDecision,
     },
   };
+
+  log("Permission resolved, body:", JSON.stringify(payload));
 
   // Send resolution to Rust backend → HTTP response to hook script
   try {
