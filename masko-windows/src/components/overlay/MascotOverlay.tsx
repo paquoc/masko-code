@@ -153,7 +153,8 @@ function MascotOverlay() {
     invoke("set_overlay_permission_visible", { visible }).catch(() => {});
   });
 
-  // Click-through: Rust polls cursor position and emits whether overlay should ignore events.
+  // Click-through: Rust polls cursor and emits zone changes.
+  // WM_STYLECHANGING on Rust side prevents frame flash from setIgnoreCursorEvents.
   onMount(async () => {
     const win = getCurrentWindow();
     const unlisten = await listen<boolean>("overlay-cursor-zone", (e) => {

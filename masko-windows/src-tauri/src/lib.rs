@@ -51,19 +51,10 @@ pub fn run() {
                         crate::win_overlay::subclass_overlay(hwnd_ptr);
                     }
 
-                    let hwnd_clone = hwnd_raw;
-                    overlay.on_window_event(move |event| {
-                        if matches!(event, tauri::WindowEvent::Focused(_)) {
-                            unsafe {
-                                crate::win_overlay::strip_frame(
-                                    hwnd_clone as *mut std::ffi::c_void,
-                                );
-                            }
-                        }
-                    });
-
                     // Poll cursor ~60fps, emit zone changes so frontend can toggle
-                    // setIgnoreCursorEvents via Tauri JS API (handles WebView2 properly).
+                    // setIgnoreCursorEvents (required for WebView2 DirectComposition).
+                    // WM_STYLECHANGING in the wndproc prevents frame flash by stripping
+                    // frame bits before SWP_FRAMECHANGED can render them.
                     let emit_handle = app.handle().clone();
                     std::thread::spawn(move || {
                         let mut was_ignore = false;
