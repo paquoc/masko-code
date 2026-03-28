@@ -115,6 +115,7 @@ export class OverlayStateMachine {
     const old = this.inputs.get(name);
     if (old && conditionEqual(old, value)) return;
 
+    console.log(`[masko] Input changed: ${name} = ${JSON.stringify(value)}${old ? ` (was ${JSON.stringify(old)})` : ""}`);
     this.inputs.set(name, value);
     this.evaluateAndFire(name);
   }
@@ -303,9 +304,18 @@ export class OverlayStateMachine {
   // --- Node Arrival ---
 
   private arriveAtNode(nodeId: string): void {
+    const prevNodeId = this.currentNodeId;
+    const prevName = this.currentNodeName;
     this.nodeTimeGeneration++;
     this.loopCount = 0;
     this._currentNodeId[1](nodeId);
+
+    const newName = this.currentNodeName;
+    if (prevNodeId !== nodeId) {
+      console.log(`[masko] State: ${prevName} → ${newName}`);
+    } else {
+      console.log(`[masko] Arrived at: ${newName}`);
+    }
 
     this.inputs.set("loopCount", conditionNumber(0));
     this.inputs.set("nodeTime", conditionNumber(0));
@@ -367,8 +377,16 @@ export class OverlayStateMachine {
   private playTransition(edge: MaskoAnimationEdge): void {
     if (this.phase !== "looping" && this.phase !== "idle") return;
 
+    const targetNode = this.config.nodes.find((n) => n.id === edge.target);
+    const targetName = targetNode?.name ?? edge.target;
+    console.log(
+      `[masko] Transition: ${this.currentNodeName} → ${targetName}` +
+      (edge.conditions?.length ? ` [${edge.conditions.map((c) => `${c.input} ${c.op} ${JSON.stringify(c.value)}`).join(", ")}]` : ""),
+    );
+
     const videoUrl = this.getVideoUrl(edge);
     if (!videoUrl) {
+      console.log(`[masko] No video for transition — jumping directly`);
       this.arriveAtNode(edge.target);
       return;
     }
