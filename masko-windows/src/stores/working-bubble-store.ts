@@ -38,7 +38,7 @@ function show(toolName: string, projectName: string, sessionId: string, terminal
 function showDone() {
   if (autoHideTimer) clearTimeout(autoHideTimer);
   setState({ visible: true, status: "done", toolName: "DONE" });
-  autoHideTimer = setTimeout(hide, 5000);
+  autoHideTimer = setTimeout(hide, 10000);
 }
 
 function showSessionStart(projectName: string, sessionId: string, terminalPid?: number) {
