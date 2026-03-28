@@ -22,6 +22,7 @@ function MascotOverlay() {
   const [isLoop, setIsLoop] = createSignal(true);
   const [playbackRate, setPlaybackRate] = createSignal(1.0);
   const [isDragging, setIsDragging] = createSignal(false);
+  const [isHovering, setIsHovering] = createSignal(false);
   // const [usage, setUsage] = createSignal<UsageData | null>(null); // temporarily disabled
 
   // Track agent state so we can restore it when switching mascots
@@ -189,6 +190,7 @@ function MascotOverlay() {
           sm.setAgentStateInput("isIdle", conditionBool(false));
           break;
         case HookEventType.PreToolUse:
+        case HookEventType.PostToolUse:
         case HookEventType.UserPromptSubmit:
           agentState.isWorking = true;
           agentState.isIdle = false;
@@ -285,8 +287,8 @@ function MascotOverlay() {
   };
 
   const handleClick = () => stateMachine()?.handleClick();
-  const handleMouseEnter = () => stateMachine()?.handleMouseOver(true);
-  const handleMouseLeave = () => stateMachine()?.handleMouseOver(false);
+  const handleMouseEnter = () => { setIsHovering(true); stateMachine()?.handleMouseOver(true); };
+  const handleMouseLeave = () => { setIsHovering(false); stateMachine()?.handleMouseOver(false); };
   const handleVideoEnded = () => {
     if (!isLoop()) stateMachine()?.handleVideoEnded();
   };
@@ -321,8 +323,9 @@ function MascotOverlay() {
 
       {/* Mascot video — pinned to bottom */}
       <div
-        class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[200px] h-[200px] cursor-grab"
+        class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[200px] h-[200px] cursor-grab rounded-2xl transition-colors duration-200"
         classList={{ "cursor-grabbing": isDragging() }}
+        style={{ background: isHovering() ? "rgba(255, 255, 255, 0.2)" : "transparent" }}
         onMouseDown={handleMouseDown}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
