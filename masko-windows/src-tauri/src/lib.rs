@@ -1,3 +1,5 @@
+#[macro_use]
+mod log;
 mod commands;
 mod hook_installer;
 mod models;
@@ -31,13 +33,13 @@ pub fn run() {
             let pp = pp_for_server.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = server::start(handle, pp).await {
-                    eprintln!("[masko] Server error: {e}");
+                    mlog_err!("Server error: {e}");
                 }
             });
 
             match hook_installer::install(45832) {
-                Ok(()) => println!("[masko] Hooks installed/updated"),
-                Err(e) => eprintln!("[masko] Hook install failed: {e}"),
+                Ok(()) => mlog!("Hooks installed/updated"),
+                Err(e) => mlog_err!("Hook install failed: {e}"),
             }
 
             if let Some(overlay) = app.get_webview_window("overlay") {
@@ -74,7 +76,7 @@ pub fn run() {
                 overlay.show().ok();
             }
 
-            println!("[masko] Masko desktop started");
+            mlog!("Masko desktop started");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

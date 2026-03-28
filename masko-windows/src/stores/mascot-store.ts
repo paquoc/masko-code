@@ -3,6 +3,7 @@ import { createSignal } from "solid-js";
 import { emit } from "@tauri-apps/api/event";
 import type { SavedMascot, MaskoAnimationConfig } from "../models/mascot-config";
 import { parseMascotConfig } from "../models/mascot-config";
+import { warn } from "../services/log";
 
 const STORAGE_KEY = "masko_saved_mascots";
 const ACTIVE_KEY = "masko_active_mascot";
@@ -50,7 +51,7 @@ export async function loadBundledMascots(): Promise<void> {
         addedAt: new Date().toISOString(),
       });
     } catch (e) {
-      console.warn(`[masko] Failed to load bundled mascot ${slug}:`, e);
+      warn(`Failed to load bundled mascot ${slug}:`, e);
     }
   }
 

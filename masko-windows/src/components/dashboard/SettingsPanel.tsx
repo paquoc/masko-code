@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show } from "solid-js";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus } from "../../services/ipc";
+import { error } from "../../services/log";
 
 export default function SettingsPanel() {
   const [hooksInstalled, setHooksInstalled] = createSignal(false);
@@ -12,7 +13,7 @@ export default function SettingsPanel() {
       const status = await getServerStatus();
       setServerPort(status.port);
     } catch (e) {
-      console.error("[masko] Settings load error:", e);
+      error("Settings load error:", e);
     }
   });
 
@@ -22,7 +23,7 @@ export default function SettingsPanel() {
       await installHooks();
       setHooksInstalled(true);
     } catch (e) {
-      console.error("[masko] Hook install failed:", e);
+      error("Hook install failed:", e);
     }
     setLoading("");
   }
@@ -33,7 +34,7 @@ export default function SettingsPanel() {
       await uninstallHooks();
       setHooksInstalled(false);
     } catch (e) {
-      console.error("[masko] Hook uninstall failed:", e);
+      error("Hook uninstall failed:", e);
     }
     setLoading("");
   }

@@ -3,6 +3,7 @@ import { createSignal } from "solid-js";
 import type { AgentEvent } from "../models/agent-event";
 import type { PendingPermission, PermissionDecision } from "../models/permission";
 import { invoke } from "@tauri-apps/api/core";
+import { error } from "../services/log";
 
 const [pending, setPending] = createStore<PendingPermission[]>([]);
 const [onPendingCountChange, setOnPendingCountChange] = createSignal(0);
@@ -16,6 +17,9 @@ export function cachePreToolUse(sessionId: string, agentId: string | undefined, 
 }
 
 export function add(event: AgentEvent, requestId: string): void {
+  // Deduplicate: ignore if this requestId is already pending
+  if (pending.some((p) => p.requestId === requestId)) return;
+
   // Try to resolve toolUseId from cache
   const key = `${event.session_id || ""}:${event.agent_id || ""}:${event.tool_name || ""}`;
   const resolvedToolUseId = event.tool_use_id || preToolUseCache.get(key);
@@ -36,9 +40,13 @@ export function add(event: AgentEvent, requestId: string): void {
   setOnPendingCountChange((v) => v + 1);
 }
 
+const resolving = new Set<string>();
+
 export async function resolve(id: string, decision: PermissionDecision, suggestion?: any): Promise<void> {
+  if (resolving.has(id)) return;
   const perm = pending.find((p) => p.id === id);
   if (!perm) return;
+  resolving.add(id);
 
   // Remove from pending IMMEDIATELY so UI updates before await
   setPending((prev) => prev.filter((p) => p.id !== id));
@@ -68,7 +76,9 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
       decision: payload,
     });
   } catch (e) {
-    console.error("[masko] Failed to resolve permission:", e);
+    error("Failed to resolve permission:", e);
+  } finally {
+    resolving.delete(id);
   }
 }
 

@@ -17,7 +17,7 @@ pub async fn resolve_permission(
     request_id: String,
     decision: serde_json::Value,
 ) -> Result<(), String> {
-    println!("[masko] resolve_permission called: id={}", request_id);
+    mlog!("resolve_permission called: id={}", request_id);
     crate::server::resolve(&pending, request_id, decision).await
 }
 

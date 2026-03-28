@@ -11,6 +11,7 @@ import {
   conditionToDouble,
   conditionEqual,
 } from "../models/types";
+import { log, warn } from "./log";
 
 export type StateMachinePhase = "idle" | "looping" | "transitioning";
 
@@ -97,8 +98,8 @@ export class OverlayStateMachine {
 
   start(): void {
     this.started = true;
-    console.log(
-      `[masko] State machine starting — initial node: ${this.currentNodeName}`,
+    log(
+      `State machine starting — initial node: ${this.currentNodeName}`,
     );
     // Log agent inputs at start
     const agentInputs: Record<string, any> = {};
@@ -107,7 +108,7 @@ export class OverlayStateMachine {
         agentInputs[k] = v;
       }
     }
-    console.log("[masko] Inputs at start:", JSON.stringify(agentInputs));
+    log("Inputs at start:", JSON.stringify(agentInputs));
     this.arriveAtNode(this.config.initialNode);
   }
 
@@ -115,7 +116,7 @@ export class OverlayStateMachine {
     const old = this.inputs.get(name);
     if (old && conditionEqual(old, value)) return;
 
-    console.log(`[masko] Input changed: ${name} = ${JSON.stringify(value)}${old ? ` (was ${JSON.stringify(old)})` : ""}`);
+    log(`Input changed: ${name} = ${JSON.stringify(value)}${old ? ` (was ${JSON.stringify(old)})` : ""}`);
     this.inputs.set(name, value);
     this.evaluateAndFire(name);
   }
@@ -256,11 +257,11 @@ export class OverlayStateMachine {
     return conditions.every((c) => {
       const inputValue = this.inputs.get(c.input);
       if (!inputValue) {
-        if (debug) console.log(`[masko] condition fail: ${c.input} not found`);
+        if (debug) log(`condition fail: ${c.input} not found`);
         return false;
       }
       const result = this.compare(inputValue, c.op, c.value);
-      if (debug) console.log(`[masko] condition: ${c.input} ${JSON.stringify(inputValue)} ${c.op} ${JSON.stringify(c.value)} = ${result}`);
+      if (debug) log(`condition: ${c.input} ${JSON.stringify(inputValue)} ${c.op} ${JSON.stringify(c.value)} = ${result}`);
       return result;
     });
   }
@@ -312,9 +313,9 @@ export class OverlayStateMachine {
 
     const newName = this.currentNodeName;
     if (prevNodeId !== nodeId) {
-      console.log(`[masko] State: ${prevName} → ${newName}`);
+      log(`State: ${prevName} → ${newName}`);
     } else {
-      console.log(`[masko] Arrived at: ${newName}`);
+      log(`Arrived at: ${newName}`);
     }
 
     this.inputs.set("loopCount", conditionNumber(0));
@@ -379,14 +380,14 @@ export class OverlayStateMachine {
 
     const targetNode = this.config.nodes.find((n) => n.id === edge.target);
     const targetName = targetNode?.name ?? edge.target;
-    console.log(
-      `[masko] Transition: ${this.currentNodeName} → ${targetName}` +
+    log(
+      `Transition: ${this.currentNodeName} → ${targetName}` +
       (edge.conditions?.length ? ` [${edge.conditions.map((c) => `${c.input} ${c.op} ${JSON.stringify(c.value)}`).join(", ")}]` : ""),
     );
 
     const videoUrl = this.getVideoUrl(edge);
     if (!videoUrl) {
-      console.log(`[masko] No video for transition — jumping directly`);
+      log(`No video for transition — jumping directly`);
       this.arriveAtNode(edge.target);
       return;
     }
@@ -405,7 +406,7 @@ export class OverlayStateMachine {
     const gen = this.nodeTimeGeneration;
     this.transitionTimeout = setTimeout(() => {
       if (this.nodeTimeGeneration === gen && this.phase === "transitioning" && this.pendingEdge === edge) {
-        console.warn(`[masko] Transition timeout — forcing arrival at ${edge.target}`);
+        warn(`Transition timeout — forcing arrival at ${edge.target}`);
         this.pendingEdge = undefined;
         this.arriveAtNode(edge.target);
       }

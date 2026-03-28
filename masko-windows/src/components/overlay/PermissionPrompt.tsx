@@ -3,6 +3,7 @@ import type { PendingPermission } from "../../models/permission";
 import { parsePermissionSuggestions, type PermissionSuggestion } from "../../models/permission";
 import { getAssistantDisplayName, getProjectName } from "../../models/agent-event";
 import { permissionStore } from "../../stores/permission-store";
+import { log } from "../../services/log";
 
 /** Speech bubble tail pointing down toward the mascot */
 function SpeechBubbleTail() {
@@ -77,7 +78,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
   const isQ = () => isQuestion(event());
 
   const handleApprove = () => {
-    console.log("[masko] handleApprove called, id:", props.permission.id);
+    log("handleApprove called, id:", props.permission.id);
     const suggestion = selectedSuggestion();
     if (isQ()) {
       // Send answer
@@ -103,7 +104,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
   };
 
   const handleDeny = () => {
-    console.log("[masko] handleDeny called, id:", props.permission.id);
+    log("handleDeny called, id:", props.permission.id);
     permissionStore.resolve(props.permission.id, "deny");
   };
 

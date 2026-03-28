@@ -8,6 +8,7 @@ import {
 import { createNotification, type AppNotification } from "../models/notification";
 import { eventStore } from "../stores/event-store";
 import { sessionStore } from "../stores/session-store";
+import { error } from "./log";
 import { notificationStore } from "../stores/notification-store";
 import { permissionStore } from "../stores/permission-store";
 
@@ -59,7 +60,7 @@ export function processEvent(event: AgentEvent): void {
 /** Handle a PermissionRequest event — add to permission queue */
 export function processPermissionRequest(event: AgentEvent): void {
   if (!event.request_id) {
-    console.error("[masko] PermissionRequest without request_id");
+    error("PermissionRequest without request_id");
     return;
   }
 

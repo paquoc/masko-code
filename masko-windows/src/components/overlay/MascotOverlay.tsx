@@ -7,6 +7,7 @@ import { parseMascotConfig } from "../../models/mascot-config";
 import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent-event";
 import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
+import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 
 // interface UsageData {
@@ -61,7 +62,7 @@ function MascotOverlay() {
       const raw = await resp.json();
       applyMascotConfig(parseMascotConfig(raw));
     } catch (e) {
-      console.error(`[masko] Failed to load mascot "${slug}":`, e);
+      error(`Failed to load mascot "${slug}":`, e);
     }
   }
 
@@ -75,7 +76,7 @@ function MascotOverlay() {
     sm.setAgentStateInput("isAlert", conditionBool(agentState.isAlert));
     sm.setAgentStateInput("isCompacting", conditionBool(agentState.isCompacting));
     sm.start(); // arriveAtNode → evaluateAndFire with correct inputs
-    console.log("[masko] Mascot switched — restored state:", JSON.stringify(agentState));
+    log("Mascot switched — restored state:", JSON.stringify(agentState));
   }
 
   // Load persisted mascot on startup, fallback to clippy

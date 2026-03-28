@@ -2,6 +2,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { parseAgentEvent, type AgentEvent, HookEventType } from "../models/agent-event";
 import { processEvent, processPermissionRequest } from "./event-processor";
+import { log } from "./log";
 
 /** Start listening for events from the Rust backend */
 export async function startEventListeners(): Promise<UnlistenFn[]> {
@@ -24,14 +25,14 @@ export async function startEventListeners(): Promise<UnlistenFn[]> {
   unlisteners.push(
     await listen<any>("input-event", (e) => {
       // Will be wired to state machine in Phase 06
-      console.log("[masko] Input event:", e.payload);
+      log("Input event:", e.payload);
     }),
   );
 
   // Mascot install events (from masko.ai)
   unlisteners.push(
     await listen<any>("mascot-install", (e) => {
-      console.log("[masko] Mascot install:", e.payload);
+      log("Mascot install:", e.payload);
       // Will be handled in mascot store
     }),
   );
@@ -39,11 +40,11 @@ export async function startEventListeners(): Promise<UnlistenFn[]> {
   // Server status updates
   unlisteners.push(
     await listen<any>("server-status", (e) => {
-      console.log("[masko] Server status:", e.payload);
+      log("Server status:", e.payload);
     }),
   );
 
-  console.log("[masko] Event listeners started");
+  log("Event listeners started");
   return unlisteners;
 }
 

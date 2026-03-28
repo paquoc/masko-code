@@ -46,7 +46,7 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         match tokio::net::TcpListener::bind(addr).await {
             Ok(listener) => {
-                println!("[masko] Server listening on port {port}");
+                mlog!("Server listening on port {port}");
                 app_handle
                     .emit("server-status", serde_json::json!({"running": true, "port": port}))
                     .ok();
@@ -55,14 +55,14 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                 return Ok(());
             }
             Err(e) => {
-                eprintln!("[masko] Port {port} unavailable: {e}");
+                mlog_err!("Port {port} unavailable: {e}");
                 continue;
             }
         }
     }
 
-    eprintln!(
-        "[masko] Could not bind to any port in range {DEFAULT_PORT}-{}",
+    mlog_err!(
+        "Could not bind to any port in range {DEFAULT_PORT}-{}",
         DEFAULT_PORT + MAX_PORT_ATTEMPTS - 1
     );
     Ok(())
@@ -76,7 +76,7 @@ async fn handle_hook(
     State(state): State<AppState>,
     Json(event): Json<AgentEvent>,
 ) -> impl IntoResponse {
-    println!("[masko] Hook: {}", event.hook_event_name);
+    mlog!("Hook: {}", event.hook_event_name);
 
     if event.hook_event_name == "PermissionRequest" {
         // Create a oneshot channel — hold the HTTP connection until user decides
@@ -103,7 +103,7 @@ async fn handle_hook(
         match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
             Ok(Ok(decision)) => {
                 let body = serde_json::to_string(&decision).unwrap_or_default();
-                println!("[masko] Permission resolved, body: {}", body);
+                mlog!("Permission resolved, body: {}", body);
                 // Check if decision contains deny behavior
                 let is_deny = decision
                     .pointer("/hookSpecificOutput/decision/behavior")
@@ -134,7 +134,7 @@ async fn handle_input(
     State(state): State<AppState>,
     Json(input): Json<InputEvent>,
 ) -> impl IntoResponse {
-    println!("[masko] Input: {} = {}", input.name, input.value);
+    mlog!("Input: {} = {}", input.name, input.value);
     state.app_handle.emit("input-event", &input).ok();
     StatusCode::OK
 }
@@ -143,7 +143,7 @@ async fn handle_install(
     State(state): State<AppState>,
     Json(config): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    println!("[masko] Install received");
+    mlog!("Install received");
     state.app_handle.emit("mascot-install", &config).ok();
     // CORS headers for browser requests from masko.ai
     (

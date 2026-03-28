@@ -146,8 +146,8 @@ pub fn ensure_script_exists(port: u16) -> Result<(), String> {
     fs::write(&script_path, script)
         .map_err(|e| format!("Failed to write hook script: {e}"))?;
 
-    println!(
-        "[masko] Hook script written to {}",
+    mlog!(
+        "Hook script written to {}",
         script_path.to_string_lossy()
     );
     Ok(())
@@ -266,7 +266,7 @@ pub fn install(port: u16) -> Result<(), String> {
     }
 
     write_settings(&path, &settings)?;
-    println!("[masko] Hooks installed in {}", path.to_string_lossy());
+    mlog!("Hooks installed in {}", path.to_string_lossy());
     Ok(())
 }
 
@@ -312,7 +312,7 @@ pub fn uninstall() -> Result<(), String> {
     }
 
     write_settings(&path, &settings)?;
-    println!("[masko] Hooks uninstalled from {}", path.to_string_lossy());
+    mlog!("Hooks uninstalled from {}", path.to_string_lossy());
     Ok(())
 }
 

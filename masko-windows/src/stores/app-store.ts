@@ -6,6 +6,7 @@ import { notificationStore } from "./notification-store";
 import { permissionStore } from "./permission-store";
 import { mascotStore } from "./mascot-store";
 import { startEventListeners } from "../services/ipc";
+import { log } from "../services/log";
 
 const [isRunning, setIsRunning] = createSignal(false);
 const [isReady, setIsReady] = createSignal(false);
@@ -43,7 +44,7 @@ async function start(): Promise<void> {
   }
 
   setIsReady(true);
-  console.log("[masko] App store started");
+  log("App store started");
 }
 
 function completeOnboarding(): void {
