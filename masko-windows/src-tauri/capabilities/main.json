@@ -16,6 +16,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-center",
     "core:webview:allow-create-webview-window",
+    "core:window:allow-set-ignore-cursor-events",
     "global-shortcut:default",
     "notification:default"
   ]

@@ -35,3 +35,15 @@ pub async fn uninstall_hooks() -> Result<(), String> {
 pub async fn is_hooks_registered() -> Result<bool, String> {
     Ok(hook_installer::is_registered())
 }
+
+#[tauri::command]
+pub fn set_overlay_permission_visible(visible: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::win_overlay::PERMISSION_HIT_VISIBLE
+            .store(visible, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = visible;
+    Ok(())
+}

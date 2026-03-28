@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-// import { invoke } from "@tauri-apps/api/core"; // temporarily disabled — usage API
+import { invoke } from "@tauri-apps/api/core";
 import { OverlayStateMachine } from "../../services/state-machine";
 import { parseMascotConfig } from "../../models/mascot-config";
 import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent-event";
@@ -147,8 +147,20 @@ function MascotOverlay() {
     }
   });
 
-  // Focus handling is done entirely on the Rust side (strip_overlay_frame)
-  // WS_EX_NOACTIVATE prevents window activation; Rust re-strips frame on every focus change
+  // Sync permission visibility to Rust hit-test zone
+  createEffect(() => {
+    const visible = permissionStore.pending.some((p) => !p.collapsed);
+    invoke("set_overlay_permission_visible", { visible }).catch(() => {});
+  });
+
+  // Click-through: Rust polls cursor position and emits whether overlay should ignore events.
+  onMount(async () => {
+    const win = getCurrentWindow();
+    const unlisten = await listen<boolean>("overlay-cursor-zone", (e) => {
+      win.setIgnoreCursorEvents(e.payload).catch(() => {});
+    });
+    onCleanup(unlisten);
+  });
 
   // Listen for hook events → state machine
   onMount(async () => {
