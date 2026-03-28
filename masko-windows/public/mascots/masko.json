@@ -8,22 +8,22 @@
     {
       "id": "6d0daf67-7211-4fc2-989d-d554c201a532",
       "name": "Idle",
-      "transparentThumbnailUrl": "https://assets.masko.ai/7fced6/spark-4735/idle-thinking-0117f649.png"
+      "transparentThumbnailUrl": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-thinking-0117f649.png"
     },
     {
       "id": "f3473483-472e-42dc-a69b-80329b5c74cd",
       "name": "Working",
-      "transparentThumbnailUrl": "https://assets.masko.ai/7fced6/spark-4735/working-needs-attention-ea009c32.png"
+      "transparentThumbnailUrl": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-needs-attention-ea009c32.png"
     },
     {
       "id": "a95fe867-ef9a-4f81-8b04-64eee249331e",
       "name": "Needs Attention",
-      "transparentThumbnailUrl": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-working-89cbd6ff.png"
+      "transparentThumbnailUrl": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-working-89cbd6ff.png"
     },
     {
       "id": "a3e442df-572c-4a29-8ec6-76b411361c29",
       "name": "Thinking",
-      "transparentThumbnailUrl": "https://assets.masko.ai/7fced6/spark-4735/thinking-needs-attention-fb1df232.png"
+      "transparentThumbnailUrl": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-needs-attention-fb1df232.png"
     }
   ],
   "edges": [
@@ -35,8 +35,8 @@
       "duration": 4,
       "conditions": [],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/idle-910a1585.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/idle-4e44fa5a.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-910a1585.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-4e44fa5a.mov"
       }
     },
     {
@@ -47,8 +47,8 @@
       "duration": 4,
       "conditions": [],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/working-a1723086.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/working-6022d674.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-a1723086.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-6022d674.mov"
       }
     },
     {
@@ -59,8 +59,8 @@
       "duration": 4,
       "conditions": [],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-58e346c8.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-548be442.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-58e346c8.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-548be442.mov"
       }
     },
     {
@@ -71,8 +71,8 @@
       "duration": 4,
       "conditions": [],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/thinking-91063c00.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/thinking-7170c92f.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-91063c00.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-7170c92f.mov"
       }
     },
     {
@@ -99,8 +99,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/idle-working-2acd4462.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/idle-working-8dfc4854.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-working-2acd4462.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-working-8dfc4854.mov"
       }
     },
     {
@@ -117,8 +117,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/idle-needs-attention-be64c260.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/idle-needs-attention-7edbf60c.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-needs-attention-be64c260.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-needs-attention-7edbf60c.mov"
       }
     },
     {
@@ -140,8 +140,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/idle-thinking-c5d5fdb0.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/idle-thinking-7e225c6d.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-thinking-c5d5fdb0.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/idle-thinking-7e225c6d.mov"
       }
     },
     {
@@ -168,8 +168,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/working-idle-6493316d.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/working-idle-b5e12e13.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-idle-6493316d.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-idle-b5e12e13.mov"
       }
     },
     {
@@ -186,8 +186,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/working-needs-attention-36c446b3.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/working-needs-attention-6758f68b.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-needs-attention-36c446b3.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-needs-attention-6758f68b.mov"
       }
     },
     {
@@ -214,8 +214,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-idle-199e80a4.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-idle-a91cc9b6.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-idle-199e80a4.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-idle-a91cc9b6.mov"
       }
     },
     {
@@ -242,8 +242,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-working-afb7b89e.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-working-49080a95.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-working-afb7b89e.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-working-49080a95.mov"
       }
     },
     {
@@ -265,8 +265,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-thinking-43073c45.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/needs-attention-thinking-3ab1f050.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-thinking-43073c45.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/needs-attention-thinking-3ab1f050.mov"
       }
     },
     {
@@ -288,8 +288,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/working-thinking-6f332e47.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/working-thinking-9b6f9ef6.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-thinking-6f332e47.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/working-thinking-9b6f9ef6.mov"
       }
     },
     {
@@ -316,8 +316,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/thinking-idle-28da0b0b.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/thinking-idle-b1408f89.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-idle-28da0b0b.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-idle-b1408f89.mov"
       }
     },
     {
@@ -344,8 +344,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/thinking-working-7f3c3d05.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/thinking-working-5a25031b.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-working-7f3c3d05.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-working-5a25031b.mov"
       }
     },
     {
@@ -362,8 +362,8 @@
         }
       ],
       "videos": {
-        "webm": "https://assets.masko.ai/7fced6/spark-4735/thinking-needs-attention-df06ee4d.webm",
-        "hevc": "https://assets.masko.ai/7fced6/spark-4735/thinking-needs-attention-d98a92f9.mov"
+        "webm": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-needs-attention-df06ee4d.webm",
+        "hevc": "https://masko-for-win.pages.dev/7fced6/spark-4735/thinking-needs-attention-d98a92f9.mov"
       }
     }
   ]

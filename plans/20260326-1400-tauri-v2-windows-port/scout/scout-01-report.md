@@ -84,7 +84,7 @@ macOS Swift desktop app — floating mascot overlay reacting to AI agent events 
 ### Video Format
 - HEVC (.mov) with alpha channel for macOS (AVPlayer)
 - WebM (.webm) with VP9 alpha as fallback — already in mascot config JSON
-- Videos hosted on assets.masko.ai CDN
+- Videos hosted on masko-for-win.pages.dev CDN
 
 ### HTTP Server Protocol
 - Port 45832 (was 49152, migrated)

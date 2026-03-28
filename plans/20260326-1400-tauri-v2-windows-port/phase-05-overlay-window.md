@@ -122,7 +122,7 @@ Overlay Window (Tauri)
    - Fallback: accept that clicking mascot activates the window briefly
 
 7. Video caching:
-   - Remote videos from assets.masko.ai need local caching
+   - Remote videos from masko-for-win.pages.dev need local caching
    - Use Tauri FS plugin or Rust-side download + cache in app data dir
    - Create Tauri command: `cache_video(url) -> local_path`
 
