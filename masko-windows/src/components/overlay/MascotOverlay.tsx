@@ -193,12 +193,15 @@ function MascotOverlay() {
 
       if (!sm) return;
       switch (eventType) {
-        case HookEventType.SessionStart:
+        case HookEventType.SessionStart: {
           agentState.isWorking = true;
           agentState.isIdle = false;
           sm.setAgentStateInput("isWorking", conditionBool(true));
           sm.setAgentStateInput("isIdle", conditionBool(false));
+          const startProject = event.cwd ? event.cwd.replace(/\\/g, "/").split("/").pop() || "" : "";
+          workingBubbleStore.showSessionStart(startProject, event.session_id || "", event.terminal_pid);
           break;
+        }
         case HookEventType.PreToolUse: {
           agentState.isWorking = true;
           agentState.isIdle = false;

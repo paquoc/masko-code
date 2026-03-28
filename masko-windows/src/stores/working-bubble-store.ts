@@ -1,12 +1,14 @@
 import { createStore } from "solid-js/store";
 
+export type BubbleStatus = "working" | "done" | "session-start";
+
 export interface WorkingBubbleState {
   visible: boolean;
   toolName: string;
   projectName: string;
   sessionId: string;
   terminalPid?: number;
-  done: boolean;
+  status: BubbleStatus;
 }
 
 const [state, setState] = createStore<WorkingBubbleState>({
@@ -15,7 +17,7 @@ const [state, setState] = createStore<WorkingBubbleState>({
   projectName: "",
   sessionId: "",
   terminalPid: undefined,
-  done: false,
+  status: "working",
 });
 
 let autoHideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -28,15 +30,21 @@ function show(toolName: string, projectName: string, sessionId: string, terminal
     projectName,
     sessionId,
     terminalPid,
-    done: false,
+    status: "working",
   });
-  autoHideTimer = setTimeout(hide, 3000);
+  autoHideTimer = setTimeout(hide, 20000);
 }
 
 function showDone() {
   if (autoHideTimer) clearTimeout(autoHideTimer);
-  setState({ visible: true, done: true, toolName: "DONE" });
+  setState({ visible: true, status: "done", toolName: "DONE" });
   autoHideTimer = setTimeout(hide, 5000);
+}
+
+function showSessionStart(projectName: string, sessionId: string, terminalPid?: number) {
+  if (autoHideTimer) clearTimeout(autoHideTimer);
+  setState({ visible: true, status: "session-start", toolName: "SESSION START", projectName, sessionId, terminalPid });
+  autoHideTimer = setTimeout(hide, 4000);
 }
 
 function hide() {
@@ -48,5 +56,6 @@ export const workingBubbleStore = {
   get state() { return state; },
   show,
   showDone,
+  showSessionStart,
   hide,
 };

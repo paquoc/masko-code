@@ -33,22 +33,23 @@ export default function WorkingBubble() {
           {s().projectName}
         </div>
 
-        {/* Tool name / Done indicator */}
+        {/* Tool name / status indicator */}
         <div class="flex items-center gap-1.5 mt-0.5">
-          <Show when={!s().done} fallback={
-            <span class="flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-green-500">
-              <svg class="h-2 w-2 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M2.5 6.5L5 9L9.5 3.5" />
-              </svg>
-            </span>
-          }>
+          <Show when={s().status === "working"}>
             <span class="relative flex h-1.5 w-1.5 shrink-0">
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-primary opacity-75" />
               <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-primary" />
             </span>
           </Show>
+          <Show when={s().status === "done" || s().status === "session-start"}>
+            <span class="flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-green-500">
+              <svg class="h-2 w-2 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2.5 6.5L5 9L9.5 3.5" />
+              </svg>
+            </span>
+          </Show>
           <span class="text-[11px] font-medium truncate"
-            classList={{ "text-green-600": s().done, "text-text-primary": !s().done }}
+            classList={{ "text-green-600": s().status !== "working", "text-text-primary": s().status === "working" }}
           >
             {s().toolName}
           </span>
