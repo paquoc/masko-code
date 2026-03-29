@@ -78,6 +78,14 @@ pub fn run() {
             mlog!("Masko desktop started");
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    window.hide().ok();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_server_status,
             commands::resolve_permission,

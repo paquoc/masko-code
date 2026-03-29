@@ -152,7 +152,13 @@ function MascotOverlay() {
   onMount(async () => {
     const win = getCurrentWindow();
     const unlisten = await listen<boolean>("overlay-cursor-zone", (e) => {
-      win.setIgnoreCursorEvents(e.payload).catch(() => {});
+      const shouldIgnore = e.payload;
+      if (shouldIgnore) {
+        // Dismiss any open context menu before going click-through
+        window.getSelection()?.removeAllRanges();
+        (document.activeElement as HTMLElement)?.blur();
+      }
+      win.setIgnoreCursorEvents(shouldIgnore).catch(() => {});
     });
     onCleanup(unlisten);
   });

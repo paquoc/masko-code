@@ -181,20 +181,20 @@ pub fn focus_terminal_window(pid: Option<u32>) -> String {
     // Try specific PID first
     if let Some(p) = pid.filter(|&p| p > 0) {
         if let Some(h) = find_window_for_pid(p) {
-            let ok = force_foreground(h);
-            return format!("pid {} -> hwnd {:?}, fg={}", p, h.0, ok);
+            let result = force_foreground(h);
+            return format!("pid {} -> hwnd {:?}, result={}", p, h.0, result);
         }
         // PID given but no window found — try fallback
         if let Some(h) = find_ide_window() {
-            let ok = force_foreground(h);
-            return format!("pid {} no window, ide fallback -> hwnd {:?}, fg={}", p, h.0, ok);
+            let result = force_foreground(h);
+            return format!("pid {} no window, ide fallback -> hwnd {:?}, result={}", p, h.0, result);
         }
         return format!("pid {} no window, no ide fallback", p);
     }
     // No PID — try IDE fallback
     if let Some(h) = find_ide_window() {
-        let ok = force_foreground(h);
-        return format!("no pid, ide fallback -> hwnd {:?}, fg={}", h.0, ok);
+        let result = force_foreground(h);
+        return format!("no pid, ide fallback -> hwnd {:?}, result={}", h.0, result);
     }
     "no pid, no ide window found".to_string()
 }
@@ -241,9 +241,33 @@ fn find_ide_window() -> Option<HWND> {
     }
 }
 
-/// Returns true if the target window became the foreground window.
-fn force_foreground(hwnd: HWND) -> bool {
+/// Check if a window is on the current virtual desktop.
+/// Returns true on error (safe fallback — assume current desktop).
+unsafe fn is_on_current_desktop(hwnd: HWND) -> bool {
+    use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
+    use windows::Win32::UI::Shell::IVirtualDesktopManager;
+    // CLSID for VirtualDesktopManager: {AA509086-5CA9-4C25-8F95-589D3C07B48A}
+    use windows::core::GUID;
+    const CLSID_VDM: GUID = GUID::from_u128(0xAA509086_5CA9_4C25_8F95_589D3C07B48A);
+
+    let manager: IVirtualDesktopManager = match CoCreateInstance(&CLSID_VDM, None, CLSCTX_ALL) {
+        Ok(m) => m,
+        Err(_) => return true,
+    };
+    match manager.IsWindowOnCurrentVirtualDesktop(hwnd) {
+        Ok(on_current) => on_current.as_bool(),
+        Err(_) => true,
+    }
+}
+
+/// Returns a diagnostic string: "success", "different_desktop", or "failed".
+fn force_foreground(hwnd: HWND) -> &'static str {
     unsafe {
+        // Check virtual desktop first
+        if !is_on_current_desktop(hwnd) {
+            return "different_desktop";
+        }
+
         let our_thread = windows::Win32::System::Threading::GetCurrentThreadId();
         let target_thread = GetWindowThreadProcessId(hwnd, None);
         let attached = if our_thread != target_thread {
@@ -252,61 +276,40 @@ fn force_foreground(hwnd: HWND) -> bool {
             false
         };
 
-        // If minimized, restore first
+        // Restore if minimized
         if IsIconic(hwnd).as_bool() {
             let _ = ShowWindow(hwnd, SW_RESTORE);
         }
-        // Ensure visible
         let _ = ShowWindow(hwnd, SW_SHOW);
-        let _ = BringWindowToTop(hwnd);
-        let _ = SetForegroundWindow(hwnd);
-        // Force to front of Z-order (below TOPMOST windows like our overlay)
         let _ = SetWindowPos(
             hwnd, HWND_TOP, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
         );
+        let _ = BringWindowToTop(hwnd);
         let _ = SetForegroundWindow(hwnd);
 
         if attached {
             let _ = windows::Win32::System::Threading::AttachThreadInput(our_thread, target_thread, false);
         }
 
-        // Check if it worked
-        let fg = GetForegroundWindow();
-        if fg == hwnd {
-            return true;
+        if GetForegroundWindow() == hwnd {
+            return "success";
         }
 
-        // Fallback 1: Alt-key trick to steal foreground
-        let alt_input = INPUT {
+        // Fallback: Alt-key trick
+        let alt_down = INPUT {
             r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: VK_MENU,
-                    ..Default::default()
-                },
-            },
+            Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_MENU, ..Default::default() } },
         };
-        let _ = SendInput(&[alt_input], std::mem::size_of::<INPUT>() as i32);
-        let _ = SetForegroundWindow(hwnd);
         let alt_up = INPUT {
             r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: VK_MENU,
-                    dwFlags: KEYEVENTF_KEYUP,
-                    ..Default::default()
-                },
-            },
+            Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_MENU, dwFlags: KEYEVENTF_KEYUP, ..Default::default() } },
         };
+        let _ = SendInput(&[alt_down], std::mem::size_of::<INPUT>() as i32);
+        let _ = SetForegroundWindow(hwnd);
         let _ = SendInput(&[alt_up], std::mem::size_of::<INPUT>() as i32);
 
-        let fg2 = GetForegroundWindow();
-        if fg2 == hwnd {
-            return true;
-        }
-
-        GetForegroundWindow() == hwnd
+        if GetForegroundWindow() == hwnd { "success" } else { "failed" }
     }
 }
 

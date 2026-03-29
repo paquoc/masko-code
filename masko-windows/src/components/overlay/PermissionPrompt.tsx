@@ -269,7 +269,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
                       style={{
                         "font-size": `${fsXs()}px`,
                         "white-space": "pre-wrap",
-                        "word-break": "break-all",
+                        "overflow-wrap": "break-word",
+                        "word-break": "normal",
                         "max-width": "250px",
                         background: a().textColor,
                         color: a().bgColor,
