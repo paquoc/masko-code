@@ -167,13 +167,40 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
     }
 }
 
-/// Bring the window belonging to the given process ID to the foreground.
-/// Walks up the process tree to find the top-level window (e.g. Cursor's main
-/// window may belong to a parent process, not the PID we were given).
-/// Uses AttachThreadInput to bypass Windows' SetForegroundWindow restriction.
-pub fn focus_window_by_pid(pid: u32) {
+/// Known IDE / terminal process names (case-insensitive, without .exe)
+const TERMINAL_PROCESS_NAMES: &[&str] = &[
+    "code", "cursor", "windsurf", "windowsterminal", "claude",
+    "pycharm64", "idea64", "webstorm64", "goland64", "rider64",
+    "alacritty", "wezterm-gui", "hyper", "terminus",
+];
+
+/// Focus a terminal/IDE window. If pid > 0, try that first; otherwise (or if
+/// not found) fall back to the most recent visible IDE/terminal window.
+/// Returns a diagnostic string for logging.
+pub fn focus_terminal_window(pid: Option<u32>) -> String {
+    // Try specific PID first
+    if let Some(p) = pid.filter(|&p| p > 0) {
+        if let Some(h) = find_window_for_pid(p) {
+            let ok = force_foreground(h);
+            return format!("pid {} -> hwnd {:?}, fg={}", p, h.0, ok);
+        }
+        // PID given but no window found — try fallback
+        if let Some(h) = find_ide_window() {
+            let ok = force_foreground(h);
+            return format!("pid {} no window, ide fallback -> hwnd {:?}, fg={}", p, h.0, ok);
+        }
+        return format!("pid {} no window, no ide fallback", p);
+    }
+    // No PID — try IDE fallback
+    if let Some(h) = find_ide_window() {
+        let ok = force_foreground(h);
+        return format!("no pid, ide fallback -> hwnd {:?}, fg={}", h.0, ok);
+    }
+    "no pid, no ide window found".to_string()
+}
+
+fn find_window_for_pid(pid: u32) -> Option<HWND> {
     unsafe {
-        // Collect candidate PIDs: the given PID + its ancestors (max 8 levels)
         let mut pids = vec![pid];
         let mut cur = pid;
         for _ in 0..8 {
@@ -185,64 +212,101 @@ pub fn focus_window_by_pid(pid: u32) {
                 break;
             }
         }
-
-        // Find a visible top-level window belonging to any of those PIDs
-        let mut data = FindWindowData {
-            target_pids: pids,
-            found_hwnd: 0,
-        };
+        let mut data = FindWindowData { target_pids: pids, found_hwnd: 0 };
         let _ = EnumWindows(
             Some(enum_windows_cb),
             LPARAM(&mut data as *mut FindWindowData as isize),
         );
         if data.found_hwnd != 0 {
-            let hwnd = HWND(data.found_hwnd as *mut std::ffi::c_void);
-
-            // AttachThreadInput approach: attach our thread to the target
-            // window's thread so SetForegroundWindow is allowed.
-            let our_thread = windows::Win32::System::Threading::GetCurrentThreadId();
-            let target_thread = GetWindowThreadProcessId(hwnd, None);
-            let attached = if our_thread != target_thread {
-                windows::Win32::System::Threading::AttachThreadInput(our_thread, target_thread, true).as_bool()
-            } else {
-                false
-            };
-
-            let _ = ShowWindow(hwnd, SW_RESTORE);
-            let _ = BringWindowToTop(hwnd);
-            let _ = SetForegroundWindow(hwnd);
-
-            if attached {
-                let _ = windows::Win32::System::Threading::AttachThreadInput(our_thread, target_thread, false);
-            }
-
-            // Fallback: if SetForegroundWindow didn't work, try the Alt-key trick
-            let fg = GetForegroundWindow();
-            if fg != hwnd {
-                let alt_input = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_MENU,
-                            ..Default::default()
-                        },
-                    },
-                };
-                let _ = SendInput(&[alt_input], std::mem::size_of::<INPUT>() as i32);
-                let _ = SetForegroundWindow(hwnd);
-                let alt_up = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_MENU,
-                            dwFlags: KEYEVENTF_KEYUP,
-                            ..Default::default()
-                        },
-                    },
-                };
-                let _ = SendInput(&[alt_up], std::mem::size_of::<INPUT>() as i32);
-            }
+            Some(HWND(data.found_hwnd as *mut std::ffi::c_void))
+        } else {
+            None
         }
+    }
+}
+
+/// Find a visible top-level window whose process name matches a known IDE/terminal.
+fn find_ide_window() -> Option<HWND> {
+    unsafe {
+        let mut data = FindIdeWindowData { found_hwnd: 0 };
+        let _ = EnumWindows(
+            Some(enum_ide_windows_cb),
+            LPARAM(&mut data as *mut FindIdeWindowData as isize),
+        );
+        if data.found_hwnd != 0 {
+            Some(HWND(data.found_hwnd as *mut std::ffi::c_void))
+        } else {
+            None
+        }
+    }
+}
+
+/// Returns true if the target window became the foreground window.
+fn force_foreground(hwnd: HWND) -> bool {
+    unsafe {
+        let our_thread = windows::Win32::System::Threading::GetCurrentThreadId();
+        let target_thread = GetWindowThreadProcessId(hwnd, None);
+        let attached = if our_thread != target_thread {
+            windows::Win32::System::Threading::AttachThreadInput(our_thread, target_thread, true).as_bool()
+        } else {
+            false
+        };
+
+        // If minimized, restore first
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        // Ensure visible
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+        // Force to front of Z-order (below TOPMOST windows like our overlay)
+        let _ = SetWindowPos(
+            hwnd, HWND_TOP, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let _ = SetForegroundWindow(hwnd);
+
+        if attached {
+            let _ = windows::Win32::System::Threading::AttachThreadInput(our_thread, target_thread, false);
+        }
+
+        // Check if it worked
+        let fg = GetForegroundWindow();
+        if fg == hwnd {
+            return true;
+        }
+
+        // Fallback 1: Alt-key trick to steal foreground
+        let alt_input = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_MENU,
+                    ..Default::default()
+                },
+            },
+        };
+        let _ = SendInput(&[alt_input], std::mem::size_of::<INPUT>() as i32);
+        let _ = SetForegroundWindow(hwnd);
+        let alt_up = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_MENU,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    ..Default::default()
+                },
+            },
+        };
+        let _ = SendInput(&[alt_up], std::mem::size_of::<INPUT>() as i32);
+
+        let fg2 = GetForegroundWindow();
+        if fg2 == hwnd {
+            return true;
+        }
+
+        GetForegroundWindow() == hwnd
     }
 }
 
@@ -291,4 +355,61 @@ unsafe extern "system" fn enum_windows_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
         return BOOL(0); // stop enumeration
     }
     BOOL(1) // continue
+}
+
+struct FindIdeWindowData {
+    found_hwnd: isize,
+}
+
+unsafe extern "system" fn enum_ide_windows_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let data = &mut *(lparam.0 as *mut FindIdeWindowData);
+
+    if !IsWindowVisible(hwnd).as_bool() {
+        return BOOL(1);
+    }
+    // Skip owned windows (popups, tooltips)
+    if let Ok(owner) = GetWindow(hwnd, GW_OWNER) {
+        if !owner.0.is_null() {
+            return BOOL(1);
+        }
+    }
+
+    let mut proc_id: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut proc_id));
+
+    if let Some(name) = get_process_name(proc_id) {
+        let lower = name.to_lowercase();
+        if TERMINAL_PROCESS_NAMES.iter().any(|t| lower == *t) {
+            data.found_hwnd = hwnd.0 as isize;
+            return BOOL(0); // found
+        }
+    }
+    BOOL(1)
+}
+
+/// Get process name (without .exe) by PID using toolhelp snapshot.
+fn get_process_name(pid: u32) -> Option<String> {
+    use windows::Win32::System::Diagnostics::ToolHelp::*;
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                if entry.th32ProcessID == pid {
+                    let _ = windows::Win32::Foundation::CloseHandle(snap);
+                    let name = String::from_utf16_lossy(
+                        &entry.szExeFile[..entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len())]
+                    );
+                    // Strip .exe extension
+                    return Some(name.trim_end_matches(".exe").trim_end_matches(".EXE").to_string());
+                }
+                if Process32NextW(snap, &mut entry).is_err() { break; }
+            }
+        }
+        let _ = windows::Win32::Foundation::CloseHandle(snap);
+        None
+    }
 }

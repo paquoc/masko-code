@@ -116,9 +116,9 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
 
   const handleOpenTerminal = async () => {
     const pid = event().terminal_pid;
-    if (!pid) return;
     try {
-      await invoke("focus_terminal", { pid });
+      const result = await invoke("focus_terminal", { pid: pid ?? null });
+      log("focus_terminal result:", result);
     } catch (e) {
       log("focus_terminal failed:", e);
     }
