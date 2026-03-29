@@ -3,10 +3,11 @@ import type { PendingPermission } from "../../models/permission";
 import { parsePermissionSuggestions, type PermissionSuggestion } from "../../models/permission";
 import { getAssistantDisplayName, getProjectName } from "../../models/agent-event";
 import { permissionStore } from "../../stores/permission-store";
+import { workingBubbleStore } from "../../stores/working-bubble-store";
 import { log } from "../../services/log";
 
 /** Speech bubble tail pointing down toward the mascot */
-function SpeechBubbleTail() {
+function SpeechBubbleTail(props: { color: string }) {
   return (
     <div class="flex justify-end pr-8">
       <div
@@ -15,7 +16,7 @@ function SpeechBubbleTail() {
           height: "0",
           "border-left": "8px solid transparent",
           "border-right": "8px solid transparent",
-          "border-top": "8px solid white",
+          "border-top": `8px solid ${props.color}`,
           filter: "drop-shadow(0 1px 1px rgba(35,17,60,0.08))",
         }}
       />
@@ -121,27 +122,37 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
     });
   };
 
+  const a = () => workingBubbleStore.settings.appearance;
+
+  // Derived font sizes from the setting — permission uses +2 as base
+  const fs = () => a().fontSize + 2;       // base (was 13px at default 11)
+  const fsSm = () => a().fontSize + 1;     // body text
+  const fsMono = () => a().fontSize;        // code block
+  const fsMuted = () => a().fontSize - 1;   // secondary
+  const fsXs = () => a().fontSize - 2;      // smallest (suggestions)
+
   return (
     <div class="w-72 select-none" style={{ "font-family": "var(--font-body)" }}>
       {/* Speech bubble card */}
       <div
-        class="bg-white rounded-[14px] overflow-hidden"
+        class="rounded-[14px] overflow-hidden"
         style={{
+          background: a().bgColor,
           "box-shadow": "0 2px 12px rgba(35,17,60,0.15), 0 0 0 1px rgba(35,17,60,0.06)",
         }}
       >
         {/* Header */}
-        <div class="px-3 pt-2.5 pb-1.5">
+        <div class="px-3 pt-2 pb-1.5">
           <div class="flex items-center gap-1.5">
             <Show
               when={!isQ()}
               fallback={
-                <span class="text-orange-primary text-xs font-semibold">Question</span>
+                <span class="font-semibold" style={{ "font-size": `${fs()}px`, color: a().accentColor }}>Question</span>
               }
             >
-              <span class="text-orange-primary text-xs font-semibold">{toolName()}</span>
+              <span class="font-semibold" style={{ "font-size": `${fs()}px`, color: a().accentColor }}>{toolName()}</span>
             </Show>
-            <span class="text-text-muted text-[10px] ml-auto">{project()}</span>
+            <span class="ml-auto" style={{ "font-size": `${fsMuted()}px`, color: a().mutedColor }}>{project()}</span>
           </div>
         </div>
 
@@ -152,24 +163,24 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
             <For each={questions()}>
               {(q) => (
                 <div class="mb-2">
-                  <p class="text-[11px] text-text-primary leading-snug mb-1.5">{q.question}</p>
+                  <p class="leading-snug mb-1.5" style={{ "font-size": `${fsSm()}px`, color: a().textColor }}>{q.question}</p>
                   <Show when={q.options.length > 0}>
                     <div class="space-y-1">
                       <For each={q.options}>
                         {(opt) => (
                           <button
-                            class="w-full text-left px-2 py-1 rounded-lg text-[11px] border transition-colors"
-                            classList={{
-                              "bg-orange-primary/5 border-orange-primary/25 text-text-primary":
-                                selectedOptions().has(opt.label),
-                              "bg-white border-border hover:border-border-hover text-text-muted":
-                                !selectedOptions().has(opt.label),
+                            class="w-full text-left px-2 py-1 rounded-lg border transition-colors"
+                            style={{
+                              "font-size": `${fsSm()}px`,
+                              background: selectedOptions().has(opt.label) ? `${a().accentColor}0d` : a().bgColor,
+                              "border-color": selectedOptions().has(opt.label) ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
+                              color: selectedOptions().has(opt.label) ? a().textColor : a().mutedColor,
                             }}
                             onClick={() => toggleOption(opt.label)}
                           >
                             {opt.label}
                             <Show when={opt.description}>
-                              <span class="text-text-muted text-[9px] block">{opt.description}</span>
+                              <span class="block" style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>{opt.description}</span>
                             </Show>
                           </button>
                         )}
@@ -179,7 +190,13 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
                   <Show when={q.options.length === 0}>
                     <input
                       type="text"
-                      class="w-full px-2 py-1 rounded-lg text-[11px] border border-border bg-bg-light focus:border-orange-primary focus:outline-none"
+                      class="w-full px-2 py-1 rounded-lg border focus:outline-none"
+                      style={{
+                        "font-size": `${fsSm()}px`,
+                        "border-color": "rgba(35,17,60,0.12)",
+                        background: "rgba(35,17,60,0.02)",
+                        color: a().textColor,
+                      }}
                       placeholder="Type your answer..."
                       value={answer()}
                       onInput={(e) => setAnswer(e.currentTarget.value)}
@@ -197,11 +214,12 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
             {/* Tool use mode — show command/path */}
             <Show when={toolInput()}>
               <div
-                class="rounded-lg px-2 py-1 mb-1.5 text-[10px] font-mono break-all leading-snug max-h-16 overflow-y-auto"
+                class="rounded-lg px-2 py-1 mb-1.5 font-mono break-all leading-snug max-h-16 overflow-y-auto"
                 style={{
+                  "font-size": `${fsMono()}px`,
                   background: "rgba(35,17,60,0.04)",
                   border: "1px solid rgba(35,17,60,0.06)",
-                  color: "var(--color-text-primary)",
+                  color: a().textColor,
                 }}
               >
                 {toolInput()}
@@ -209,7 +227,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
             </Show>
 
             <Show when={event().message}>
-              <p class="text-[11px] text-text-muted leading-snug mb-1.5 max-h-12 overflow-y-auto">
+              <p class="leading-snug mb-1.5 max-h-12 overflow-y-auto" style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}>
                 {event().message}
               </p>
             </Show>
@@ -221,12 +239,12 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
               <For each={suggestions()}>
                 {(s) => (
                   <button
-                    class="px-1.5 py-0.5 rounded-md text-[9px] border transition-colors"
-                    classList={{
-                      "bg-orange-primary/8 border-orange-primary/25 text-orange-primary":
-                        selectedSuggestion()?.id === s.id,
-                      "bg-white border-border text-text-muted hover:border-border-hover":
-                        selectedSuggestion()?.id !== s.id,
+                    class="px-1.5 py-0.5 rounded-md border transition-colors"
+                    style={{
+                      "font-size": `${fsXs()}px`,
+                      background: selectedSuggestion()?.id === s.id ? `${a().accentColor}14` : a().bgColor,
+                      "border-color": selectedSuggestion()?.id === s.id ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
+                      color: selectedSuggestion()?.id === s.id ? a().accentColor : a().mutedColor,
                     }}
                     onClick={() =>
                       setSelectedSuggestion((prev) => (prev?.id === s.id ? null : s))
@@ -241,15 +259,15 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
         </div>
 
         {/* Action buttons */}
-        <div class="px-3 pb-2.5 flex items-center gap-1.5">
+        <div class="px-3.5 pb-2.5 flex items-center gap-1.5">
           <button
-            class="flex-1 px-3 py-1 rounded-lg text-[11px] font-semibold text-white transition-colors"
+            class="flex-1 px-3 py-1.5 rounded-lg font-semibold transition-colors"
             style={{
+              "font-size": `${fsSm()}px`,
               "font-family": "var(--font-heading)",
-              background: "var(--color-orange-primary)",
+              background: a().accentColor,
+              color: a().buttonTextColor,
             }}
-            onMouseOver={(e) => (e.currentTarget.style.background = "var(--color-orange-hover)")}
-            onMouseOut={(e) => (e.currentTarget.style.background = "var(--color-orange-primary)")}
             onClick={handleApprove}
           >
             {isQ() ? "Submit" : selectedSuggestion() ? "Allow Rule" : "Approve"}
@@ -257,8 +275,13 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
 
           <Show when={!isQ()}>
             <button
-              class="px-2.5 py-1 rounded-lg text-[11px] font-medium border border-border text-text-muted hover:border-border-hover transition-colors"
-              style={{ "font-family": "var(--font-heading)" }}
+              class="px-2.5 py-1.5 rounded-lg font-medium border transition-colors"
+              style={{
+                "font-size": `${fsSm()}px`,
+                "font-family": "var(--font-heading)",
+                "border-color": "rgba(35,17,60,0.12)",
+                color: a().mutedColor,
+              }}
               onClick={handleDeny}
             >
               Deny
@@ -266,7 +289,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
           </Show>
 
           <button
-            class="px-1.5 py-1 rounded-lg text-[11px] text-text-muted hover:text-text-primary transition-colors"
+            class="px-1.5 py-1.5 rounded-lg transition-colors"
+            style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}
             onClick={handleCollapse}
             title="Later"
           >
@@ -276,7 +300,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
       </div>
 
       {/* Speech bubble tail */}
-      <SpeechBubbleTail />
+      <SpeechBubbleTail color={a().bgColor} />
     </div>
   );
 }

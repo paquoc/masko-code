@@ -21,9 +21,6 @@ import WorkingBubble from "./WorkingBubble";
 
 function MascotOverlay() {
   const [stateMachine, setStateMachine] = createSignal<OverlayStateMachine | null>(null);
-  const [videoUrl, setVideoUrl] = createSignal<string | null>(null);
-  const [isLoop, setIsLoop] = createSignal(true);
-  const [playbackRate, setPlaybackRate] = createSignal(1.0);
   const [isDragging, setIsDragging] = createSignal(false);
   const [isHovering, setIsHovering] = createSignal(false);
   // const [usage, setUsage] = createSignal<UsageData | null>(null); // temporarily disabled
@@ -36,7 +33,7 @@ function MascotOverlay() {
     isCompacting: false,
   };
 
-  let videoRef: HTMLVideoElement | undefined;
+  const [videoRef, setVideoRef] = createSignal<HTMLVideoElement | undefined>();
   // Idle timeout: if no hook event in 2min, assume agent stopped (e.g. user interrupted)
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   const resetIdleTimer = () => {
@@ -48,9 +45,11 @@ function MascotOverlay() {
       workingBubbleStore.hide();
       const sm = stateMachine();
       if (sm) {
-        sm.setAgentStateInput("isWorking", conditionBool(false));
-        sm.setAgentStateInput("isIdle", conditionBool(true));
-        sm.setAgentStateInput("isAlert", conditionBool(false));
+        sm.setAgentStateInputs([
+          ["isWorking", conditionBool(false)],
+          ["isIdle", conditionBool(true)],
+          ["isAlert", conditionBool(false)],
+        ]);
       }
     }, 120_000);
   };
@@ -108,38 +107,27 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
-  // Sync state machine → video signals (only when changed)
+  // Sync state machine → video element reactively (no polling)
+  // State machine properties are Solid signals — reading them in createEffect
+  // automatically tracks changes and re-runs only when values actually change.
   createEffect(() => {
     const sm = stateMachine();
-    if (!sm) return;
-    const interval = setInterval(() => {
-      const newUrl = sm.currentVideoUrl;
-      const newLoop = sm.isLoopVideo;
-      const newRate = sm.playbackRate;
-      // Only update signals when values actually change
-      if (newUrl !== videoUrl()) setVideoUrl(newUrl);
-      if (newLoop !== isLoop()) setIsLoop(newLoop);
-      if (newRate !== playbackRate()) setPlaybackRate(newRate);
-    }, 100);
-    onCleanup(() => clearInterval(interval));
-  });
-
-  // Update video element ONLY when URL actually changes
-  createEffect(() => {
-    const url = videoUrl();
-    if (!videoRef || !url) return;
+    const el = videoRef();
+    if (!sm || !el) return;
+    const url = sm.currentVideoUrl;
+    const loop = sm.isLoopVideo;
+    const rate = sm.playbackRate;
+    if (!url) return;
     if (url === currentVideoSrc) {
-      // URL same — just update loop/rate without restarting
-      videoRef.loop = isLoop();
-      videoRef.playbackRate = playbackRate();
+      el.loop = loop;
+      el.playbackRate = rate;
       return;
     }
-    // New URL — load it
     currentVideoSrc = url;
-    videoRef.src = url;
-    videoRef.loop = isLoop();
-    videoRef.playbackRate = playbackRate();
-    videoRef.play().catch(() => {});
+    el.src = url;
+    el.loop = loop;
+    el.playbackRate = rate;
+    el.play().catch(() => {});
   });
 
   // Window is always 320x520 — no resize needed, just show/hide bubble via CSS
@@ -196,8 +184,10 @@ function MascotOverlay() {
         case HookEventType.SessionStart: {
           agentState.isWorking = true;
           agentState.isIdle = false;
-          sm.setAgentStateInput("isWorking", conditionBool(true));
-          sm.setAgentStateInput("isIdle", conditionBool(false));
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(true)],
+            ["isIdle", conditionBool(false)],
+          ]);
           const startProject = event.cwd ? event.cwd.replace(/\\/g, "/").split("/").pop() || "" : "";
           workingBubbleStore.showSessionStart(startProject, event.session_id || "", event.terminal_pid);
           break;
@@ -205,8 +195,10 @@ function MascotOverlay() {
         case HookEventType.PreToolUse: {
           agentState.isWorking = true;
           agentState.isIdle = false;
-          sm.setAgentStateInput("isWorking", conditionBool(true));
-          sm.setAgentStateInput("isIdle", conditionBool(false));
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(true)],
+            ["isIdle", conditionBool(false)],
+          ]);
           sm.setAgentEventTrigger(eventType);
           // Show working bubble
           const projectName = event.cwd ? event.cwd.replace(/\\/g, "/").split("/").pop() || "" : "";
@@ -222,8 +214,10 @@ function MascotOverlay() {
         case HookEventType.PostToolUseFailure:
           agentState.isWorking = true;
           agentState.isIdle = false;
-          sm.setAgentStateInput("isWorking", conditionBool(true));
-          sm.setAgentStateInput("isIdle", conditionBool(false));
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(true)],
+            ["isIdle", conditionBool(false)],
+          ]);
           sm.setAgentEventTrigger(eventType);
           // Hide working bubble — tool finished
           workingBubbleStore.hide();
@@ -231,8 +225,10 @@ function MascotOverlay() {
         case HookEventType.UserPromptSubmit:
           agentState.isWorking = true;
           agentState.isIdle = false;
-          sm.setAgentStateInput("isWorking", conditionBool(true));
-          sm.setAgentStateInput("isIdle", conditionBool(false));
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(true)],
+            ["isIdle", conditionBool(false)],
+          ]);
           sm.setAgentEventTrigger(eventType);
           break;
         case HookEventType.Stop:
@@ -242,9 +238,11 @@ function MascotOverlay() {
           agentState.isIdle = true;
           agentState.isAlert = false;
           workingBubbleStore.showDone();
-          sm.setAgentStateInput("isWorking", conditionBool(false));
-          sm.setAgentStateInput("isIdle", conditionBool(true));
-          sm.setAgentStateInput("isAlert", conditionBool(false));
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(false)],
+            ["isIdle", conditionBool(true)],
+            ["isAlert", conditionBool(false)],
+          ]);
           break;
         case HookEventType.PreCompact:
           agentState.isCompacting = true;
@@ -273,6 +271,14 @@ function MascotOverlay() {
         stateMachine()?.setAgentStateInput("isAlert", conditionBool(true));
         stateMachine()?.setAgentEventTrigger("PermissionRequest");
       }
+    });
+    onCleanup(unlisten);
+  });
+
+  // Listen for bubble settings changes from dashboard
+  onMount(async () => {
+    const unlisten = await listen<any>("bubble-settings-changed", (e) => {
+      workingBubbleStore.updateSettings(e.payload);
     });
     onCleanup(unlisten);
   });
@@ -329,7 +335,8 @@ function MascotOverlay() {
   const handleMouseEnter = () => { setIsHovering(true); stateMachine()?.handleMouseOver(true); };
   const handleMouseLeave = () => { setIsHovering(false); stateMachine()?.handleMouseOver(false); };
   const handleVideoEnded = () => {
-    if (!isLoop()) stateMachine()?.handleVideoEnded();
+    const sm = stateMachine();
+    if (sm && !sm.isLoopVideo) sm.handleVideoEnded();
   };
 
   // Queue: show only the first uncollapsed permission
@@ -373,14 +380,14 @@ function MascotOverlay() {
       <div
         class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[200px] h-[200px] cursor-grab rounded-2xl transition-colors duration-200"
         classList={{ "cursor-grabbing": isDragging() }}
-        style={{ background: isHovering() ? "rgba(255, 255, 255, 0.2)" : "transparent" }}
+        style={{ background: isHovering() ? "rgba(255, 176, 72, 0.45)" : "transparent" }}
         onMouseDown={handleMouseDown}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
         <Show
-          when={videoUrl()}
+          when={stateMachine()?.currentVideoUrl}
           fallback={
             <div class="w-full h-full flex items-center justify-center">
               <div class="w-24 h-24 rounded-full bg-orange-primary/20 flex items-center justify-center animate-pulse">
@@ -390,7 +397,7 @@ function MascotOverlay() {
           }
         >
           <video
-            ref={videoRef}
+            ref={setVideoRef}
             autoplay
             muted
             playsinline

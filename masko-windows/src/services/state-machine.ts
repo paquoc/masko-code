@@ -83,11 +83,32 @@ export class OverlayStateMachine {
   }
 
   setAgentStateInput(name: string, value: ConditionValue): void {
+    // Dedupe: skip if value unchanged (prevents redundant evaluations)
+    const old = this.inputs.get(LEGACY_PREFIX + name);
+    if (old && conditionEqual(old, value)) return;
+
     this.inputs.set(AGENT_PREFIX + name, value);
     this.inputs.set(LEGACY_PREFIX + name, value);
     // Trigger evaluation only after start() has been called
     if (this.started) {
       this.evaluateAndFire(LEGACY_PREFIX + name);
+    }
+  }
+
+  /** Batch multiple agent state inputs — evaluates only once at the end */
+  setAgentStateInputs(entries: Array<[string, ConditionValue]>): void {
+    let anyChanged = false;
+    let lastChanged: string | undefined;
+    for (const [name, value] of entries) {
+      const old = this.inputs.get(LEGACY_PREFIX + name);
+      if (old && conditionEqual(old, value)) continue;
+      this.inputs.set(AGENT_PREFIX + name, value);
+      this.inputs.set(LEGACY_PREFIX + name, value);
+      anyChanged = true;
+      lastChanged = LEGACY_PREFIX + name;
+    }
+    if (anyChanged && this.started && lastChanged) {
+      this.evaluateAndFire(lastChanged);
     }
   }
 
