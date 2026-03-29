@@ -146,7 +146,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
     <div class="w-72 select-none" style={{ "font-family": "var(--font-body)" }}>
       {/* Speech bubble card */}
       <div
-        class="rounded-[14px] overflow-hidden"
+        class="rounded-[14px]"
         style={{
           background: a().bgColor,
           "box-shadow": "0 2px 12px rgba(35,17,60,0.15), 0 0 0 1px rgba(35,17,60,0.06)",
@@ -253,9 +253,6 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
                     class="relative group px-1.5 py-0.5 rounded-md border transition-colors"
                     style={{
                       "font-size": `${fsXs()}px`,
-                      "max-width": "100%",
-                      overflow: "hidden",
-                      "text-overflow": "ellipsis",
                       "white-space": "nowrap",
                       background: selectedSuggestion()?.id === s.id ? `${a().accentColor}14` : a().bgColor,
                       "border-color": selectedSuggestion()?.id === s.id ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
@@ -265,10 +262,10 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
                       setSelectedSuggestion((prev) => (prev?.id === s.id ? null : s))
                     }
                   >
-                    {s.displayLabel}
+                    {s.displayLabel.length > 40 ? s.displayLabel.slice(0, 37) + "..." : s.displayLabel}
                     {/* Tooltip — shows full untruncated label */}
                     <div
-                      class="absolute min-w-32 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150"
+                      class="absolute min-w-32 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50"
                       style={{
                         "font-size": `${fsXs()}px`,
                         "white-space": "pre-wrap",
