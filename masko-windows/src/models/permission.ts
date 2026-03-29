@@ -8,6 +8,7 @@ export interface PermissionSuggestion {
   rules?: Array<{ toolName: string; ruleContent: string }>;
   mode?: string; // e.g. "acceptEdits"
   displayLabel: string;
+  fullLabel: string; // untruncated version for tooltips
 }
 
 export interface PendingPermission {
@@ -27,6 +28,8 @@ export function parsePermissionSuggestions(raw?: any[]): PermissionSuggestion[] 
   return raw.map((s: any) => {
     let displayLabel = s.type || "Unknown";
 
+    let fullLabel = displayLabel;
+
     if (s.type === "addRules") {
       const firstRule = s.rules?.[0];
       if (firstRule) {
@@ -35,11 +38,14 @@ export function parsePermissionSuggestions(raw?: any[]): PermissionSuggestion[] 
         if (ruleContent.includes("**")) {
           const folder = ruleContent.replace(/\/\*\*$/, "").split("/").pop() || "";
           displayLabel = `Allow ${toolName} in ${folder}/`;
+          fullLabel = `Allow ${toolName} in ${ruleContent}`;
         } else if (ruleContent) {
+          fullLabel = `Always allow \`${ruleContent}\``;
           const short = ruleContent.length > 30 ? ruleContent.slice(0, 27) + "..." : ruleContent;
           displayLabel = `Always allow \`${short}\``;
         } else {
           displayLabel = `Always allow ${toolName}`;
+          fullLabel = displayLabel;
         }
       }
     } else if (s.type === "setMode") {
@@ -48,6 +54,7 @@ export function parsePermissionSuggestions(raw?: any[]): PermissionSuggestion[] 
         case "plan": displayLabel = "Switch to plan mode"; break;
         default: displayLabel = s.mode || "Set mode";
       }
+      fullLabel = displayLabel;
     }
 
     return {
@@ -58,6 +65,7 @@ export function parsePermissionSuggestions(raw?: any[]): PermissionSuggestion[] 
       rules: s.rules,
       mode: s.mode,
       displayLabel,
+      fullLabel,
     };
   });
 }

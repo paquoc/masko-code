@@ -85,10 +85,16 @@ function show(toolName: string, projectName: string, sessionId: string, terminal
   autoHideTimer = setTimeout(hide, 20000);
 }
 
-function showDone() {
+function showDone(terminalPid?: number) {
   if (!settings.showSessionEnd) return;
   if (autoHideTimer) clearTimeout(autoHideTimer);
-  setState({ visible: true, status: "done", toolName: "DONE" });
+  setState({
+    visible: true,
+    status: "done",
+    toolName: "DONE",
+    // Use provided pid, or keep existing one from previous show()
+    ...(terminalPid != null ? { terminalPid } : {}),
+  });
   autoHideTimer = setTimeout(hide, 10000);
 }
 

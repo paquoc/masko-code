@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 1";
+const SCRIPT_VERSION: &str = "# version: 3";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -62,10 +62,12 @@ EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut
 # Walk up process tree to find terminal PID (Windows: use WMIC/PowerShell)
 TERM_PID=""
 SHELL_PID=""
+# Get Windows PID: Git Bash/MSYS2 $$ is internal, /proc/$$/winpid is the real Windows PID
+WIN_PID=$(cat /proc/$$/winpid 2>/dev/null || echo $$)
 if command -v powershell.exe >/dev/null 2>&1; then
   # Quick PowerShell one-liner to walk process tree
   PIDS=$(powershell.exe -NoProfile -Command "
-    \$cur = $$$;
+    \$cur = $WIN_PID;
     \$terminals = 'Code','Cursor','Windsurf','WindowsTerminal','Claude','pycharm64','idea64','webstorm64','goland64','rider64';
     while (\$cur -and \$cur -ne 0) {{
       \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=\$cur\" -EA 0;

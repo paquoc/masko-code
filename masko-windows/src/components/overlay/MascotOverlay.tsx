@@ -237,7 +237,7 @@ function MascotOverlay() {
           agentState.isWorking = false;
           agentState.isIdle = true;
           agentState.isAlert = false;
-          workingBubbleStore.showDone();
+          workingBubbleStore.showDone(event.terminal_pid);
           sm.setAgentStateInputs([
             ["isWorking", conditionBool(false)],
             ["isIdle", conditionBool(true)],

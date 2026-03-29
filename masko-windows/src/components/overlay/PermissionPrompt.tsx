@@ -1,4 +1,5 @@
 import { Show, For, createSignal, createEffect } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import type { PendingPermission } from "../../models/permission";
 import { parsePermissionSuggestions, type PermissionSuggestion } from "../../models/permission";
 import { getAssistantDisplayName, getProjectName } from "../../models/agent-event";
@@ -111,6 +112,16 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
 
   const handleCollapse = () => {
     permissionStore.collapse(props.permission.id);
+  };
+
+  const handleOpenTerminal = async () => {
+    const pid = event().terminal_pid;
+    if (!pid) return;
+    try {
+      await invoke("focus_terminal", { pid });
+    } catch (e) {
+      log("focus_terminal failed:", e);
+    }
   };
 
   const toggleOption = (label: string) => {
@@ -239,7 +250,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
               <For each={suggestions()}>
                 {(s) => (
                   <button
-                    class="px-1.5 py-0.5 rounded-md border transition-colors"
+                    class="relative group px-1.5 py-0.5 rounded-md border transition-colors"
                     style={{
                       "font-size": `${fsXs()}px`,
                       background: selectedSuggestion()?.id === s.id ? `${a().accentColor}14` : a().bgColor,
@@ -251,6 +262,30 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
                     }
                   >
                     {s.displayLabel}
+                    {/* Tooltip — shows full untruncated label */}
+                    <div
+                      class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150"
+                      style={{
+                        "font-size": `${fsXs()}px`,
+                        "white-space": "pre-wrap",
+                        "word-break": "break-all",
+                        "max-width": "250px",
+                        background: a().textColor,
+                        color: a().bgColor,
+                        "box-shadow": "0 2px 8px rgba(0,0,0,0.2)",
+                      }}
+                    >
+                      {s.fullLabel}
+                      <div
+                        class="absolute top-full left-1/2 -translate-x-1/2"
+                        style={{
+                          width: "0", height: "0",
+                          "border-left": "4px solid transparent",
+                          "border-right": "4px solid transparent",
+                          "border-top": `4px solid ${a().textColor}`,
+                        }}
+                      />
+                    </div>
                   </button>
                 )}
               </For>
@@ -288,14 +323,30 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
             </button>
           </Show>
 
-          <button
+          {/* Open terminal */}
+          <Show when={event().terminal_pid}>
+            <button
+              class="px-1.5 py-1.5 rounded-lg transition-colors"
+              style={{ color: a().mutedColor }}
+              onClick={handleOpenTerminal}
+              title="Open terminal"
+            >
+              <svg width={fsSm()} height={fsSm()} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="1" y="2" width="14" height="12" rx="2" />
+                <path d="M4 6l3 2.5L4 11" />
+                <path d="M9 11h3" />
+              </svg>
+            </button>
+          </Show>
+
+          {/* <button
             class="px-1.5 py-1.5 rounded-lg transition-colors"
             style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}
             onClick={handleCollapse}
             title="Later"
           >
             ▼
-          </button>
+          </button> */}
         </div>
       </div>
 
