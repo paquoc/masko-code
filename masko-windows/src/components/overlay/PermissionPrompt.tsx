@@ -253,6 +253,10 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
                     class="relative group px-1.5 py-0.5 rounded-md border transition-colors"
                     style={{
                       "font-size": `${fsXs()}px`,
+                      "max-width": "100%",
+                      overflow: "hidden",
+                      "text-overflow": "ellipsis",
+                      "white-space": "nowrap",
                       background: selectedSuggestion()?.id === s.id ? `${a().accentColor}14` : a().bgColor,
                       "border-color": selectedSuggestion()?.id === s.id ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
                       color: selectedSuggestion()?.id === s.id ? a().accentColor : a().mutedColor,
@@ -264,7 +268,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
                     {s.displayLabel}
                     {/* Tooltip — shows full untruncated label */}
                     <div
-                      class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150"
+                      class="absolute min-w-32 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150"
                       style={{
                         "font-size": `${fsXs()}px`,
                         "white-space": "pre-wrap",

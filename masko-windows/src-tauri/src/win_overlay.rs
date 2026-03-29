@@ -170,8 +170,7 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
 /// Bring the window belonging to the given process ID to the foreground.
 /// Walks up the process tree to find the top-level window (e.g. Cursor's main
 /// window may belong to a parent process, not the PID we were given).
-/// Uses an Alt-key trick to bypass Windows' SetForegroundWindow restriction
-/// (only the foreground app is normally allowed to steal focus).
+/// Uses AttachThreadInput to bypass Windows' SetForegroundWindow restriction.
 pub fn focus_window_by_pid(pid: u32) {
     unsafe {
         // Collect candidate PIDs: the given PID + its ancestors (max 8 levels)
@@ -198,32 +197,51 @@ pub fn focus_window_by_pid(pid: u32) {
         );
         if data.found_hwnd != 0 {
             let hwnd = HWND(data.found_hwnd as *mut std::ffi::c_void);
-            // Alt-key trick: simulate an Alt press so Windows allows us to
-            // call SetForegroundWindow from a background process.
-            let alt_input = INPUT {
-                r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: VK_MENU,
-                        ..Default::default()
-                    },
-                },
+
+            // AttachThreadInput approach: attach our thread to the target
+            // window's thread so SetForegroundWindow is allowed.
+            let our_thread = windows::Win32::System::Threading::GetCurrentThreadId();
+            let target_thread = GetWindowThreadProcessId(hwnd, None);
+            let attached = if our_thread != target_thread {
+                windows::Win32::System::Threading::AttachThreadInput(our_thread, target_thread, true).as_bool()
+            } else {
+                false
             };
-            let _ = SendInput(&[alt_input], std::mem::size_of::<INPUT>() as i32);
+
             let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = BringWindowToTop(hwnd);
             let _ = SetForegroundWindow(hwnd);
-            // Release Alt key
-            let alt_up = INPUT {
-                r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: VK_MENU,
-                        dwFlags: KEYEVENTF_KEYUP,
-                        ..Default::default()
+
+            if attached {
+                let _ = windows::Win32::System::Threading::AttachThreadInput(our_thread, target_thread, false);
+            }
+
+            // Fallback: if SetForegroundWindow didn't work, try the Alt-key trick
+            let fg = GetForegroundWindow();
+            if fg != hwnd {
+                let alt_input = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_MENU,
+                            ..Default::default()
+                        },
                     },
-                },
-            };
-            let _ = SendInput(&[alt_up], std::mem::size_of::<INPUT>() as i32);
+                };
+                let _ = SendInput(&[alt_input], std::mem::size_of::<INPUT>() as i32);
+                let _ = SetForegroundWindow(hwnd);
+                let alt_up = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_MENU,
+                            dwFlags: KEYEVENTF_KEYUP,
+                            ..Default::default()
+                        },
+                    },
+                };
+                let _ = SendInput(&[alt_up], std::mem::size_of::<INPUT>() as i32);
+            }
         }
     }
 }
