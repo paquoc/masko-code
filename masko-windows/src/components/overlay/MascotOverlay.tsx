@@ -12,18 +12,10 @@ import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
 
-// interface UsageData {
-//   session_percent: number | null;
-//   session_resets_at: string | null;
-//   weekly_percent: number | null;
-//   weekly_resets_at: string | null;
-// }
-
 function MascotOverlay() {
   const [stateMachine, setStateMachine] = createSignal<OverlayStateMachine | null>(null);
   const [isDragging, setIsDragging] = createSignal(false);
   const [isHovering, setIsHovering] = createSignal(false);
-  // const [usage, setUsage] = createSignal<UsageData | null>(null); // temporarily disabled
 
   // Track agent state so we can restore it when switching mascots
   const agentState = {
@@ -132,9 +124,12 @@ function MascotOverlay() {
 
   // Window is always 320x520 — no resize needed, just show/hide bubble via CSS
   // Reset alert state when all permissions are resolved
+  // Use pendingCountChanged signal as explicit dependency — Solid store array
+  // tracking can miss filter().length changes when array goes from 1→0 elements.
   createEffect(() => {
+    const _count = permissionStore.pendingCountChanged;
     const hasPending = permissionStore.pending.filter((p) => !p.collapsed).length > 0;
-    if (!hasPending) {
+    if (!hasPending && agentState.isAlert) {
       agentState.isAlert = false;
       stateMachine()?.setAgentStateInput("isAlert", conditionBool(false));
     }
@@ -211,17 +206,22 @@ function MascotOverlay() {
           break;
         }
         case HookEventType.PostToolUse:
-        case HookEventType.PostToolUseFailure:
+        case HookEventType.PostToolUseFailure: {
           agentState.isWorking = true;
           agentState.isIdle = false;
+          // PostToolUse means tool executed — refresh isAlert from actual pending state
+          const hasUncollapsed = permissionStore.pending.some((p) => !p.collapsed);
+          if (!hasUncollapsed) agentState.isAlert = false;
           sm.setAgentStateInputs([
             ["isWorking", conditionBool(true)],
             ["isIdle", conditionBool(false)],
+            ["isAlert", conditionBool(agentState.isAlert)],
           ]);
           sm.setAgentEventTrigger(eventType);
           // Hide working bubble — tool finished
           workingBubbleStore.hide();
           break;
+        }
         case HookEventType.UserPromptSubmit:
           agentState.isWorking = true;
           agentState.isIdle = false;
@@ -302,26 +302,6 @@ function MascotOverlay() {
     });
     onCleanup(unlisten);
   });
-
-  // TODO: temporarily disabled — usage API not ready yet
-  // onMount(async () => {
-  //   const unlisten = await listen<UsageData>("usage-update", (e) => {
-  //     console.log("[masko-overlay] usage-update received:", JSON.stringify(e.payload));
-  //     setUsage(e.payload);
-  //   });
-  //   onCleanup(unlisten);
-  //   invoke("fetch_usage").catch((e) => console.warn("[masko-overlay] fetch_usage failed:", e));
-  // });
-
-  // const formatPercent = (v: number | null) =>
-  //   v != null ? `${Math.round(v * 100)}%` : "--";
-  //
-  // const usageColor = (v: number | null) => {
-  //   if (v == null) return "#888";
-  //   if (v >= 0.8) return "#ef4444"; // red
-  //   if (v >= 0.5) return "#f59e0b"; // amber
-  //   return "#22c55e"; // green
-  // };
 
   const handleMouseDown = async (e: MouseEvent) => {
     if (e.buttons === 1) {
@@ -411,7 +391,6 @@ function MascotOverlay() {
           />
         </Show>
 
-        {/* Usage bar — temporarily disabled */}
       </div>
     </div>
   );

@@ -5,7 +5,6 @@ mod hook_installer;
 mod models;
 mod server;
 mod tray;
-// mod usage; // temporarily disabled
 
 use std::collections::HashMap;
 use std::sync::Arc;

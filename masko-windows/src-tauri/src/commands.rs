@@ -2,7 +2,6 @@ use tauri::State;
 
 use crate::hook_installer;
 use crate::server::PendingPermissions;
-
 #[tauri::command]
 pub async fn get_server_status() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
