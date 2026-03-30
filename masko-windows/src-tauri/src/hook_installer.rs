@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 3";
+const SCRIPT_VERSION: &str = "# version: 4";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -53,36 +53,50 @@ fn generate_script(port: u16) -> String {
         r#"#!/bin/bash
 {SCRIPT_VERSION}
 # hook-sender.sh — Forwards Claude Code hook events to masko-desktop (Windows)
-# Exit instantly if the desktop app server isn't reachable
-curl -s --connect-timeout 0.3 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0
 
+# Read stdin immediately before anything else (prevents pipe race conditions)
 INPUT=$(cat 2>/dev/null || echo '{{}}')
+
+# Exit instantly if the desktop app server isn't reachable
+curl -s --connect-timeout 0.5 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0
+
 EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
 
-# Walk up process tree to find terminal PID (Windows: use WMIC/PowerShell)
+# --- Terminal PID resolution (cached per Claude session) ---
+# Use CLAUDE_SESSION_ID if available, otherwise fall back to parent PID for cache key
+CACHE_KEY="${{CLAUDE_SESSION_ID:-$(cat /proc/$PPID/winpid 2>/dev/null || echo $PPID)}}"
+CACHE_FILE="/tmp/masko-term-pid-${{CACHE_KEY}}"
 TERM_PID=""
 SHELL_PID=""
-# Get Windows PID: Git Bash/MSYS2 $$ is internal, /proc/$$/winpid is the real Windows PID
-WIN_PID=$(cat /proc/$$/winpid 2>/dev/null || echo $$)
-if command -v powershell.exe >/dev/null 2>&1; then
-  # Quick PowerShell one-liner to walk process tree
-  PIDS=$(powershell.exe -NoProfile -Command "
-    \$cur = $WIN_PID;
-    \$terminals = 'Code','Cursor','Windsurf','WindowsTerminal','Claude','pycharm64','idea64','webstorm64','goland64','rider64';
-    while (\$cur -and \$cur -ne 0) {{
-      \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=\$cur\" -EA 0;
-      if (-not \$p) {{ break }};
-      \$par = \$p.ParentProcessId;
-      \$pp = Get-CimInstance Win32_Process -Filter \"ProcessId=\$par\" -EA 0;
-      if (-not \$pp) {{ break }};
-      \$name = [IO.Path]::GetFileNameWithoutExtension(\$pp.Name);
-      if (\$terminals -contains \$name) {{ Write-Output \"\$par \$cur\"; break }};
-      \$cur = \$par;
-    }}
-  " 2>/dev/null | tr -d '\r')
-  if [ -n "$PIDS" ]; then
-    TERM_PID=$(echo "$PIDS" | cut -d' ' -f1)
-    SHELL_PID=$(echo "$PIDS" | cut -d' ' -f2)
+
+if [ -f "$CACHE_FILE" ]; then
+  # Use cached PIDs (valid for the lifetime of this Claude session)
+  PIDS=$(cat "$CACHE_FILE")
+  TERM_PID=$(echo "$PIDS" | cut -d' ' -f1)
+  SHELL_PID=$(echo "$PIDS" | cut -d' ' -f2)
+else
+  # First call in this session — resolve via PowerShell and cache
+  WIN_PID=$(cat /proc/$$/winpid 2>/dev/null || echo $$)
+  if command -v powershell.exe >/dev/null 2>&1; then
+    PIDS=$(powershell.exe -NoProfile -Command "
+      \$cur = $WIN_PID;
+      \$terminals = 'Code','Cursor','Windsurf','WindowsTerminal','Claude','pycharm64','idea64','webstorm64','goland64','rider64';
+      while (\$cur -and \$cur -ne 0) {{
+        \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=\$cur\" -EA 0;
+        if (-not \$p) {{ break }};
+        \$par = \$p.ParentProcessId;
+        \$pp = Get-CimInstance Win32_Process -Filter \"ProcessId=\$par\" -EA 0;
+        if (-not \$pp) {{ break }};
+        \$name = [IO.Path]::GetFileNameWithoutExtension(\$pp.Name);
+        if (\$terminals -contains \$name) {{ Write-Output \"\$par \$cur\"; break }};
+        \$cur = \$par;
+      }}
+    " 2>/dev/null | tr -d '\r')
+    if [ -n "$PIDS" ]; then
+      echo "$PIDS" > "$CACHE_FILE"
+      TERM_PID=$(echo "$PIDS" | cut -d' ' -f1)
+      SHELL_PID=$(echo "$PIDS" | cut -d' ' -f2)
+    fi
   fi
 fi
 
@@ -90,7 +104,8 @@ fi
 if [ -n "$TERM_PID" ]; then
   INJECT="\"terminal_pid\":$TERM_PID"
   [ -n "$SHELL_PID" ] && INJECT="$INJECT,\"shell_pid\":$SHELL_PID"
-  INPUT=$(echo "$INPUT" | sed "s/}}$/,$INJECT}}/")
+  # Trim trailing whitespace/newlines before matching closing brace
+  INPUT=$(echo "$INPUT" | tr -d '\n\r' | sed "s/}}$/,$INJECT}}/")
 fi
 
 if [ "$EVENT_NAME" = "PermissionRequest" ]; then
@@ -114,7 +129,7 @@ else
     # Fire-and-forget for all other events
     curl -s -X POST -H "Content-Type: application/json" -d "$INPUT" \
       "http://localhost:{port}/hook" \
-      --connect-timeout 1 --max-time 2 2>/dev/null || true
+      --connect-timeout 1 --max-time 3 2>/dev/null || true
     exit 0
 fi
 "#,
