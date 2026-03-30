@@ -113,8 +113,17 @@ export class OverlayStateMachine {
   }
 
   setAgentEventTrigger(eventName: string): void {
-    this.setInput(AGENT_PREFIX + eventName, conditionBool(true));
-    this.inputs.set(LEGACY_PREFIX + eventName, conditionBool(true));
+    const agentKey = AGENT_PREFIX + eventName;
+    const legacyKey = LEGACY_PREFIX + eventName;
+    // Set BOTH prefixes before evaluation (mascot configs may use either)
+    this.inputs.set(agentKey, conditionBool(true));
+    this.inputs.set(legacyKey, conditionBool(true));
+    // Always evaluate — bypass setInput dedup because event triggers can repeat
+    // (if previous trigger didn't match any edge, it stays true and dedup skips)
+    if (this.started) {
+      log(`Input changed: ${agentKey} = {"type":"bool","value":true}`);
+      this.evaluateAndFire(legacyKey);
+    }
   }
 
   start(): void {

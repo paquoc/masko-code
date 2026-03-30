@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 6";
+const SCRIPT_VERSION: &str = "# version: 7";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -75,10 +75,14 @@ if [ -z "$PORT" ]; then
     fi
   done
 fi
-[ -z "$PORT" ] && exit 0
+[ -z "$PORT" ] && echo "$(date '+%H:%M:%S.%3N') [NO-PORT] no server found" >> /tmp/masko-hook.txt && exit 0
 
 # Extract event name (handles optional whitespace around colon)
 EVENT_NAME=$(echo "$INPUT" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+SESSION_ID=$(echo "$INPUT" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+TOOL=$(echo "$INPUT" | sed -n 's/.*"tool_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+SID_SHORT=$(echo "$SESSION_ID" | cut -c1-8)
+echo "$(date '+%H:%M:%S.%3N') [HOOK] $EVENT_NAME tool=$TOOL sid=$SID_SHORT port=$PORT" >> /tmp/masko-hook.txt
 
 if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     # Blocking: wait for user decision
@@ -95,13 +99,16 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
     BODY=$(echo "$RESPONSE" | sed '$d')
     [ -n "$BODY" ] && echo "$BODY"
+    echo "$(date '+%H:%M:%S.%3N') [RESP] PermissionRequest http=$HTTP_CODE" >> /tmp/masko-hook.txt
     [ "$HTTP_CODE" = "403" ] && exit 2
     exit 0
 else
     # Fire-and-forget for all other events
-    curl -s -X POST -H "Content-Type: application/json" -d "$INPUT" \
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{{http_code}}" -X POST \
+      -H "Content-Type: application/json" -d "$INPUT" \
       "http://localhost:$PORT/hook" \
-      --connect-timeout 2 --max-time 5 2>/dev/null || true
+      --connect-timeout 2 --max-time 5 2>/dev/null) || HTTP_CODE="fail"
+    echo "$(date '+%H:%M:%S.%3N') [RESP] $EVENT_NAME http=$HTTP_CODE" >> /tmp/masko-hook.txt
     exit 0
 fi
 "#,
