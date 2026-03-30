@@ -214,9 +214,11 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
             {/* Tool use mode — show command/path */}
             <Show when={toolInput()}>
               <div
-                class="rounded-lg px-2 py-1 mb-1.5 font-mono break-all leading-snug max-h-16 overflow-y-auto"
+                class="rounded-lg px-2 py-1 mb-1.5 font-mono leading-snug max-h-16 overflow-y-auto"
                 style={{
                   "font-size": `${fsMono()}px`,
+                  "overflow-wrap": "break-word",
+                  "word-break": "normal",
                   background: "rgba(35,17,60,0.04)",
                   border: "1px solid rgba(35,17,60,0.06)",
                   color: a().textColor,
