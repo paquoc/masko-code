@@ -7,7 +7,6 @@ export interface WorkingBubbleState {
   toolName: string;
   projectName: string;
   sessionId: string;
-  terminalPid?: number;
   status: BubbleStatus;
 }
 
@@ -58,7 +57,6 @@ const [state, setState] = createStore<WorkingBubbleState>({
   toolName: "",
   projectName: "",
   sessionId: "",
-  terminalPid: undefined,
   status: "working",
 });
 
@@ -71,7 +69,7 @@ function updateSettings(patch: Partial<WorkingBubbleSettings>) {
 
 let autoHideTimer: ReturnType<typeof setTimeout> | undefined;
 
-function show(toolName: string, projectName: string, sessionId: string, terminalPid?: number) {
+function show(toolName: string, projectName: string, sessionId: string) {
   if (!settings.showToolBubble) return;
   if (autoHideTimer) clearTimeout(autoHideTimer);
   setState({
@@ -79,29 +77,26 @@ function show(toolName: string, projectName: string, sessionId: string, terminal
     toolName,
     projectName,
     sessionId,
-    terminalPid,
     status: "working",
   });
   autoHideTimer = setTimeout(hide, 20000);
 }
 
-function showDone(terminalPid?: number) {
+function showDone() {
   if (!settings.showSessionEnd) return;
   if (autoHideTimer) clearTimeout(autoHideTimer);
   setState({
     visible: true,
     status: "done",
     toolName: "DONE",
-    // Use provided pid, or keep existing one from previous show()
-    ...(terminalPid != null ? { terminalPid } : {}),
   });
   autoHideTimer = setTimeout(hide, 10000);
 }
 
-function showSessionStart(projectName: string, sessionId: string, terminalPid?: number) {
+function showSessionStart(projectName: string, sessionId: string) {
   if (!settings.showSessionStart) return;
   if (autoHideTimer) clearTimeout(autoHideTimer);
-  setState({ visible: true, status: "session-start", toolName: "SESSION START", projectName, sessionId, terminalPid });
+  setState({ visible: true, status: "session-start", toolName: "SESSION START", projectName, sessionId });
   autoHideTimer = setTimeout(hide, 4000);
 }
 

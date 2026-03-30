@@ -1,5 +1,4 @@
 import { Show, For, createSignal, createEffect } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import type { PendingPermission } from "../../models/permission";
 import { parsePermissionSuggestions, type PermissionSuggestion } from "../../models/permission";
 import { getAssistantDisplayName, getProjectName } from "../../models/agent-event";
@@ -112,16 +111,6 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
 
   const handleCollapse = () => {
     permissionStore.collapse(props.permission.id);
-  };
-
-  const handleOpenTerminal = async () => {
-    const pid = event().terminal_pid;
-    try {
-      const result = await invoke("focus_terminal", { pid: pid ?? null });
-      log("focus_terminal result:", result);
-    } catch (e) {
-      log("focus_terminal failed:", e);
-    }
   };
 
   const toggleOption = (label: string) => {
@@ -325,21 +314,6 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
             </button>
           </Show>
 
-          {/* Open terminal */}
-          <Show when={event().terminal_pid}>
-            <button
-              class="px-1.5 py-1.5 rounded-lg transition-colors"
-              style={{ color: a().mutedColor }}
-              onClick={handleOpenTerminal}
-              title="Open terminal"
-            >
-              <svg width={fsSm()} height={fsSm()} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="1" y="2" width="14" height="12" rx="2" />
-                <path d="M4 6l3 2.5L4 11" />
-                <path d="M9 11h3" />
-              </svg>
-            </button>
-          </Show>
 
           {/* <button
             class="px-1.5 py-1.5 rounded-lg transition-colors"

@@ -1,28 +1,14 @@
 import { Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
-import { log } from "../../services/log";
 
 export default function WorkingBubble() {
   const s = () => workingBubbleStore.state;
   const a = () => workingBubbleStore.settings.appearance;
 
-  const handleClick = async () => {
-    const pid = s().terminalPid;
-    log("WorkingBubble clicked, terminalPid:", pid);
-    try {
-      const result = await invoke("focus_terminal", { pid: pid ?? null });
-      log("focus_terminal result:", result);
-    } catch (e) {
-      log("focus_terminal failed:", e);
-    }
-  };
-
   return (
     <div
-      class="w-44 select-none cursor-pointer"
+      class="w-44 select-none"
       style={{ "font-family": "var(--font-body)" }}
-      onClick={handleClick}
     >
       <div
         class="backdrop-blur-sm rounded-xl px-3 py-2 overflow-hidden"

@@ -15,8 +15,6 @@ export interface AgentSession {
   lastEventAt?: Date;
   lastToolName?: string;
   activeSubagentCount: number;
-  terminalPid?: number;
-  shellPid?: number;
   transcriptPath?: string;
 }
 

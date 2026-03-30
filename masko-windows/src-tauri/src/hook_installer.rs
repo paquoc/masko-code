@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 4";
+const SCRIPT_VERSION: &str = "# version: 6";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -57,63 +57,35 @@ fn generate_script(port: u16) -> String {
 # Read stdin immediately before anything else (prevents pipe race conditions)
 INPUT=$(cat 2>/dev/null || echo '{{}}')
 
-# Exit instantly if the desktop app server isn't reachable
-curl -s --connect-timeout 0.5 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0
-
-EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-# --- Terminal PID resolution (cached per Claude session) ---
-# Use CLAUDE_SESSION_ID if available, otherwise fall back to parent PID for cache key
-CACHE_KEY="${{CLAUDE_SESSION_ID:-$(cat /proc/$PPID/winpid 2>/dev/null || echo $PPID)}}"
-CACHE_FILE="/tmp/masko-term-pid-${{CACHE_KEY}}"
-TERM_PID=""
-SHELL_PID=""
-
-if [ -f "$CACHE_FILE" ]; then
-  # Use cached PIDs (valid for the lifetime of this Claude session)
-  PIDS=$(cat "$CACHE_FILE")
-  TERM_PID=$(echo "$PIDS" | cut -d' ' -f1)
-  SHELL_PID=$(echo "$PIDS" | cut -d' ' -f2)
-else
-  # First call in this session — resolve via PowerShell and cache
-  WIN_PID=$(cat /proc/$$/winpid 2>/dev/null || echo $$)
-  if command -v powershell.exe >/dev/null 2>&1; then
-    PIDS=$(powershell.exe -NoProfile -Command "
-      \$cur = $WIN_PID;
-      \$terminals = 'Code','Cursor','Windsurf','WindowsTerminal','Claude','pycharm64','idea64','webstorm64','goland64','rider64';
-      while (\$cur -and \$cur -ne 0) {{
-        \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=\$cur\" -EA 0;
-        if (-not \$p) {{ break }};
-        \$par = \$p.ParentProcessId;
-        \$pp = Get-CimInstance Win32_Process -Filter \"ProcessId=\$par\" -EA 0;
-        if (-not \$pp) {{ break }};
-        \$name = [IO.Path]::GetFileNameWithoutExtension(\$pp.Name);
-        if (\$terminals -contains \$name) {{ Write-Output \"\$par \$cur\"; break }};
-        \$cur = \$par;
-      }}
-    " 2>/dev/null | tr -d '\r')
-    if [ -n "$PIDS" ]; then
-      echo "$PIDS" > "$CACHE_FILE"
-      TERM_PID=$(echo "$PIDS" | cut -d' ' -f1)
-      SHELL_PID=$(echo "$PIDS" | cut -d' ' -f2)
-    fi
+# Discover server port — cached per session for speed, scan on first call
+PORT_CACHE="/tmp/masko-port-cache"
+PORT=""
+if [ -f "$PORT_CACHE" ]; then
+  CACHED=$(cat "$PORT_CACHE" 2>/dev/null)
+  if curl -s --connect-timeout 0.3 "http://localhost:$CACHED/health" >/dev/null 2>&1; then
+    PORT=$CACHED
   fi
 fi
-
-# Inject terminal_pid and shell_pid into JSON payload
-if [ -n "$TERM_PID" ]; then
-  INJECT="\"terminal_pid\":$TERM_PID"
-  [ -n "$SHELL_PID" ] && INJECT="$INJECT,\"shell_pid\":$SHELL_PID"
-  # Trim trailing whitespace/newlines before matching closing brace
-  INPUT=$(echo "$INPUT" | tr -d '\n\r' | sed "s/}}$/,$INJECT}}/")
+if [ -z "$PORT" ]; then
+  for p in $(seq {port} {port_end}); do
+    if curl -s --connect-timeout 0.3 "http://localhost:$p/health" >/dev/null 2>&1; then
+      PORT=$p
+      echo "$p" > "$PORT_CACHE" 2>/dev/null
+      break
+    fi
+  done
 fi
+[ -z "$PORT" ] && exit 0
+
+# Extract event name (handles optional whitespace around colon)
+EVENT_NAME=$(echo "$INPUT" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
 
 if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     # Blocking: wait for user decision
     TMPFILE=$(mktemp /tmp/masko-hook.XXXXXX 2>/dev/null || mktemp)
     curl -s -w "\n%{{http_code}}" -X POST \
       -H "Content-Type: application/json" -d "$INPUT" \
-      "http://localhost:{port}/hook" \
+      "http://localhost:$PORT/hook" \
       --connect-timeout 2 >"$TMPFILE" 2>/dev/null &
     CURL_PID=$!
     trap 'kill $CURL_PID 2>/dev/null; rm -f "$TMPFILE"; exit 0' TERM HUP INT
@@ -128,13 +100,14 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
 else
     # Fire-and-forget for all other events
     curl -s -X POST -H "Content-Type: application/json" -d "$INPUT" \
-      "http://localhost:{port}/hook" \
-      --connect-timeout 1 --max-time 3 2>/dev/null || true
+      "http://localhost:$PORT/hook" \
+      --connect-timeout 2 --max-time 5 2>/dev/null || true
     exit 0
 fi
 "#,
         SCRIPT_VERSION = SCRIPT_VERSION,
         port = port,
+        port_end = port + crate::server::MAX_PORT_ATTEMPTS - 1,
     )
 }
 

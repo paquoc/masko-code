@@ -30,8 +30,6 @@ export function recordEvent(event: AgentEvent): void {
           getProjectName(event),
           getAgentSource(event),
         );
-        session.terminalPid = event.terminal_pid;
-        session.shellPid = event.shell_pid;
         session.transcriptPath = event.transcript_path;
         setSessions((prev) => [...prev, session]);
       }
@@ -118,14 +116,6 @@ export function recordEvent(event: AgentEvent): void {
         setSessions(idx, "lastEventAt", new Date());
         setSessions(idx, "eventCount", (c) => c + 1);
       }
-    }
-  }
-
-  // Update terminal PID if provided
-  if (idx !== -1 && event.terminal_pid) {
-    setSessions(idx, "terminalPid", event.terminal_pid);
-    if (event.shell_pid) {
-      setSessions(idx, "shellPid", event.shell_pid);
     }
   }
 

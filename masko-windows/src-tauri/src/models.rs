@@ -25,8 +25,6 @@ pub struct AgentEvent {
     pub task_id: Option<String>,
     pub task_subject: Option<String>,
     pub permission_suggestions: Option<serde_json::Value>,
-    pub terminal_pid: Option<i64>,
-    pub shell_pid: Option<i64>,
 }
 
 /// Custom input event (POST /input)

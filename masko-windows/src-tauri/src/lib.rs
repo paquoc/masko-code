@@ -94,7 +94,6 @@ pub fn run() {
             commands::is_hooks_registered,
             commands::set_overlay_permission_visible,
             commands::set_overlay_working_bubble_visible,
-            commands::focus_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");

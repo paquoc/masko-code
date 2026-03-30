@@ -10,3 +10,4 @@ DerivedData/
 # Gradle (JetBrains plugin)
 .gradle/
 .kotlin/
+masko-windows/.claude/settings.local.json

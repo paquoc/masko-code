@@ -114,9 +114,6 @@ export interface AgentEvent {
   // Permission suggestions
   permission_suggestions?: any[];
 
-  // Terminal PID (injected by hook script)
-  terminal_pid?: number;
-  shell_pid?: number;
 
   // Server-injected
   request_id?: string;

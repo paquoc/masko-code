@@ -58,18 +58,3 @@ pub fn set_overlay_working_bubble_visible(visible: bool) -> Result<(), String> {
     let _ = visible;
     Ok(())
 }
-
-#[tauri::command]
-pub fn focus_terminal(pid: Option<u32>) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let result = crate::win_overlay::focus_terminal_window(pid);
-        mlog!("focus_terminal(pid={:?}): {}", pid, result);
-        Ok(result)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = pid;
-        Ok("unsupported platform".to_string())
-    }
-}

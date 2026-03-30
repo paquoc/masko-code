@@ -14,7 +14,7 @@ use tokio::sync::{oneshot, Mutex};
 use crate::models::{AgentEvent, InputEvent};
 
 const DEFAULT_PORT: u16 = 45832;
-const MAX_PORT_ATTEMPTS: u16 = 10;
+pub const MAX_PORT_ATTEMPTS: u16 = 10;
 
 pub type PendingPermissions = Arc<Mutex<HashMap<String, oneshot::Sender<serde_json::Value>>>>;
 
