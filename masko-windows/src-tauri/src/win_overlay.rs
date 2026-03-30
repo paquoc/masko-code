@@ -23,6 +23,7 @@ const WM_NCACTIVATE: u32 = 0x0086;
 const WM_STYLECHANGING: u32 = 0x007C;
 
 const MASCOT_HEIGHT_PX: i32 = 200;
+const MASCOT_WIDTH_PX: i32 = 200;
 const PERMISSION_BAND_PX: i32 = 280;
 const WORKING_BUBBLE_PX: i32 = 80;
 
@@ -145,15 +146,22 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
         let dpi = GetDpiForWindow(hwnd);
         let scale = if dpi > 0 { dpi as f64 / 96.0 } else { 1.0 };
 
+        let w = rect.right - rect.left;
         let h = rect.bottom - rect.top;
+        let client_x = cursor.x - rect.left;
         let client_y = cursor.y - rect.top;
 
         // Scale CSS logical pixel constants to physical pixels
         let mascot_h = (MASCOT_HEIGHT_PX as f64 * scale) as i32;
+        let mascot_w = (MASCOT_WIDTH_PX as f64 * scale) as i32;
         let perm_h = (PERMISSION_BAND_PX as f64 * scale) as i32;
         let bubble_h = (WORKING_BUBBLE_PX as f64 * scale) as i32;
 
-        let in_mascot = client_y >= h - mascot_h;
+        // Mascot is centered horizontally (left-1/2 -translate-x-1/2)
+        let mascot_left = (w - mascot_w) / 2;
+        let mascot_right = mascot_left + mascot_w;
+        let in_mascot_x = client_x >= mascot_left && client_x < mascot_right;
+        let in_mascot = client_y >= h - mascot_h && in_mascot_x;
         let perm_on = PERMISSION_HIT_VISIBLE.load(Ordering::Relaxed);
         let in_perm = perm_on
             && client_y >= (h - mascot_h - perm_h).max(0)
