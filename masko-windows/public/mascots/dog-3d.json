@@ -1,0 +1,370 @@
+{
+    "name": "Stitch Gemini 3D",
+    "edges": [
+      {
+        "id": "95c43b6d-2aa7-40ac-b966-635b17905e6f",
+        "isLoop": true,
+        "source": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "target": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-d05ee670.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-d2365490.webm"
+        },
+        "duration": 4,
+        "conditions": []
+      },
+      {
+        "id": "1bbc1072-d5cc-45b2-961e-66e1ff44baa8",
+        "isLoop": true,
+        "source": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "target": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-fee98c0b.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-88fa1f72.webm"
+        },
+        "duration": 4,
+        "conditions": []
+      },
+      {
+        "id": "217e2c33-81f4-49a1-bc78-cac20cf83f47",
+        "isLoop": true,
+        "source": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "target": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-8af23352.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-48d3ef1c.webm"
+        },
+        "duration": 4,
+        "conditions": []
+      },
+      {
+        "id": "952fad16-2136-48ad-9cd8-a783e6ecd6e3",
+        "isLoop": true,
+        "source": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "target": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-7b2f9040.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-557488e2.webm"
+        },
+        "duration": 4,
+        "conditions": []
+      },
+      {
+        "id": "e0b6f50f-334c-4cfc-95e8-fca5a59fec86",
+        "isLoop": false,
+        "source": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "target": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-working-2c1a465b.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-working-65580bb7.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isWorking",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "448a29ab-21a6-4f24-b2c5-ad515c1f0854",
+        "isLoop": false,
+        "source": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "target": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-needs-attention-7cc299a0.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-needs-attention-4947784a.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "98a76e7e-3830-4989-8a62-254540128dd3",
+        "isLoop": false,
+        "source": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "target": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-thinking-bd6f413b.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-thinking-1452a0b1.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "bc9e0312-5d13-4046-b977-b6e257eb2935",
+        "isLoop": false,
+        "source": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "target": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-idle-97a6b201.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-idle-3a515298.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isIdle",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "1d3e599b-7cf6-43c5-a12f-0d5145798920",
+        "isLoop": false,
+        "source": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "target": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-needs-attention-a7551159.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-needs-attention-147f18a0.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "1d7290c0-2017-4475-bc73-e7c66862a8be",
+        "isLoop": false,
+        "source": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "target": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-idle-7bd84ba4.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-idle-46cbc366.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isIdle",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "cc2ff970-7623-479a-83a8-4de31717615d",
+        "isLoop": false,
+        "source": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "target": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-working-2bf02acd.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-working-d498e94e.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isWorking",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "959a2d6c-f1fc-4951-9094-ae9843ebd799",
+        "isLoop": false,
+        "source": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "target": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-thinking-d3b1334a.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-thinking-8e2a250c.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "c35bdc38-fb06-4d32-8a06-69a66ed7018a",
+        "isLoop": false,
+        "source": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "target": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-thinking-57d58516.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-thinking-284804d6.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "8fdc83fa-0cce-4184-921b-4008fa467909",
+        "isLoop": false,
+        "source": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "target": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-idle-003a1a68.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-idle-8fa9a18f.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isIdle",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "eca6cde2-b5d1-4d27-a12a-d88875b4f26a",
+        "isLoop": false,
+        "source": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "target": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-working-ad17ee9f.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-working-9243be5a.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isWorking",
+            "value": true
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": false
+          },
+          {
+            "op": "==",
+            "input": "claudeCode::isCompacting",
+            "value": false
+          }
+        ]
+      },
+      {
+        "id": "c14e4977-cd3f-4ca9-a2f4-522b40289e8e",
+        "isLoop": false,
+        "source": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "target": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "videos": {
+          "hevc": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-needs-attention-0ef5aec7.mov",
+          "webm": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-needs-attention-ba28a79d.webm"
+        },
+        "duration": 4,
+        "conditions": [
+          {
+            "op": "==",
+            "input": "claudeCode::isAlert",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c",
+        "name": "Idle",
+        "transparentThumbnailUrl": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/idle-working-4fa15cef.png"
+      },
+      {
+        "id": "885e701e-40a2-496d-bc2d-3655375fbbde",
+        "name": "Working",
+        "transparentThumbnailUrl": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/working-thinking-54e13cb6.png"
+      },
+      {
+        "id": "1400d6af-69ac-4983-909f-3c02fb0d27bd",
+        "name": "Needs Attention",
+        "transparentThumbnailUrl": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/needs-attention-idle-51d15846.png"
+      },
+      {
+        "id": "0c1d612b-4965-4205-be67-c5927a5f636f",
+        "name": "Thinking",
+        "transparentThumbnailUrl": "https://assets.masko.ai/55ee56/stitch-gemini-3d-d932/thinking-needs-attention-516cd140.png"
+      }
+    ],
+    "version": "2.0",
+    "autoPlay": true,
+    "canvasName": "Claude Code 4-State",
+    "initialNode": "ba44ebb3-e1a2-46a6-b6b8-5d9cf0f2906c"
+  }
