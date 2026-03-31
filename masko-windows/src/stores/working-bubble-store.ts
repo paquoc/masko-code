@@ -17,6 +17,7 @@ export interface BubbleAppearance {
   mutedColor: string;      // muted/secondary text
   accentColor: string;     // button + status dot color
   buttonTextColor: string; // text on accent-colored buttons
+  hoverColor: string;      // mascot hover highlight color
 }
 
 export interface WorkingBubbleSettings {
@@ -43,6 +44,7 @@ const defaultAppearance: BubbleAppearance = {
   mutedColor: "rgba(35,17,60,0.55)",
   accentColor: "#f95d02",
   buttonTextColor: "#ffffff",
+  hoverColor: "rgba(255,176,72,0.45)",
 };
 
 const defaultSettings: WorkingBubbleSettings = {

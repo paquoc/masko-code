@@ -5,24 +5,7 @@ import { getAssistantDisplayName, getProjectName } from "../../models/agent-even
 import { permissionStore } from "../../stores/permission-store";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
 import { log } from "../../services/log";
-
-/** Speech bubble tail pointing down toward the mascot */
-function SpeechBubbleTail(props: { color: string }) {
-  return (
-    <div class="flex justify-end pr-8">
-      <div
-        style={{
-          width: "0",
-          height: "0",
-          "border-left": "8px solid transparent",
-          "border-right": "8px solid transparent",
-          "border-top": `8px solid ${props.color}`,
-          filter: "drop-shadow(0 1px 1px rgba(35,17,60,0.08))",
-        }}
-      />
-    </div>
-  );
-}
+import { BubbleTail, type TailDir } from "./BubbleTail";
 
 /** Format tool input for display */
 function formatToolInput(event: PendingPermission["event"]): string | null {
@@ -64,7 +47,7 @@ function parseQuestions(event: PendingPermission["event"]): Array<{
   }));
 }
 
-export default function PermissionPrompt(props: { permission: PendingPermission }) {
+export default function PermissionPrompt(props: { permission: PendingPermission; tailDir?: TailDir }) {
   const [selectedSuggestion, setSelectedSuggestion] = createSignal<PermissionSuggestion | null>(null);
   const [answer, setAnswer] = createSignal("");
   const [selectedOptions, setSelectedOptions] = createSignal<Set<string>>(new Set());
@@ -131,11 +114,21 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
   const fsMuted = () => a().fontSize - 1;   // secondary
   const fsXs = () => a().fontSize - 2;      // smallest (suggestions)
 
+  const dir = () => props.tailDir || "down";
+
   return (
-    <div class="w-72 select-none" style={{ "font-family": "var(--font-body)" }}>
+    <div
+      class="w-72 select-none flex"
+      classList={{
+        "flex-col": dir() === "down",
+        "flex-row": dir() === "left",
+        "flex-row-reverse": dir() === "right",
+      }}
+      style={{ "font-family": "var(--font-body)" }}
+    >
       {/* Speech bubble card */}
       <div
-        class="rounded-[14px]"
+        class="rounded-[14px] min-w-0 flex-1"
         style={{
           background: a().bgColor,
           "box-shadow": "0 2px 12px rgba(35,17,60,0.15), 0 0 0 1px rgba(35,17,60,0.06)",
@@ -329,7 +322,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission 
       </div>
 
       {/* Speech bubble tail */}
-      <SpeechBubbleTail color={a().bgColor} />
+      <BubbleTail dir={dir()} color={a().bgColor} />
     </div>
   );
 }

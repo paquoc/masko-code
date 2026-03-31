@@ -12,6 +12,7 @@ import { overlayPositionStore } from "../../stores/overlay-position-store";
 import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
+import type { TailDir } from "./BubbleTail";
 
 function MascotOverlay() {
   const [stateMachine, setStateMachine] = createSignal<OverlayStateMachine | null>(null);
@@ -375,14 +376,40 @@ function MascotOverlay() {
     if (sm && !sm.isLoopVideo) sm.handleVideoEnded();
   };
 
-  // Popup positioning: above mascot by default, below if near top edge
-  const PERMISSION_BAND_PX = 280;
-  const WORKING_BUBBLE_PX = 80;
-  const popupTop = (popupHeight: number) => {
-    const above = overlayPositionStore.y - popupHeight - 4;
-    if (above >= 0) return above;
-    // Flip below mascot
-    return overlayPositionStore.y + overlayPositionStore.MASCOT_SIZE + 4;
+  // Popup layout: depends on mascot position within the screen
+  // - Bottom half: bubble above mascot, tail points down
+  // - Top half + left side: bubble to the right, tail points left
+  // - Top half + right side: bubble to the left, tail points right
+  const GAP = 4;
+  const MASCOT = overlayPositionStore.MASCOT_SIZE;
+
+  const bubbleLayout = (popupW: number, popupH: number): { x: number; y: number; tail: TailDir } => {
+    const mx = overlayPositionStore.x;
+    const my = overlayPositionStore.y;
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const inTopHalf = my + MASCOT / 2 < screenH / 2;
+
+    if (!inTopHalf) {
+      // Bottom half → bubble above, tail down
+      const x = Math.max(8, Math.min(mx + MASCOT / 2 - popupW / 2, screenW - popupW - 8));
+      const y = Math.max(0, my - popupH - GAP);
+      return { x, y, tail: "down" };
+    }
+
+    // Top half → bubble to the side
+    const inLeftHalf = mx + MASCOT / 2 < screenW / 2;
+    if (inLeftHalf) {
+      // Left side → bubble to the right of mascot, tail points left
+      const x = Math.min(mx + MASCOT + GAP, screenW - popupW - 8);
+      const y = Math.max(8, Math.min(my + MASCOT / 2 - popupH / 2, screenH - popupH - 8));
+      return { x, y, tail: "left" };
+    } else {
+      // Right side → bubble to the left of mascot, tail points right
+      const x = Math.max(8, mx - popupW - GAP);
+      const y = Math.max(8, Math.min(my + MASCOT / 2 - popupH / 2, screenH - popupH - 8));
+      return { x, y, tail: "right" };
+    }
   };
 
   // Queue: show only the first uncollapsed permission
@@ -396,40 +423,46 @@ function MascotOverlay() {
       class="fixed inset-0 select-none"
       style={{ background: "transparent" }}
     >
-      {/* Working bubble — floats above mascot when tool is running */}
+      {/* Working bubble — floats near mascot */}
       <Show when={workingBubbleStore.state.visible && !currentPermission()}>
-        <div class="absolute pb-1 overflow-hidden"
-          style={{
-            "z-index": 15,
-            left: `${overlayPositionStore.x}px`,
-            top: `${popupTop(WORKING_BUBBLE_PX)}px`,
-            width: "200px",
-          }}
-        >
-          <WorkingBubble />
-        </div>
+        {(() => {
+          const l = () => bubbleLayout(176, 80);
+          return (
+            <div class="absolute"
+              style={{
+                "z-index": 15,
+                left: `${l().x}px`,
+                top: `${l().y}px`,
+              }}
+            >
+              <WorkingBubble tailDir={l().tail} />
+            </div>
+          );
+        })()}
       </Show>
 
-      {/* Permission bubble — floats above mascot */}
+      {/* Permission bubble — floats near mascot */}
       <Show when={currentPermission()}>
-        {(perm) => (
-          <div class="absolute px-2 pb-1 overflow-hidden"
-            style={{
-              "z-index": 20,
-              left: `${Math.max(8, Math.min(overlayPositionStore.x - 40, window.innerWidth - 288))}px`,
-              top: `${popupTop(PERMISSION_BAND_PX)}px`,
-              width: "288px",
-            }}
-          >
-            <PermissionPrompt permission={perm()} />
+        {(perm) => {
+          const l = () => bubbleLayout(288, 280);
+          return (
+            <div class="absolute"
+              style={{
+                "z-index": 20,
+                left: `${l().x}px`,
+                top: `${l().y}px`,
+              }}
+            >
+              <PermissionPrompt permission={perm()} tailDir={l().tail} />
 
-            <Show when={queueCount() > 1}>
-              <div class="absolute top-1 right-3 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                {queueCount()}
-              </div>
-            </Show>
-          </div>
-        )}
+              <Show when={queueCount() > 1}>
+                <div class="absolute top-1 right-3 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  {queueCount()}
+                </div>
+              </Show>
+            </div>
+          );
+        }}
       </Show>
 
       {/* Mascot video — dynamically positioned */}
@@ -439,7 +472,7 @@ function MascotOverlay() {
         style={{
           left: `${overlayPositionStore.x}px`,
           top: `${overlayPositionStore.y}px`,
-          background: isHovering() ? "rgba(255, 176, 72, 0.45)" : "transparent",
+          background: isHovering() ? (workingBubbleStore.settings.appearance.hoverColor || "rgba(255,176,72,0.45)") : "transparent",
         }}
         onMouseDown={handleMouseDown}
         onClick={handleClick}

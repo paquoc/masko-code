@@ -14,6 +14,7 @@ const defaultAppearance: BubbleAppearance = {
   mutedColor: "rgba(35,17,60,0.55)",
   accentColor: "#f95d02",
   buttonTextColor: "#ffffff",
+  hoverColor: "rgba(255,176,72,0.45)",
 };
 
 function loadBubbleSettings(): WorkingBubbleSettings {
@@ -198,6 +199,7 @@ export default function SettingsPanel() {
           <ColorRow label="Muted text" value={bubbleSettings.appearance.mutedColor} onChange={(v) => setAppearance("mutedColor", v)} />
           <ColorRow label="Accent" value={bubbleSettings.appearance.accentColor} onChange={(v) => setAppearance("accentColor", v)} />
           <ColorRow label="Button text" value={bubbleSettings.appearance.buttonTextColor} onChange={(v) => setAppearance("buttonTextColor", v)} />
+          <ColorRow label="Mascot hover" value={bubbleSettings.appearance.hoverColor || "rgba(255,176,72,0.45)"} onChange={(v) => setAppearance("hoverColor", v)} />
 
           {/* Reset */}
           <button

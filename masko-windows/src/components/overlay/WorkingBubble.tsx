@@ -1,13 +1,20 @@
 import { Show } from "solid-js";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
+import { BubbleTail, type TailDir } from "./BubbleTail";
 
-export default function WorkingBubble() {
+export default function WorkingBubble(props: { tailDir?: TailDir }) {
   const s = () => workingBubbleStore.state;
   const a = () => workingBubbleStore.settings.appearance;
+  const dir = () => props.tailDir || "down";
 
   return (
     <div
-      class="w-44 select-none"
+      class="w-44 select-none flex"
+      classList={{
+        "flex-col": dir() === "down",
+        "flex-row": dir() === "left",
+        "flex-row-reverse": dir() === "right",
+      }}
       style={{ "font-family": "var(--font-body)" }}
     >
       <div
@@ -48,19 +55,7 @@ export default function WorkingBubble() {
         </div>
       </div>
 
-      {/* Speech bubble tail */}
-      <div class="flex justify-end pr-8">
-        <div
-          style={{
-            width: "0",
-            height: "0",
-            "border-left": "6px solid transparent",
-            "border-right": "6px solid transparent",
-            "border-top": `6px solid ${a().bgColor}`,
-            filter: "drop-shadow(0 1px 1px rgba(35,17,60,0.06))",
-          }}
-        />
-      </div>
+      <BubbleTail dir={dir()} color={a().bgColor} />
     </div>
   );
 }
