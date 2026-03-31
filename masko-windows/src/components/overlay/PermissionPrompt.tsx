@@ -118,17 +118,17 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
   return (
     <div
-      class="w-72 select-none flex"
+      class="select-none flex items-center"
       classList={{
-        "flex-col": dir() === "down",
-        "flex-row": dir() === "left",
-        "flex-row-reverse": dir() === "right",
+        "flex-col items-center": dir() === "down",
+        "flex-row": dir() === "right",
+        "flex-row-reverse": dir() === "left",
       }}
       style={{ "font-family": "var(--font-body)" }}
     >
       {/* Speech bubble card */}
       <div
-        class="rounded-[14px] min-w-0 flex-1"
+        class="w-72 rounded-[14px] shrink-0"
         style={{
           background: a().bgColor,
           "box-shadow": "0 2px 12px rgba(35,17,60,0.15), 0 0 0 1px rgba(35,17,60,0.06)",

@@ -12,7 +12,7 @@ import { overlayPositionStore } from "../../stores/overlay-position-store";
 import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
-import type { TailDir } from "./BubbleTail";
+import { TAIL_SIZE, type TailDir } from "./BubbleTail";
 
 function MascotOverlay() {
   const [stateMachine, setStateMachine] = createSignal<OverlayStateMachine | null>(null);
@@ -28,6 +28,7 @@ function MascotOverlay() {
   };
 
   const [videoRef, setVideoRef] = createSignal<HTMLVideoElement | undefined>();
+  const [videoReady, setVideoReady] = createSignal(false);
   // Idle timeout: if no hook event in 2min, assume agent stopped (e.g. user interrupted)
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   const resetIdleTimer = () => {
@@ -118,10 +119,15 @@ function MascotOverlay() {
       return;
     }
     currentVideoSrc = url;
-    el.src = url;
+    setVideoReady(false);
     el.loop = loop;
     el.playbackRate = rate;
-    el.play().catch(() => {});
+    el.src = url;
+    el.load();
+    el.addEventListener("canplay", () => {
+      setVideoReady(true);
+      el.play().catch(() => {});
+    }, { once: true });
   });
 
   // Reset alert state when all permissions are resolved
@@ -400,13 +406,15 @@ function MascotOverlay() {
     // Top half → bubble to the side
     const inLeftHalf = mx + MASCOT / 2 < screenW / 2;
     if (inLeftHalf) {
-      // Left side → bubble to the right of mascot, tail points left
-      const x = Math.min(mx + MASCOT + GAP, screenW - popupW - 8);
+      // Left side → bubble to the right of mascot, tail(8px) + card(popupW)
+      // tail apex touches mascot right edge: container starts at mx+MASCOT
+      const x = Math.min(mx + MASCOT, screenW - popupW - TAIL_SIZE - 8);
       const y = Math.max(8, Math.min(my + MASCOT / 2 - popupH / 2, screenH - popupH - 8));
       return { x, y, tail: "left" };
     } else {
-      // Right side → bubble to the left of mascot, tail points right
-      const x = Math.max(8, mx - popupW - GAP);
+      // Right side → card(popupW) + tail(8px)
+      // tail apex touches mascot left edge: container starts at mx-popupW-TAIL_SIZE
+      const x = Math.max(8, mx - popupW - TAIL_SIZE);
       const y = Math.max(8, Math.min(my + MASCOT / 2 - popupH / 2, screenH - popupH - 8));
       return { x, y, tail: "right" };
     }
@@ -428,11 +436,13 @@ function MascotOverlay() {
         {(() => {
           const l = () => bubbleLayout(176, 80);
           return (
-            <div class="absolute"
+            <div class="absolute flex"
+              classList={{ "flex-col justify-end": l().tail === "down" }}
               style={{
                 "z-index": 15,
                 left: `${l().x}px`,
                 top: `${l().y}px`,
+                ...(l().tail === "down" ? { height: `${overlayPositionStore.y - l().y}px` } : {}),
               }}
             >
               <WorkingBubble tailDir={l().tail} />
@@ -446,11 +456,13 @@ function MascotOverlay() {
         {(perm) => {
           const l = () => bubbleLayout(288, 280);
           return (
-            <div class="absolute"
+            <div class="absolute flex"
+              classList={{ "flex-col justify-end": l().tail === "down" }}
               style={{
                 "z-index": 20,
                 left: `${l().x}px`,
                 top: `${l().y}px`,
+                ...(l().tail === "down" ? { height: `${overlayPositionStore.y - l().y}px` } : {}),
               }}
             >
               <PermissionPrompt permission={perm()} tailDir={l().tail} />
@@ -479,30 +491,28 @@ function MascotOverlay() {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        <Show
-          when={stateMachine()?.currentVideoUrl}
-          fallback={
-            <div class="w-full h-full flex items-center justify-center">
-              <div class="w-24 h-24 rounded-full bg-orange-primary/20 flex items-center justify-center animate-pulse">
-                <span class="text-3xl">🦊</span>
-              </div>
+        {/* Fallback shown only before first video loads */}
+        <Show when={!videoReady()}>
+          <div class="absolute inset-0 flex items-center justify-center">
+            <div class="w-24 h-24 rounded-full bg-orange-primary/20 flex items-center justify-center animate-pulse">
+              <span class="text-3xl">🦊</span>
             </div>
-          }
-        >
-          <video
-            ref={setVideoRef}
-            autoplay
-            muted
-            playsinline
-            onEnded={handleVideoEnded}
-            style={{
-              width: "100%",
-              height: "100%",
-              "object-fit": "contain",
-              background: "transparent",
-            }}
-          />
+          </div>
         </Show>
+        {/* Video always mounted — opacity transition prevents blank-frame flash on src change */}
+        <video
+          ref={setVideoRef}
+          muted
+          playsinline
+          onEnded={handleVideoEnded}
+          style={{
+            width: "100%",
+            height: "100%",
+            "object-fit": "contain",
+            background: "transparent",
+            opacity: videoReady() ? "1" : "0",
+          }}
+        />
 
       </div>
     </div>

@@ -1,5 +1,6 @@
 /** Directional speech bubble tail — points toward the mascot */
 export type TailDir = "down" | "left" | "right";
+export const TAIL_SIZE = 8; // px, matches border width below
 
 const SHADOW = "drop-shadow(0 1px 1px rgba(35,17,60,0.08))";
 

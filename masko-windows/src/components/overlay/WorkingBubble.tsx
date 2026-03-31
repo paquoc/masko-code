@@ -9,16 +9,17 @@ export default function WorkingBubble(props: { tailDir?: TailDir }) {
 
   return (
     <div
-      class="w-44 select-none flex"
+      class="select-none flex items-center"
       classList={{
-        "flex-col": dir() === "down",
-        "flex-row": dir() === "left",
-        "flex-row-reverse": dir() === "right",
+        "flex-col items-center": dir() === "down",
+        "flex-row": dir() === "right",
+        "flex-row-reverse": dir() === "left",
       }}
       style={{ "font-family": "var(--font-body)" }}
     >
+      {/* Card — fixed width */}
       <div
-        class="backdrop-blur-sm rounded-xl px-3 py-2 overflow-hidden"
+        class="w-44 backdrop-blur-sm rounded-xl px-3 py-2 overflow-hidden shrink-0"
         style={{
           background: a().bgColor,
           "box-shadow": "0 2px 8px rgba(35,17,60,0.12), 0 0 0 1px rgba(35,17,60,0.06)",
@@ -55,6 +56,7 @@ export default function WorkingBubble(props: { tailDir?: TailDir }) {
         </div>
       </div>
 
+      {/* Tail — sibling to card so it has real layout width */}
       <BubbleTail dir={dir()} color={a().bgColor} />
     </div>
   );
