@@ -28,8 +28,8 @@
         "label": "overlay",
         "url": "overlay.html",
         "title": "",
-        "width": 320,
-        "height": 520,
+        "width": 1920,
+        "height": 1080,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
@@ -37,9 +37,7 @@
         "resizable": false,
         "visible": false,
         "focus": false,
-        "shadow": false,
-        "x": 100,
-        "y": 100
+        "shadow": false
       }
     ],
     "trayIcon": {

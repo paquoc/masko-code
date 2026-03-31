@@ -9,21 +9,30 @@
 //! internally, but since our handler enforces frameless styles, nothing visible changes).
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
+use std::sync::atomic::AtomicI32;
+
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Dwm::*;
+use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 pub static PERMISSION_HIT_VISIBLE: AtomicBool = AtomicBool::new(false);
 pub static WORKING_BUBBLE_VISIBLE: AtomicBool = AtomicBool::new(false);
+/// When true, cursor polling always reports interactive (suppresses click-through during drag)
+pub static DRAGGING: AtomicBool = AtomicBool::new(false);
 
 const WM_NCPAINT: u32 = 0x0085;
 const WM_NCACTIVATE: u32 = 0x0086;
 const WM_STYLECHANGING: u32 = 0x007C;
 
-const MASCOT_HEIGHT_PX: i32 = 200;
-const MASCOT_WIDTH_PX: i32 = 200;
+// Dynamic mascot position in logical (CSS) pixels — set by frontend via Tauri command
+static MASCOT_X: AtomicI32 = AtomicI32::new(60); // default: roughly center of 320
+static MASCOT_Y: AtomicI32 = AtomicI32::new(320); // default: near bottom
+static MASCOT_W: AtomicI32 = AtomicI32::new(200);
+static MASCOT_H: AtomicI32 = AtomicI32::new(200);
+
 const PERMISSION_BAND_PX: i32 = 280;
 const WORKING_BUBBLE_PX: i32 = 80;
 
@@ -117,12 +126,60 @@ pub unsafe fn strip_frame(hwnd_raw: *mut std::ffi::c_void) {
     .ok();
 }
 
-/// Check if the OS cursor is currently over the mascot or permission area.
+/// Update mascot position from frontend (logical CSS pixels relative to window).
+pub fn update_mascot_position(x: i32, y: i32, w: i32, h: i32) {
+    MASCOT_X.store(x, Ordering::Relaxed);
+    MASCOT_Y.store(y, Ordering::Relaxed);
+    MASCOT_W.store(w, Ordering::Relaxed);
+    MASCOT_H.store(h, Ordering::Relaxed);
+}
+
+/// Get monitor bounds (physical pixels) for the monitor containing the given point.
+/// Returns (left, top, width, height).
+pub fn monitor_bounds_at_point(x: i32, y: i32) -> (i32, i32, i32, i32) {
+    unsafe {
+        let pt = POINT { x, y };
+        let hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(hmon, &mut info).as_bool() {
+            let rc = info.rcMonitor;
+            (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)
+        } else {
+            (0, 0, 1920, 1080)
+        }
+    }
+}
+
+/// Get primary monitor bounds (physical pixels).
+pub fn get_primary_monitor_bounds() -> (i32, i32, i32, i32) {
+    monitor_bounds_at_point(0, 0)
+}
+
+/// Resize overlay window to cover a specific monitor.
+pub unsafe fn resize_to_monitor(hwnd_raw: *mut std::ffi::c_void, x: i32, y: i32, w: i32, h: i32) {
+    let hwnd = HWND(hwnd_raw);
+    SetWindowPos(
+        hwnd,
+        HWND_TOPMOST,
+        x, y, w, h,
+        SWP_NOACTIVATE | SWP_FRAMECHANGED,
+    ).ok();
+}
+
+/// Check if the OS cursor is currently over the mascot or popup areas.
 ///
-/// All coordinates here are physical (screen) pixels from GetWindowRect / GetCursorPos.
-/// The CSS layout uses logical pixels, so we must scale by the DPI factor.
-/// WebView2 on Windows reports DPI via the monitor's scale factor.
+/// Uses dynamic mascot position from frontend (MASCOT_X/Y/W/H atomics).
+/// All coordinates scaled from logical CSS pixels to physical screen pixels.
+/// Relaxed ordering on MASCOT_X/Y/W/H: written by one IPC thread, read by one poll thread.
+/// Brief cross-atomic inconsistency (1-2 frames) is imperceptible and harmless.
 pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
+    // During drag, always report interactive to prevent click-through race
+    if DRAGGING.load(Ordering::Relaxed) {
+        return true;
+    }
     unsafe {
         let hwnd = HWND(hwnd_raw as *mut std::ffi::c_void);
         let mut cursor = POINT { x: 0, y: 0 };
@@ -142,34 +199,35 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             return false;
         }
 
-        // Get DPI scale for this window's monitor
         let dpi = GetDpiForWindow(hwnd);
         let scale = if dpi > 0 { dpi as f64 / 96.0 } else { 1.0 };
 
-        let w = rect.right - rect.left;
-        let h = rect.bottom - rect.top;
         let client_x = cursor.x - rect.left;
         let client_y = cursor.y - rect.top;
 
-        // Scale CSS logical pixel constants to physical pixels
-        let mascot_h = (MASCOT_HEIGHT_PX as f64 * scale) as i32;
-        let mascot_w = (MASCOT_WIDTH_PX as f64 * scale) as i32;
-        let perm_h = (PERMISSION_BAND_PX as f64 * scale) as i32;
-        let bubble_h = (WORKING_BUBBLE_PX as f64 * scale) as i32;
+        // Read dynamic mascot position (logical CSS px) and scale to physical
+        let mx = (MASCOT_X.load(Ordering::Relaxed) as f64 * scale) as i32;
+        let my = (MASCOT_Y.load(Ordering::Relaxed) as f64 * scale) as i32;
+        let mw = (MASCOT_W.load(Ordering::Relaxed) as f64 * scale) as i32;
+        let mh = (MASCOT_H.load(Ordering::Relaxed) as f64 * scale) as i32;
 
-        // Mascot is centered horizontally (left-1/2 -translate-x-1/2)
-        let mascot_left = (w - mascot_w) / 2;
-        let mascot_right = mascot_left + mascot_w;
-        let in_mascot_x = client_x >= mascot_left && client_x < mascot_right;
-        let in_mascot = client_y >= h - mascot_h && in_mascot_x;
+        let in_mascot = client_x >= mx && client_x < mx + mw
+            && client_y >= my && client_y < my + mh;
+
+        // Permission zone: above mascot
+        let perm_h = (PERMISSION_BAND_PX as f64 * scale) as i32;
         let perm_on = PERMISSION_HIT_VISIBLE.load(Ordering::Relaxed);
         let in_perm = perm_on
-            && client_y >= (h - mascot_h - perm_h).max(0)
-            && client_y < h - mascot_h;
+            && client_x >= mx && client_x < mx + mw
+            && client_y >= (my - perm_h).max(0) && client_y < my;
+
+        // Working bubble zone: above mascot
+        let bubble_h = (WORKING_BUBBLE_PX as f64 * scale) as i32;
         let bubble_on = WORKING_BUBBLE_VISIBLE.load(Ordering::Relaxed);
         let in_bubble = bubble_on
-            && client_y >= (h - mascot_h - bubble_h).max(0)
-            && client_y < h - mascot_h;
+            && client_x >= mx && client_x < mx + mw
+            && client_y >= (my - bubble_h).max(0) && client_y < my;
+
         in_mascot || in_perm || in_bubble
     }
 }

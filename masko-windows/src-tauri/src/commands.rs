@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{State, AppHandle, Manager};
 
 use crate::hook_installer;
 use crate::server::PendingPermissions;
@@ -57,4 +57,57 @@ pub fn set_overlay_working_bubble_visible(visible: bool) -> Result<(), String> {
     #[cfg(not(target_os = "windows"))]
     let _ = visible;
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_overlay_dragging(dragging: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::win_overlay::DRAGGING.store(dragging, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = dragging;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_mascot_position(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    crate::win_overlay::update_mascot_position(x, y, w, h);
+    #[cfg(not(target_os = "windows"))]
+    { let _ = (x, y, w, h); }
+    Ok(())
+}
+
+/// Returns (left, top, width, height) of the monitor containing the given screen point.
+#[tauri::command]
+pub fn get_monitor_at_point(x: i32, y: i32) -> Result<(i32, i32, i32, i32), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(crate::win_overlay::monitor_bounds_at_point(x, y))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (x, y);
+        Ok((0, 0, 1920, 1080))
+    }
+}
+
+/// Move overlay window to cover the monitor at the given screen point. Returns new bounds.
+#[tauri::command]
+pub fn move_overlay_to_monitor(app: AppHandle, x: i32, y: i32) -> Result<(i32, i32, i32, i32), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let bounds = crate::win_overlay::monitor_bounds_at_point(x, y);
+        if let Some(overlay) = app.get_webview_window("overlay") {
+            let hwnd_raw = overlay.hwnd().map_err(|e| e.to_string())?.0 as *mut std::ffi::c_void;
+            unsafe { crate::win_overlay::resize_to_monitor(hwnd_raw, bounds.0, bounds.1, bounds.2, bounds.3); }
+        }
+        Ok(bounds)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, x, y);
+        Ok((0, 0, 1920, 1080))
+    }
 }

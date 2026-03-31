@@ -50,6 +50,11 @@ pub fn run() {
                     unsafe {
                         crate::win_overlay::strip_frame(hwnd_ptr);
                         crate::win_overlay::subclass_overlay(hwnd_ptr);
+
+                        // Resize overlay to cover primary monitor
+                        let (mx, my, mw, mh) = crate::win_overlay::get_primary_monitor_bounds();
+                        crate::win_overlay::resize_to_monitor(hwnd_ptr, mx, my, mw, mh);
+                        mlog!("Overlay resized to monitor: {}x{} at ({},{})", mw, mh, mx, my);
                     }
 
                     // Poll cursor ~60fps, emit zone changes so frontend can toggle
@@ -94,6 +99,10 @@ pub fn run() {
             commands::is_hooks_registered,
             commands::set_overlay_permission_visible,
             commands::set_overlay_working_bubble_visible,
+            commands::set_overlay_dragging,
+            commands::update_mascot_position,
+            commands::get_monitor_at_point,
+            commands::move_overlay_to_monitor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");

@@ -8,6 +8,7 @@ import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent
 import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
+import { overlayPositionStore } from "../../stores/overlay-position-store";
 import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
@@ -75,9 +76,9 @@ function MascotOverlay() {
 
   // Load persisted mascot on startup, fallback to clippy
   onMount(async () => {
-    // Check if dashboard has stored a mascot slug preference
-    // We can't access localStorage across windows, so read from the
-    // mascot-changed event or fall back to stored slug
+    // Restore mascot position within the fullscreen overlay
+    await overlayPositionStore.restorePosition();
+
     const storedId = localStorage.getItem("overlay_mascot_slug");
     const slug = storedId || "clippy";
     await loadMascotBySlug(slug);
@@ -122,7 +123,6 @@ function MascotOverlay() {
     el.play().catch(() => {});
   });
 
-  // Window is always 320x520 — no resize needed, just show/hide bubble via CSS
   // Reset alert state when all permissions are resolved
   // Use pendingCountChanged signal as explicit dependency — Solid store array
   // tracking can miss filter().length changes when array goes from 1→0 elements.
@@ -308,12 +308,63 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
-  const handleMouseDown = async (e: MouseEvent) => {
-    if (e.buttons === 1) {
-      setIsDragging(true);
-      await getCurrentWindow().startDragging();
+  const DRAG_THRESHOLD = 3;
+
+  const handleMouseDown = (e: MouseEvent) => {
+    if (e.buttons !== 1) return;
+    e.preventDefault();
+
+    // All drag state is local to this gesture — prevents cross-gesture clobber
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const offsetX = e.clientX - overlayPositionStore.x;
+    const offsetY = e.clientY - overlayPositionStore.y;
+    let moved = false;
+
+    // Force interactive during drag so fast mouse movement doesn't trigger click-through
+    invoke("set_overlay_dragging", { dragging: true }).catch(() => {});
+    getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      moved = true;
+      if (!isDragging()) setIsDragging(true);
+      overlayPositionStore.updatePosition(ev.clientX - offsetX, ev.clientY - offsetY);
+    };
+
+    const onUp = async () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
       setIsDragging(false);
-    }
+      invoke("set_overlay_dragging", { dragging: false }).catch(() => {});
+
+      if (moved) {
+        overlayPositionStore.persistPosition();
+
+        // Check if mascot moved to a different monitor
+        const center = overlayPositionStore.screenCenter();
+        try {
+          const newBounds = await invoke<[number, number, number, number]>(
+            "get_monitor_at_point", { x: center.x, y: center.y }
+          );
+          const [mx, my, mw, mh] = newBounds;
+          if (mx !== overlayPositionStore.monitorX || my !== overlayPositionStore.monitorY) {
+            // Snapshot screen coords before async invoke changes anything
+            const snapScreenX = overlayPositionStore.monitorX + overlayPositionStore.x;
+            const snapScreenY = overlayPositionStore.monitorY + overlayPositionStore.y;
+            await invoke("move_overlay_to_monitor", { x: center.x, y: center.y });
+            overlayPositionStore.setMonitorBounds(mx, my, mw, mh);
+            overlayPositionStore.updatePosition(snapScreenX - mx, snapScreenY - my);
+            overlayPositionStore.persistPosition();
+          }
+        } catch { /* ignore monitor detection errors */ }
+      }
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   const handleClick = () => stateMachine()?.handleClick();
@@ -322,6 +373,16 @@ function MascotOverlay() {
   const handleVideoEnded = () => {
     const sm = stateMachine();
     if (sm && !sm.isLoopVideo) sm.handleVideoEnded();
+  };
+
+  // Popup positioning: above mascot by default, below if near top edge
+  const PERMISSION_BAND_PX = 280;
+  const WORKING_BUBBLE_PX = 80;
+  const popupTop = (popupHeight: number) => {
+    const above = overlayPositionStore.y - popupHeight - 4;
+    if (above >= 0) return above;
+    // Flip below mascot
+    return overlayPositionStore.y + overlayPositionStore.MASCOT_SIZE + 4;
   };
 
   // Queue: show only the first uncollapsed permission
@@ -337,8 +398,13 @@ function MascotOverlay() {
     >
       {/* Working bubble — floats above mascot when tool is running */}
       <Show when={workingBubbleStore.state.visible && !currentPermission()}>
-        <div class="absolute bottom-[200px] left-0 right-0 pb-1 overflow-hidden"
-          style={{ "z-index": 15, "padding-left": "40px" }}
+        <div class="absolute pb-1 overflow-hidden"
+          style={{
+            "z-index": 15,
+            left: `${overlayPositionStore.x}px`,
+            top: `${popupTop(WORKING_BUBBLE_PX)}px`,
+            width: "200px",
+          }}
         >
           <WorkingBubble />
         </div>
@@ -347,8 +413,13 @@ function MascotOverlay() {
       {/* Permission bubble — floats above mascot */}
       <Show when={currentPermission()}>
         {(perm) => (
-          <div class="absolute bottom-[200px] left-0 right-0 px-2 pb-1 overflow-hidden"
-            style={{ "z-index": 20 }}
+          <div class="absolute px-2 pb-1 overflow-hidden"
+            style={{
+              "z-index": 20,
+              left: `${Math.max(8, Math.min(overlayPositionStore.x - 40, window.innerWidth - 288))}px`,
+              top: `${popupTop(PERMISSION_BAND_PX)}px`,
+              width: "288px",
+            }}
           >
             <PermissionPrompt permission={perm()} />
 
@@ -361,11 +432,15 @@ function MascotOverlay() {
         )}
       </Show>
 
-      {/* Mascot video — pinned to bottom */}
+      {/* Mascot video — dynamically positioned */}
       <div
-        class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[200px] h-[200px] cursor-grab rounded-2xl transition-colors duration-200"
+        class="absolute w-[200px] h-[200px] cursor-grab rounded-2xl transition-colors duration-200"
         classList={{ "cursor-grabbing": isDragging() }}
-        style={{ background: isHovering() ? "rgba(255, 176, 72, 0.45)" : "transparent" }}
+        style={{
+          left: `${overlayPositionStore.x}px`,
+          top: `${overlayPositionStore.y}px`,
+          background: isHovering() ? "rgba(255, 176, 72, 0.45)" : "transparent",
+        }}
         onMouseDown={handleMouseDown}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
