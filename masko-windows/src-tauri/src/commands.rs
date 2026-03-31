@@ -93,6 +93,35 @@ pub fn get_monitor_at_point(x: i32, y: i32) -> Result<(i32, i32, i32, i32), Stri
     }
 }
 
+#[tauri::command]
+pub fn update_working_bubble_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    crate::win_overlay::update_bubble_zone(x, y, w, h);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (x, y, w, h);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    crate::win_overlay::update_permission_zone(x, y, w, h);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (x, y, w, h);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_devtools(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("overlay") {
+        #[cfg(debug_assertions)]
+        win.open_devtools();
+        #[cfg(not(debug_assertions))]
+        let _ = win;
+    }
+    Ok(())
+}
+
 /// Move overlay window to cover the monitor at the given screen point. Returns new bounds.
 #[tauri::command]
 pub fn move_overlay_to_monitor(app: AppHandle, x: i32, y: i32) -> Result<(i32, i32, i32, i32), String> {

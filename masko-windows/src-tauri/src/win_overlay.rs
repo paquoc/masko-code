@@ -33,8 +33,15 @@ static MASCOT_Y: AtomicI32 = AtomicI32::new(320); // default: near bottom
 static MASCOT_W: AtomicI32 = AtomicI32::new(200);
 static MASCOT_H: AtomicI32 = AtomicI32::new(200);
 
-const PERMISSION_BAND_PX: i32 = 280;
-const WORKING_BUBBLE_PX: i32 = 80;
+// Actual bubble bounding boxes (logical CSS px). x=-1 means disabled.
+static BUBBLE_X: AtomicI32 = AtomicI32::new(-1);
+static BUBBLE_Y: AtomicI32 = AtomicI32::new(-1);
+static BUBBLE_W: AtomicI32 = AtomicI32::new(0);
+static BUBBLE_H: AtomicI32 = AtomicI32::new(0);
+static PERM_X: AtomicI32 = AtomicI32::new(-1);
+static PERM_Y: AtomicI32 = AtomicI32::new(-1);
+static PERM_W: AtomicI32 = AtomicI32::new(0);
+static PERM_H: AtomicI32 = AtomicI32::new(0);
 
 // Style bits that would show a frame — strip these on every style change
 const BANNED_STYLE: u32 = WS_CAPTION.0
@@ -134,6 +141,22 @@ pub fn update_mascot_position(x: i32, y: i32, w: i32, h: i32) {
     MASCOT_H.store(h, Ordering::Relaxed);
 }
 
+/// Update working bubble zone (logical CSS px). Pass x=-1 to disable.
+pub fn update_bubble_zone(x: i32, y: i32, w: i32, h: i32) {
+    BUBBLE_X.store(x, Ordering::Relaxed);
+    BUBBLE_Y.store(y, Ordering::Relaxed);
+    BUBBLE_W.store(w, Ordering::Relaxed);
+    BUBBLE_H.store(h, Ordering::Relaxed);
+}
+
+/// Update permission prompt zone (logical CSS px). Pass x=-1 to disable.
+pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) {
+    PERM_X.store(x, Ordering::Relaxed);
+    PERM_Y.store(y, Ordering::Relaxed);
+    PERM_W.store(w, Ordering::Relaxed);
+    PERM_H.store(h, Ordering::Relaxed);
+}
+
 /// Get monitor bounds (physical pixels) for the monitor containing the given point.
 /// Returns (left, top, width, height).
 pub fn monitor_bounds_at_point(x: i32, y: i32) -> (i32, i32, i32, i32) {
@@ -214,19 +237,27 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
         let in_mascot = client_x >= mx && client_x < mx + mw
             && client_y >= my && client_y < my + mh;
 
-        // Permission zone: above mascot
-        let perm_h = (PERMISSION_BAND_PX as f64 * scale) as i32;
-        let perm_on = PERMISSION_HIT_VISIBLE.load(Ordering::Relaxed);
-        let in_perm = perm_on
-            && client_x >= mx && client_x < mx + mw
-            && client_y >= (my - perm_h).max(0) && client_y < my;
-
-        // Working bubble zone: above mascot
-        let bubble_h = (WORKING_BUBBLE_PX as f64 * scale) as i32;
+        // Working bubble zone: exact position sent by frontend
         let bubble_on = WORKING_BUBBLE_VISIBLE.load(Ordering::Relaxed);
-        let in_bubble = bubble_on
-            && client_x >= mx && client_x < mx + mw
-            && client_y >= (my - bubble_h).max(0) && client_y < my;
+        let bx = BUBBLE_X.load(Ordering::Relaxed);
+        let in_bubble = bubble_on && bx >= 0 && {
+            let bx = (bx as f64 * scale) as i32;
+            let by = (BUBBLE_Y.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let bw = (BUBBLE_W.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let bh = (BUBBLE_H.load(Ordering::Relaxed) as f64 * scale) as i32;
+            client_x >= bx && client_x < bx + bw && client_y >= by && client_y < by + bh
+        };
+
+        // Permission zone: exact position sent by frontend
+        let perm_on = PERMISSION_HIT_VISIBLE.load(Ordering::Relaxed);
+        let px = PERM_X.load(Ordering::Relaxed);
+        let in_perm = perm_on && px >= 0 && {
+            let px = (px as f64 * scale) as i32;
+            let py = (PERM_Y.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let pw = (PERM_W.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let ph = (PERM_H.load(Ordering::Relaxed) as f64 * scale) as i32;
+            client_x >= px && client_x < px + pw && client_y >= py && client_y < py + ph
+        };
 
         in_mascot || in_perm || in_bubble
     }

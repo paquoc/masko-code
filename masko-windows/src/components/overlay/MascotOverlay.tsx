@@ -1,5 +1,6 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { OverlayStateMachine } from "../../services/state-machine";
@@ -14,10 +15,197 @@ import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
 import { TAIL_SIZE, type TailDir } from "./BubbleTail";
 
+// ─── Context Menu ─────────────────────────────────────────────────────────────
+
+type SliderType = "size" | "opacity";
+
+function ContextMenu(props: {
+  x: number;
+  y: number;
+  onClose: () => void;
+}) {
+  const [expanded, setExpanded] = createSignal<SliderType | null>(null);
+
+  const toggleSlider = (type: SliderType) =>
+    setExpanded((prev) => (prev === type ? null : type));
+
+  function openDashboard() {
+    props.onClose();
+    WebviewWindow.getByLabel("main").then((win) => {
+      win?.show().catch(() => {});
+      win?.setFocus().catch(() => {});
+    }).catch(() => {});
+  }
+
+  function openDevTools() {
+    props.onClose();
+    invoke("open_devtools").catch(() => {});
+  }
+
+  function closeApp() {
+    props.onClose();
+    // Close all windows — Tauri exits when all windows are closed
+    WebviewWindow.getByLabel("main").then((win) => win?.close()).catch(() => {});
+    getCurrentWindow().close().catch(() => {});
+  }
+
+  // Menu position: flip left/up if near screen edge
+  const MENU_W = 200;
+  const menuX = () => {
+    const x = props.x + 8;
+    return x + MENU_W > window.innerWidth ? props.x - MENU_W - 8 : x;
+  };
+  const menuY = () => {
+    // Approximate max height including sliders ~220px
+    const y = props.y + 8;
+    return y + 220 > window.innerHeight ? props.y - 220 : y;
+  };
+
+  return (
+    <>
+      {/* Backdrop — click outside to close */}
+      <div
+        class="fixed inset-0"
+        style={{ "z-index": 98 }}
+        onMouseDown={(e) => { e.stopPropagation(); props.onClose(); }}
+        onContextMenu={(e) => { e.preventDefault(); props.onClose(); }}
+      />
+
+      {/* Menu panel */}
+      <div
+        class="fixed rounded-xl shadow-2xl border border-white/10 overflow-hidden select-none"
+        style={{
+          "z-index": 99,
+          left: `${menuX()}px`,
+          top: `${menuY()}px`,
+          width: `${MENU_W}px`,
+          background: "rgba(24, 24, 28, 0.92)",
+          "backdrop-filter": "blur(16px)",
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        {/* Size */}
+        <MenuRow
+          label="Size"
+          icon="⬜"
+          hasArrow
+          active={expanded() === "size"}
+          onClick={() => toggleSlider("size")}
+        />
+        <Show when={expanded() === "size"}>
+          <SliderRow
+            value={overlayPositionStore.mascotSize}
+            min={80}
+            max={400}
+            step={10}
+            label={`${overlayPositionStore.mascotSize}px`}
+            onChange={(v) => overlayPositionStore.setMascotSize(v)}
+          />
+        </Show>
+
+        {/* Opacity */}
+        <MenuRow
+          label="Opacity"
+          icon="◐"
+          hasArrow
+          active={expanded() === "opacity"}
+          onClick={() => toggleSlider("opacity")}
+        />
+        <Show when={expanded() === "opacity"}>
+          <SliderRow
+            value={overlayPositionStore.mascotOpacity * 100}
+            min={10}
+            max={100}
+            step={5}
+            label={`${Math.round(overlayPositionStore.mascotOpacity * 100)}%`}
+            onChange={(v) => overlayPositionStore.setMascotOpacity(v / 100)}
+          />
+        </Show>
+
+        <div class="h-px bg-white/10 mx-2" />
+
+        {/* Open dashboard */}
+        <MenuRow label="Open dashboard" icon="⊞" onClick={openDashboard} />
+
+        {/* Inspect */}
+        <MenuRow label="Inspect" icon="🔍" onClick={openDevTools} />
+
+        <div class="h-px bg-white/10 mx-2" />
+
+        {/* Close — red */}
+        <MenuRow label="Close" icon="✕" danger onClick={closeApp} />
+      </div>
+    </>
+  );
+}
+
+function MenuRow(props: {
+  label: string;
+  icon: string;
+  danger?: boolean;
+  hasArrow?: boolean;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      class="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-left"
+      classList={{
+        "text-red-400 hover:bg-red-500/15": !!props.danger,
+        "text-white/80 hover:bg-white/10": !props.danger,
+        "bg-white/10": !!props.active,
+      }}
+      onClick={props.onClick}
+    >
+      <span class="w-4 text-center text-xs opacity-60">{props.icon}</span>
+      <span class="flex-1 font-medium" style={{ "font-size": "13px", "font-family": "system-ui, sans-serif" }}>
+        {props.label}
+      </span>
+      <Show when={props.hasArrow}>
+        <span class="opacity-40 text-xs">{props.active ? "▲" : "▼"}</span>
+      </Show>
+    </button>
+  );
+}
+
+function SliderRow(props: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  label: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div class="px-3 py-2 flex items-center gap-2 bg-white/5">
+      <input
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        value={props.value}
+        class="flex-1 h-1 accent-orange-400 cursor-pointer"
+        onInput={(e) => props.onChange(Number(e.currentTarget.value))}
+        style={{ "accent-color": "#fb923c" }}
+      />
+      <span
+        class="text-white/50 tabular-nums"
+        style={{ "font-size": "11px", "font-family": "system-ui, sans-serif", "min-width": "36px", "text-align": "right" }}
+      >
+        {props.label}
+      </span>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 function MascotOverlay() {
   const [stateMachine, setStateMachine] = createSignal<OverlayStateMachine | null>(null);
   const [isDragging, setIsDragging] = createSignal(false);
   const [isHovering, setIsHovering] = createSignal(false);
+  const [contextMenu, setContextMenu] = createSignal<{ x: number; y: number } | null>(null);
 
   // Track agent state so we can restore it when switching mascots
   const agentState = {
@@ -103,8 +291,6 @@ function MascotOverlay() {
   });
 
   // Sync state machine → video element reactively (no polling)
-  // State machine properties are Solid signals — reading them in createEffect
-  // automatically tracks changes and re-runs only when values actually change.
   createEffect(() => {
     const sm = stateMachine();
     const el = videoRef();
@@ -131,8 +317,6 @@ function MascotOverlay() {
   });
 
   // Reset alert state when all permissions are resolved
-  // Use pendingCountChanged signal as explicit dependency — Solid store array
-  // tracking can miss filter().length changes when array goes from 1→0 elements.
   createEffect(() => {
     const _count = permissionStore.pendingCountChanged;
     const hasPending = permissionStore.pending.filter((p) => !p.collapsed).length > 0;
@@ -154,11 +338,37 @@ function MascotOverlay() {
     invoke("set_overlay_working_bubble_visible", { visible }).catch(() => {});
   });
 
+  // Sync working bubble bounding box to Rust (handles left/right layout too)
+  createEffect(() => {
+    const visible = workingBubbleStore.state.visible;
+    if (!visible) {
+      invoke("update_working_bubble_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => {});
+      return;
+    }
+    const l = bubbleLayout(176, 80);
+    invoke("update_working_bubble_zone", { x: l.x, y: l.y, w: 176, h: 80 }).catch(() => {});
+  });
+
+  // Sync permission bubble bounding box to Rust (handles left/right layout too)
+  createEffect(() => {
+    const perm = permissionStore.pending.find((p) => !p.collapsed) || null;
+    if (!perm) {
+      invoke("update_permission_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => {});
+      return;
+    }
+    const l = bubbleLayout(288, 280);
+    invoke("update_permission_zone", { x: l.x, y: l.y, w: 288, h: 280 }).catch(() => {});
+  });
+
   // Click-through: Rust polls cursor and emits zone changes.
   // WM_STYLECHANGING on Rust side prevents frame flash from setIgnoreCursorEvents.
   onMount(async () => {
     const win = getCurrentWindow();
+    // Start in click-through mode immediately — don't wait for first cursor zone event
+    win.setIgnoreCursorEvents(true).catch(() => {});
     const unlisten = await listen<boolean>("overlay-cursor-zone", (e) => {
+      // Don't go click-through while context menu is open
+      if (contextMenu()) return;
       const shouldIgnore = e.payload;
       if (shouldIgnore) {
         // Dismiss any open context menu before going click-through
@@ -374,6 +584,20 @@ function MascotOverlay() {
     window.addEventListener("mouseup", onUp);
   };
 
+  const handleContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+    // Keep window interactive while menu is open
+    invoke("set_overlay_dragging", { dragging: true }).catch(() => {});
+    getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu(null);
+    invoke("set_overlay_dragging", { dragging: false }).catch(() => {});
+  };
+
   const handleClick = () => stateMachine()?.handleClick();
   const handleMouseEnter = () => { setIsHovering(true); stateMachine()?.handleMouseOver(true); };
   const handleMouseLeave = () => { setIsHovering(false); stateMachine()?.handleMouseOver(false); };
@@ -383,15 +607,12 @@ function MascotOverlay() {
   };
 
   // Popup layout: depends on mascot position within the screen
-  // - Bottom half: bubble above mascot, tail points down
-  // - Top half + left side: bubble to the right, tail points left
-  // - Top half + right side: bubble to the left, tail points right
   const GAP = 4;
-  const MASCOT = overlayPositionStore.MASCOT_SIZE;
 
   const bubbleLayout = (popupW: number, popupH: number): { x: number; y: number; tail: TailDir } => {
     const mx = overlayPositionStore.x;
     const my = overlayPositionStore.y;
+    const MASCOT = overlayPositionStore.mascotSize;
     const screenW = window.innerWidth;
     const screenH = window.innerHeight;
     const inTopHalf = my + MASCOT / 2 < screenH / 2;
@@ -406,14 +627,10 @@ function MascotOverlay() {
     // Top half → bubble to the side
     const inLeftHalf = mx + MASCOT / 2 < screenW / 2;
     if (inLeftHalf) {
-      // Left side → bubble to the right of mascot, tail(8px) + card(popupW)
-      // tail apex touches mascot right edge: container starts at mx+MASCOT
       const x = Math.min(mx + MASCOT, screenW - popupW - TAIL_SIZE - 8);
       const y = Math.max(8, Math.min(my + MASCOT / 2 - popupH / 2, screenH - popupH - 8));
       return { x, y, tail: "left" };
     } else {
-      // Right side → card(popupW) + tail(8px)
-      // tail apex touches mascot left edge: container starts at mx-popupW-TAIL_SIZE
       const x = Math.max(8, mx - popupW - TAIL_SIZE);
       const y = Math.max(8, Math.min(my + MASCOT / 2 - popupH / 2, screenH - popupH - 8));
       return { x, y, tail: "right" };
@@ -477,17 +694,21 @@ function MascotOverlay() {
         }}
       </Show>
 
-      {/* Mascot video — dynamically positioned */}
+      {/* Mascot video — dynamically positioned and sized */}
       <div
-        class="absolute w-[200px] h-[200px] cursor-grab rounded-2xl transition-colors duration-200"
+        class="absolute cursor-grab rounded-2xl transition-colors duration-200"
         classList={{ "cursor-grabbing": isDragging() }}
         style={{
           left: `${overlayPositionStore.x}px`,
           top: `${overlayPositionStore.y}px`,
+          width: `${overlayPositionStore.mascotSize}px`,
+          height: `${overlayPositionStore.mascotSize}px`,
+          opacity: String(overlayPositionStore.mascotOpacity),
           background: isHovering() ? (workingBubbleStore.settings.appearance.hoverColor || "rgba(255,176,72,0.45)") : "transparent",
         }}
         onMouseDown={handleMouseDown}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
@@ -513,8 +734,18 @@ function MascotOverlay() {
             opacity: videoReady() ? "1" : "0",
           }}
         />
-
       </div>
+
+      {/* Context menu */}
+      <Show when={contextMenu()}>
+        {(menu) => (
+          <ContextMenu
+            x={menu().x}
+            y={menu().y}
+            onClose={closeContextMenu}
+          />
+        )}
+      </Show>
     </div>
   );
 }

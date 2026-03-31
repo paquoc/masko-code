@@ -2,7 +2,9 @@ import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 const STORAGE_KEY = "mascot_position";
-const MASCOT_SIZE = 200;
+const SIZE_KEY = "mascot_size";
+const OPACITY_KEY = "mascot_opacity";
+const DEFAULT_MASCOT_SIZE = 200;
 const SYNC_THROTTLE_MS = 16; // ~60fps
 
 interface SavedPosition {
@@ -20,32 +22,58 @@ const [monitorY, setMonitorY] = createSignal(0);
 const [monitorW, setMonitorW] = createSignal(1920);
 const [monitorH, setMonitorH] = createSignal(1080);
 
+// Mascot size (px) and opacity — persisted to localStorage
+const savedSize = parseInt(localStorage.getItem(SIZE_KEY) || "", 10);
+const savedOpacity = parseFloat(localStorage.getItem(OPACITY_KEY) || "");
+const [mascotSize, setMascotSizeSignal] = createSignal(
+  isNaN(savedSize) ? DEFAULT_MASCOT_SIZE : Math.max(80, Math.min(400, savedSize)),
+);
+const [mascotOpacity, setMascotOpacitySignal] = createSignal(
+  isNaN(savedOpacity) ? 1 : Math.max(0.1, Math.min(1, savedOpacity)),
+);
+
 let lastSyncTime = 0;
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
 
-function syncToRust(px: number, py: number) {
+function syncToRust(px: number, py: number, size?: number) {
+  const s = size ?? mascotSize();
   const now = Date.now();
   if (now - lastSyncTime >= SYNC_THROTTLE_MS) {
     lastSyncTime = now;
-    invoke("update_mascot_position", { x: px, y: py, w: MASCOT_SIZE, h: MASCOT_SIZE }).catch(() => {});
+    invoke("update_mascot_position", { x: px, y: py, w: s, h: s }).catch(() => {});
   } else if (!syncTimer) {
     syncTimer = setTimeout(() => {
       syncTimer = undefined;
       lastSyncTime = Date.now();
-      invoke("update_mascot_position", { x: x(), y: y(), w: MASCOT_SIZE, h: MASCOT_SIZE }).catch(() => {});
+      invoke("update_mascot_position", { x: x(), y: y(), w: mascotSize(), h: mascotSize() }).catch(() => {});
     }, SYNC_THROTTLE_MS);
   }
 }
 
 function updatePosition(newX: number, newY: number) {
   // Clamp to window bounds
-  const maxX = window.innerWidth - MASCOT_SIZE;
-  const maxY = window.innerHeight - MASCOT_SIZE;
+  const size = mascotSize();
+  const maxX = window.innerWidth - size;
+  const maxY = window.innerHeight - size;
   const cx = Math.max(0, Math.min(newX, maxX));
   const cy = Math.max(0, Math.min(newY, maxY));
   setX(cx);
   setY(cy);
   syncToRust(cx, cy);
+}
+
+function setMascotSize(size: number) {
+  const clamped = Math.max(80, Math.min(400, Math.round(size)));
+  setMascotSizeSignal(clamped);
+  localStorage.setItem(SIZE_KEY, String(clamped));
+  // Re-clamp position with new size and sync
+  updatePosition(x(), y());
+}
+
+function setMascotOpacity(opacity: number) {
+  const clamped = Math.max(0.1, Math.min(1, opacity));
+  setMascotOpacitySignal(clamped);
+  localStorage.setItem(OPACITY_KEY, String(clamped));
 }
 
 function persistPosition() {
@@ -92,8 +120,9 @@ async function restorePosition() {
     updatePosition(savedScreenX - monitorX(), savedScreenY - monitorY());
   } else {
     // Default: bottom-center
-    const defaultX = (window.innerWidth - MASCOT_SIZE) / 2;
-    const defaultY = window.innerHeight - MASCOT_SIZE;
+    const size = mascotSize();
+    const defaultX = (window.innerWidth - size) / 2;
+    const defaultY = window.innerHeight - size;
     updatePosition(defaultX, defaultY);
   }
 }
@@ -107,9 +136,10 @@ function setMonitorBounds(mx: number, my: number, mw: number, mh: number) {
 
 /** Screen coordinates of mascot center (for monitor detection) */
 function screenCenter(): { x: number; y: number } {
+  const size = mascotSize();
   return {
-    x: monitorX() + x() + MASCOT_SIZE / 2,
-    y: monitorY() + y() + MASCOT_SIZE / 2,
+    x: monitorX() + x() + size / 2,
+    y: monitorY() + y() + size / 2,
   };
 }
 
@@ -120,10 +150,15 @@ export const overlayPositionStore = {
   get monitorY() { return monitorY(); },
   get monitorW() { return monitorW(); },
   get monitorH() { return monitorH(); },
-  MASCOT_SIZE,
+  get mascotSize() { return mascotSize(); },
+  get mascotOpacity() { return mascotOpacity(); },
+  /** @deprecated use mascotSize getter — kept for compatibility */
+  MASCOT_SIZE: DEFAULT_MASCOT_SIZE,
   updatePosition,
   persistPosition,
   restorePosition,
   setMonitorBounds,
   screenCenter,
+  setMascotSize,
+  setMascotOpacity,
 };

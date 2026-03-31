@@ -103,6 +103,9 @@ pub fn run() {
             commands::update_mascot_position,
             commands::get_monitor_at_point,
             commands::move_overlay_to_monitor,
+            commands::open_devtools,
+            commands::update_working_bubble_zone,
+            commands::update_permission_zone,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");
