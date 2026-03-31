@@ -205,7 +205,7 @@ function SliderRow(props: {
 function extractToolDetail(toolName?: string, toolInput?: Record<string, any>): string {
   if (!toolName || !toolInput) return "";
   const name = toolName.toLowerCase();
-  const MAX = 36;
+  const MAX = 25;
 
   if (name === "bash") {
     const cmd = toolInput.command;
@@ -550,7 +550,10 @@ function MascotOverlay() {
           sm.setAgentEventTrigger(eventType);
           break;
         case HookEventType.Stop:
-        case HookEventType.SessionEnd:
+        case HookEventType.SessionEnd: {
+          // Only affect state if the stopped session is the one currently shown
+          const activeSessionId = workingBubbleStore.state.sessionId;
+          if (activeSessionId && event.session_id && activeSessionId !== event.session_id) break;
           if (idleTimer) clearTimeout(idleTimer);
           agentState.isWorking = false;
           agentState.isIdle = true;
@@ -563,6 +566,7 @@ function MascotOverlay() {
             ["isAlert", conditionBool(false)],
           ]);
           break;
+        }
         case HookEventType.PreCompact:
           agentState.isCompacting = true;
           sm.setAgentStateInput("isCompacting", conditionBool(true));
