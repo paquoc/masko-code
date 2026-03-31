@@ -262,7 +262,7 @@ function MascotOverlay() {
           ["isAlert", conditionBool(false)],
         ]);
       }
-    }, 120_000);
+    }, 300_000); // 5 minutes
   };
   // Track current video src to avoid reloading the same URL
   let currentVideoSrc = "";
