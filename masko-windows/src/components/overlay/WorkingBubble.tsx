@@ -54,6 +54,16 @@ export default function WorkingBubble(props: { tailDir?: TailDir }) {
             {s().toolName}
           </span>
         </div>
+
+        {/* Tool detail — command preview or file path */}
+        <Show when={s().toolDetail}>
+          <div
+            class="truncate leading-tight mt-0.5 font-mono"
+            style={{ "font-size": `${a().fontSize - 2}px`, color: a().mutedColor }}
+          >
+            {s().toolDetail}
+          </div>
+        </Show>
       </div>
 
       {/* Tail — sibling to card so it has real layout width */}

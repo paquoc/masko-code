@@ -196,6 +196,34 @@ function SliderRow(props: {
   );
 }
 
+// ─── Tool detail extraction ──────────────────────────────────────────────────
+
+/** Extract a short detail string from tool_input for the working bubble.
+ *  - Bash → beginning of command: "git add ..."
+ *  - Read/Edit/Write/Glob/Grep → end of value: "...long_file_name.txt"
+ */
+function extractToolDetail(toolName?: string, toolInput?: Record<string, any>): string {
+  if (!toolName || !toolInput) return "";
+  const name = toolName.toLowerCase();
+  const MAX = 36;
+
+  if (name === "bash") {
+    const cmd = toolInput.command;
+    if (typeof cmd !== "string") return "";
+    const trimmed = cmd.trim();
+    return trimmed.length > MAX ? trimmed.slice(0, MAX - 3) + "..." : trimmed;
+  }
+
+  // File-oriented tools — show the tail of the value
+  if (["read", "edit", "multiedit", "write", "glob", "grep"].includes(name)) {
+    const raw = toolInput.file_path || toolInput.path || toolInput.pattern || "";
+    if (typeof raw !== "string" || !raw) return "";
+    return raw.length > MAX ? "..." + raw.slice(-(MAX - 3)) : raw;
+  }
+
+  return "";
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 function MascotOverlay() {
@@ -420,8 +448,10 @@ function MascotOverlay() {
       invoke("update_permission_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
       return;
     }
-    const l = bubbleLayout(288, 280);
-    invoke("update_permission_zone", { x: l.x, y: l.y, w: 288, h: 280 }).catch(() => { });
+    const w = permW();
+    const h = permH();
+    const l = bubbleLayout(w, h);
+    invoke("update_permission_zone", { x: l.x, y: l.y, w, h }).catch(() => { });
   });
 
   // Click-through: Rust polls cursor and emits zone changes.
@@ -482,12 +512,14 @@ function MascotOverlay() {
             ["isIdle", conditionBool(false)],
           ]);
           sm.setAgentEventTrigger(eventType);
-          // Show working bubble
+          // Show working bubble with tool detail
           const projectName = event.cwd ? event.cwd.replace(/\\/g, "/").split("/").pop() || "" : "";
+          const toolDetail = extractToolDetail(event.tool_name, event.tool_input);
           workingBubbleStore.show(
             event.tool_name || "Working",
             projectName,
             event.session_id || "",
+            toolDetail,
           );
           break;
         }
@@ -743,16 +775,17 @@ function MascotOverlay() {
     const MASCOT = overlayPositionStore.mascotSize;
     const screenW = window.innerWidth;
     const screenH = window.innerHeight;
-    const inTopHalf = my + MASCOT / 2 < screenH / 2;
 
-    if (!inTopHalf) {
-      // Bottom half → bubble above, tail down
+    // Try bubble above first — only fall back to side if it would hit the ceiling
+    const fitsAbove = my - GAP - popupH >= 0;
+
+    if (fitsAbove) {
       const x = Math.max(8, Math.min(mx + MASCOT / 2 - popupW / 2, screenW - popupW - 8));
-      const y = Math.max(0, my - popupH - GAP);
+      const y = my - popupH - GAP;
       return { x, y, tail: "down" };
     }
 
-    // Top half → bubble to the side
+    // Not enough room above → place to the side
     const inLeftHalf = mx + MASCOT / 2 < screenW / 2;
     if (inLeftHalf) {
       const x = Math.min(mx + MASCOT, screenW - popupW - TAIL_SIZE - 8);
@@ -764,6 +797,24 @@ function MascotOverlay() {
       return { x, y, tail: "right" };
     }
   };
+
+  // Permission expand/collapse state
+  const [permExpanded, setPermExpanded] = createSignal(false);
+  const togglePermExpanded = () => setPermExpanded((prev) => !prev);
+
+  // Reset expanded state when permission changes
+  createEffect(() => {
+    const _perm = permissionStore.pending.find((p) => !p.collapsed);
+    setPermExpanded(false);
+  });
+
+  // Permission bubble dimensions — doubles width when expanded
+  const PERM_W_NORMAL = 288;
+  const PERM_W_EXPANDED = PERM_W_NORMAL * 1.5;  // 1.5x
+  const PERM_H_NORMAL = 280;
+  const PERM_H_EXPANDED = PERM_H_NORMAL * 2;  // 3x
+  const permW = () => permExpanded() ? PERM_W_EXPANDED : PERM_W_NORMAL;
+  const permH = () => permExpanded() ? PERM_H_EXPANDED : PERM_H_NORMAL;
 
   // Queue: show only the first uncollapsed permission
   const currentPermission = () =>
@@ -799,7 +850,7 @@ function MascotOverlay() {
       {/* Permission bubble — floats near mascot */}
       <Show when={currentPermission()}>
         {(perm) => {
-          const l = () => bubbleLayout(288, 280);
+          const l = () => bubbleLayout(permW(), permH());
           return (
             <div class="absolute flex"
               classList={{ "flex-col justify-end": l().tail === "down" }}
@@ -810,7 +861,12 @@ function MascotOverlay() {
                 ...(l().tail === "down" ? { height: `${overlayPositionStore.y - l().y}px` } : {}),
               }}
             >
-              <PermissionPrompt permission={perm()} tailDir={l().tail} />
+              <PermissionPrompt
+                permission={perm()}
+                tailDir={l().tail}
+                expanded={permExpanded()}
+                onToggleExpand={togglePermExpanded}
+              />
 
               <Show when={queueCount() > 1}>
                 <div class="absolute top-1 right-3 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">

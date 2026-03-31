@@ -47,7 +47,7 @@ function parseQuestions(event: PendingPermission["event"]): Array<{
   }));
 }
 
-export default function PermissionPrompt(props: { permission: PendingPermission; tailDir?: TailDir }) {
+export default function PermissionPrompt(props: { permission: PendingPermission; tailDir?: TailDir; expanded?: boolean; onToggleExpand?: () => void }) {
   const [selectedSuggestion, setSelectedSuggestion] = createSignal<PermissionSuggestion | null>(null);
   const [answer, setAnswer] = createSignal("");
   const [selectedOptions, setSelectedOptions] = createSignal<Set<string>>(new Set());
@@ -128,8 +128,9 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     >
       {/* Speech bubble card */}
       <div
-        class="w-72 rounded-[14px] shrink-0"
+        class="rounded-[14px] shrink-0 transition-[width] duration-200 ease-out"
         style={{
+          width: props.expanded ? "27rem" : "18rem",
           background: a().bgColor,
           "box-shadow": "0 2px 12px rgba(35,17,60,0.15), 0 0 0 1px rgba(35,17,60,0.06)",
         }}
@@ -146,6 +147,20 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
               <span class="font-semibold" style={{ "font-size": `${fs()}px`, color: a().accentColor }}>{toolName()}</span>
             </Show>
             <span class="ml-auto" style={{ "font-size": `${fsMuted()}px`, color: a().mutedColor }}>{project()}</span>
+            {/* Expand / Collapse toggle */}
+            <button
+              class="ml-1 px-1 py-0.5 rounded transition-colors"
+              style={{
+                "font-size": `${fsMuted()}px`,
+                color: a().mutedColor,
+                background: "transparent",
+                "line-height": "1",
+              }}
+              onClick={(e) => { e.stopPropagation(); props.onToggleExpand?.(); }}
+              title={props.expanded ? "Collapse" : "Expand"}
+            >
+              {props.expanded ? "⊟" : "⊞"}
+            </button>
           </div>
         </div>
 
@@ -207,7 +222,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             {/* Tool use mode — show command/path */}
             <Show when={toolInput()}>
               <div
-                class="rounded-lg px-2 py-1 mb-1.5 font-mono leading-snug max-h-16 overflow-y-auto"
+                class="rounded-lg px-2 py-1 mb-1.5 font-mono leading-snug overflow-y-auto"
+                classList={{ "max-h-16": !props.expanded, "max-h-[32rem]": !!props.expanded }}
                 style={{
                   "font-size": `${fsMono()}px`,
                   "overflow-wrap": "break-word",
@@ -222,7 +238,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             </Show>
 
             <Show when={event().message}>
-              <p class="leading-snug mb-1.5 max-h-12 overflow-y-auto" style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}>
+              <p class="leading-snug mb-1.5 overflow-y-auto" classList={{ "max-h-12": !props.expanded, "max-h-[28rem]": !!props.expanded }} style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}>
                 {event().message}
               </p>
             </Show>

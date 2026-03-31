@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 8";
+const SCRIPT_VERSION: &str = "# version: 9";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -54,10 +54,13 @@ fn generate_script(port: u16) -> String {
         r#"#!/bin/bash
 {SCRIPT_VERSION}
 # hook-sender.sh — Forwards Claude Code hook events to masko-desktop (Windows)
-# Exit instantly if the desktop app server isn't reachable (avoids curl timeout latency)
-curl -s --connect-timeout 0.3 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0
+# Log ALL hook invocations before any other logic
 INPUT=$(cat 2>/dev/null || echo '{{}}')
 EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] event=$EVENT_NAME input=$INPUT" >> /tmp/masko-hook.txt
+
+# Exit instantly if the desktop app server isn't reachable (avoids curl timeout latency)
+curl -s --connect-timeout 0.3 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0
 
 if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     # Blocking: wait for user decision. Run curl in background so we can

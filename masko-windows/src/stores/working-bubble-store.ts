@@ -5,6 +5,7 @@ export type BubbleStatus = "working" | "done" | "session-start";
 export interface WorkingBubbleState {
   visible: boolean;
   toolName: string;
+  toolDetail: string;
   projectName: string;
   sessionId: string;
   status: BubbleStatus;
@@ -57,6 +58,7 @@ const defaultSettings: WorkingBubbleSettings = {
 const [state, setState] = createStore<WorkingBubbleState>({
   visible: false,
   toolName: "",
+  toolDetail: "",
   projectName: "",
   sessionId: "",
   status: "working",
@@ -70,13 +72,17 @@ function updateSettings(patch: Partial<WorkingBubbleSettings>) {
 }
 
 let autoHideTimer: ReturnType<typeof setTimeout> | undefined;
+let minShowUntil = 0; // timestamp — bubble stays visible until at least this time
+const MIN_SHOW_MS = 2000;
 
-function show(toolName: string, projectName: string, sessionId: string) {
+function show(toolName: string, projectName: string, sessionId: string, toolDetail?: string) {
   if (!settings.showToolBubble) return;
   if (autoHideTimer) clearTimeout(autoHideTimer);
+  minShowUntil = Date.now() + MIN_SHOW_MS;
   setState({
     visible: true,
     toolName,
+    toolDetail: toolDetail || "",
     projectName,
     sessionId,
     status: "working",
@@ -103,6 +109,13 @@ function showSessionStart(projectName: string, sessionId: string) {
 }
 
 function hide() {
+  const remaining = minShowUntil - Date.now();
+  if (remaining > 0) {
+    // Defer hide until min display time has elapsed
+    if (autoHideTimer) clearTimeout(autoHideTimer);
+    autoHideTimer = setTimeout(hide, remaining);
+    return;
+  }
   if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = undefined; }
   setState("visible", false);
 }
