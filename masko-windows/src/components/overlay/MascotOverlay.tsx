@@ -32,21 +32,18 @@ function ContextMenu(props: {
   function openDashboard() {
     props.onClose();
     WebviewWindow.getByLabel("main").then((win) => {
-      win?.show().catch(() => {});
-      win?.setFocus().catch(() => {});
-    }).catch(() => {});
+      win?.show().catch(() => { });
+      win?.setFocus().catch(() => { });
+    }).catch(() => { });
   }
 
   function openDevTools() {
     props.onClose();
-    invoke("open_devtools").catch(() => {});
+    invoke("open_devtools").catch(() => { });
   }
 
-  function closeApp() {
+  function closeMenu() {
     props.onClose();
-    // Close all windows — Tauri exits when all windows are closed
-    WebviewWindow.getByLabel("main").then((win) => win?.close()).catch(() => {});
-    getCurrentWindow().close().catch(() => {});
   }
 
   // Menu position: flip left/up if near screen edge
@@ -126,7 +123,7 @@ function ContextMenu(props: {
         <div class="h-px bg-white/10 mx-2" />
 
         {/* Open dashboard */}
-        <MenuRow label="Open dashboard" icon="⊞" onClick={openDashboard} />
+        <MenuRow label="Open Dashboard" icon="⊞" onClick={openDashboard} />
 
         {/* Inspect */}
         <MenuRow label="Inspect" icon="🔍" onClick={openDevTools} />
@@ -134,7 +131,7 @@ function ContextMenu(props: {
         <div class="h-px bg-white/10 mx-2" />
 
         {/* Close — red */}
-        <MenuRow label="Close" icon="✕" danger onClick={closeApp} />
+        <MenuRow label="Close" icon="✕" onClick={closeMenu} />
       </div>
     </>
   );
@@ -215,8 +212,11 @@ function MascotOverlay() {
     isCompacting: false,
   };
 
-  const [videoRef, setVideoRef] = createSignal<HTMLVideoElement | undefined>();
-  const [videoReady, setVideoReady] = createSignal(false);
+  // A/B double-buffer: two video elements, swap opacity when new video is ready
+  const [videoRefA, setVideoRefA] = createSignal<HTMLVideoElement | undefined>();
+  const [videoRefB, setVideoRefB] = createSignal<HTMLVideoElement | undefined>();
+  const [activeSlot, setActiveSlot] = createSignal<"A" | "B">("A");
+  let isFirstLoad = true;
   // Idle timeout: if no hook event in 2min, assume agent stopped (e.g. user interrupted)
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   const resetIdleTimer = () => {
@@ -290,29 +290,93 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
-  // Sync state machine → video element reactively (no polling)
+  // Sync state machine → video element reactively using A/B double-buffer.
+  // Two <video> elements exist. On URL change, load into the inactive slot;
+  // swap opacity only after a frame is actually painted (requestVideoFrameCallback)
+  // so the old video stays visible until the new one is truly on-screen — no flicker.
+  //
+  // Two-phase swap: show the new video FIRST (via direct DOM manipulation),
+  // then hide the old video ONE FRAME LATER. This means for exactly one frame
+  // both videos overlap (slightly "thicker" mascot with transparent bg) which is
+  // nearly invisible, instead of a one-frame gap (flash to nothing) which is very visible.
+  const waitForFrameThenSwap = (
+    newEl: HTMLVideoElement,
+    oldEl: HTMLVideoElement,
+    newSlot: "A" | "B",
+  ) => {
+    const doSwap = () => {
+      // Phase 1: Show new video immediately via direct DOM
+      newEl.style.opacity = "1";
+      // Phase 2: Wait 3 frames for new video to fully stabilize, then hide old
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            oldEl.style.opacity = "0";
+            oldEl.pause();
+            setActiveSlot(newSlot);
+          });
+        });
+      });
+    };
+
+    // requestVideoFrameCallback is supported in Chromium (Tauri/WebView2) —
+    // it fires after a video frame is actually presented to the compositor.
+    if ("requestVideoFrameCallback" in newEl) {
+      (newEl as any).requestVideoFrameCallback(() => doSwap());
+    } else {
+      requestAnimationFrame(() => requestAnimationFrame(() => doSwap()));
+    }
+  };
+
   createEffect(() => {
     const sm = stateMachine();
-    const el = videoRef();
-    if (!sm || !el) return;
+    const elA = videoRefA();
+    const elB = videoRefB();
+    if (!sm || !elA || !elB) return;
     const url = sm.currentVideoUrl;
     const loop = sm.isLoopVideo;
     const rate = sm.playbackRate;
     if (!url) return;
+
+    // Same URL — just update loop/rate on active element
     if (url === currentVideoSrc) {
-      el.loop = loop;
-      el.playbackRate = rate;
+      const active = activeSlot() === "A" ? elA : elB;
+      active.loop = loop;
+      active.playbackRate = rate;
       return;
     }
     currentVideoSrc = url;
-    setVideoReady(false);
-    el.loop = loop;
-    el.playbackRate = rate;
-    el.src = url;
-    el.load();
-    el.addEventListener("canplay", () => {
-      setVideoReady(true);
-      el.play().catch(() => {});
+
+    if (isFirstLoad) {
+      // First load — go directly into slot A, no swap needed
+      isFirstLoad = false;
+      elA.loop = loop;
+      elA.playbackRate = rate;
+      elA.src = url;
+      elA.load();
+      elA.addEventListener("canplay", () => {
+        elA.play().catch(() => { });
+        elA.style.opacity = "1";
+        setActiveSlot("A");
+      }, { once: true });
+      return;
+    }
+
+    // Subsequent loads — load into inactive slot, swap only after frame is painted
+    const currentActive = activeSlot();
+    const inactiveEl = currentActive === "A" ? elB : elA;
+    const activeEl = currentActive === "A" ? elA : elB;
+    const inactiveSlot = currentActive === "A" ? "B" as const : "A" as const;
+
+    inactiveEl.loop = loop;
+    inactiveEl.playbackRate = rate;
+    inactiveEl.src = url;
+    inactiveEl.load();
+    inactiveEl.addEventListener("canplay", () => {
+      // Start playback so the compositor gets a frame
+      inactiveEl.play().catch(() => { });
+      // Wait for the frame to actually render before swapping
+      waitForFrameThenSwap(inactiveEl, activeEl, inactiveSlot);
     }, { once: true });
   });
 
@@ -329,35 +393,35 @@ function MascotOverlay() {
   // Sync permission visibility to Rust hit-test zone
   createEffect(() => {
     const visible = permissionStore.pending.some((p) => !p.collapsed);
-    invoke("set_overlay_permission_visible", { visible }).catch(() => {});
+    invoke("set_overlay_permission_visible", { visible }).catch(() => { });
   });
 
   // Sync working bubble visibility to Rust hit-test zone
   createEffect(() => {
     const visible = workingBubbleStore.state.visible;
-    invoke("set_overlay_working_bubble_visible", { visible }).catch(() => {});
+    invoke("set_overlay_working_bubble_visible", { visible }).catch(() => { });
   });
 
   // Sync working bubble bounding box to Rust (handles left/right layout too)
   createEffect(() => {
     const visible = workingBubbleStore.state.visible;
     if (!visible) {
-      invoke("update_working_bubble_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => {});
+      invoke("update_working_bubble_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
       return;
     }
     const l = bubbleLayout(176, 80);
-    invoke("update_working_bubble_zone", { x: l.x, y: l.y, w: 176, h: 80 }).catch(() => {});
+    invoke("update_working_bubble_zone", { x: l.x, y: l.y, w: 176, h: 80 }).catch(() => { });
   });
 
   // Sync permission bubble bounding box to Rust (handles left/right layout too)
   createEffect(() => {
     const perm = permissionStore.pending.find((p) => !p.collapsed) || null;
     if (!perm) {
-      invoke("update_permission_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => {});
+      invoke("update_permission_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
       return;
     }
     const l = bubbleLayout(288, 280);
-    invoke("update_permission_zone", { x: l.x, y: l.y, w: 288, h: 280 }).catch(() => {});
+    invoke("update_permission_zone", { x: l.x, y: l.y, w: 288, h: 280 }).catch(() => { });
   });
 
   // Click-through: Rust polls cursor and emits zone changes.
@@ -365,7 +429,7 @@ function MascotOverlay() {
   onMount(async () => {
     const win = getCurrentWindow();
     // Start in click-through mode immediately — don't wait for first cursor zone event
-    win.setIgnoreCursorEvents(true).catch(() => {});
+    win.setIgnoreCursorEvents(true).catch(() => { });
     const unlisten = await listen<boolean>("overlay-cursor-zone", (e) => {
       // Don't go click-through while context menu is open
       if (contextMenu()) return;
@@ -375,7 +439,7 @@ function MascotOverlay() {
         window.getSelection()?.removeAllRanges();
         (document.activeElement as HTMLElement)?.blur();
       }
-      win.setIgnoreCursorEvents(shouldIgnore).catch(() => {});
+      win.setIgnoreCursorEvents(shouldIgnore).catch(() => { });
     });
     onCleanup(unlisten);
   });
@@ -482,6 +546,67 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
+  // Listen for debug state changes from dashboard
+  onMount(async () => {
+    const unlisten = await listen<string>("debug-set-state", (e) => {
+      const sm = stateMachine();
+      if (!sm) return;
+      const state = e.payload;
+      switch (state) {
+        case "idle":
+          agentState.isWorking = false;
+          agentState.isIdle = true;
+          agentState.isAlert = false;
+          agentState.isCompacting = false;
+          workingBubbleStore.hide();
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(false)],
+            ["isIdle", conditionBool(true)],
+            ["isAlert", conditionBool(false)],
+            ["isCompacting", conditionBool(false)],
+          ]);
+          break;
+        case "working":
+          agentState.isWorking = true;
+          agentState.isIdle = false;
+          agentState.isAlert = false;
+          agentState.isCompacting = false;
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(true)],
+            ["isIdle", conditionBool(false)],
+            ["isAlert", conditionBool(false)],
+            ["isCompacting", conditionBool(false)],
+          ]);
+          break;
+        case "attention":
+          agentState.isWorking = true;
+          agentState.isIdle = false;
+          agentState.isAlert = true;
+          agentState.isCompacting = false;
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(true)],
+            ["isIdle", conditionBool(false)],
+            ["isAlert", conditionBool(true)],
+            ["isCompacting", conditionBool(false)],
+          ]);
+          break;
+        case "thinking":
+          agentState.isWorking = true;
+          agentState.isIdle = false;
+          agentState.isAlert = false;
+          agentState.isCompacting = true;
+          sm.setAgentStateInputs([
+            ["isWorking", conditionBool(true)],
+            ["isIdle", conditionBool(false)],
+            ["isAlert", conditionBool(false)],
+            ["isCompacting", conditionBool(true)],
+          ]);
+          break;
+      }
+    });
+    onCleanup(unlisten);
+  });
+
   // Listen for permission requests
   onMount(async () => {
     const unlisten = await listen<any>("permission-request", (e) => {
@@ -539,8 +664,8 @@ function MascotOverlay() {
     let moved = false;
 
     // Force interactive during drag so fast mouse movement doesn't trigger click-through
-    invoke("set_overlay_dragging", { dragging: true }).catch(() => {});
-    getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
+    invoke("set_overlay_dragging", { dragging: true }).catch(() => { });
+    getCurrentWindow().setIgnoreCursorEvents(false).catch(() => { });
 
     const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - startX;
@@ -555,7 +680,7 @@ function MascotOverlay() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       setIsDragging(false);
-      invoke("set_overlay_dragging", { dragging: false }).catch(() => {});
+      invoke("set_overlay_dragging", { dragging: false }).catch(() => { });
 
       if (moved) {
         overlayPositionStore.persistPosition();
@@ -589,19 +714,22 @@ function MascotOverlay() {
     e.stopPropagation();
     setContextMenu({ x: e.clientX, y: e.clientY });
     // Keep window interactive while menu is open
-    invoke("set_overlay_dragging", { dragging: true }).catch(() => {});
-    getCurrentWindow().setIgnoreCursorEvents(false).catch(() => {});
+    invoke("set_overlay_dragging", { dragging: true }).catch(() => { });
+    getCurrentWindow().setIgnoreCursorEvents(false).catch(() => { });
   };
 
   const closeContextMenu = () => {
     setContextMenu(null);
-    invoke("set_overlay_dragging", { dragging: false }).catch(() => {});
+    invoke("set_overlay_dragging", { dragging: false }).catch(() => { });
   };
 
   const handleClick = () => stateMachine()?.handleClick();
   const handleMouseEnter = () => { setIsHovering(true); stateMachine()?.handleMouseOver(true); };
   const handleMouseLeave = () => { setIsHovering(false); stateMachine()?.handleMouseOver(false); };
-  const handleVideoEnded = () => {
+  const handleVideoEnded = (el: HTMLVideoElement) => {
+    // Only handle ended for the currently active video
+    const active = activeSlot() === "A" ? videoRefA() : videoRefB();
+    if (el !== active) return;
     const sm = stateMachine();
     if (sm && !sm.isLoopVideo) sm.handleVideoEnded();
   };
@@ -712,26 +840,42 @@ function MascotOverlay() {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Fallback shown only before first video loads */}
-        <Show when={!videoReady()}>
-          <div class="absolute inset-0 flex items-center justify-center">
-            <div class="w-24 h-24 rounded-full bg-orange-primary/20 flex items-center justify-center animate-pulse">
-              <span class="text-3xl">🦊</span>
-            </div>
-          </div>
-        </Show>
-        {/* Video always mounted — opacity transition prevents blank-frame flash on src change */}
+        {/* A/B double-buffer: two videos stacked, two-phase swap for flicker-free transitions.
+             Opacity starts at 0 and is controlled purely by JS (waitForFrameThenSwap). */}
         <video
-          ref={setVideoRef}
+          ref={setVideoRefA}
           muted
           playsinline
-          onEnded={handleVideoEnded}
+          onEnded={(e) => handleVideoEnded(e.currentTarget)}
           style={{
+            position: "absolute",
+            inset: "0",
             width: "100%",
             height: "100%",
             "object-fit": "contain",
             background: "transparent",
-            opacity: videoReady() ? "1" : "0",
+            opacity: "0",
+            transition: "none",
+            "will-change": "opacity",
+            "pointer-events": activeSlot() === "A" ? "auto" : "none",
+          }}
+        />
+        <video
+          ref={setVideoRefB}
+          muted
+          playsinline
+          onEnded={(e) => handleVideoEnded(e.currentTarget)}
+          style={{
+            position: "absolute",
+            inset: "0",
+            width: "100%",
+            height: "100%",
+            "object-fit": "contain",
+            background: "transparent",
+            opacity: "0",
+            transition: "none",
+            "will-change": "opacity",
+            "pointer-events": activeSlot() === "B" ? "auto" : "none",
           }}
         />
       </div>

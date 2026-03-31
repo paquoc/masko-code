@@ -1,4 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
+import { emit } from "@tauri-apps/api/event";
 import { appStore } from "../../stores/app-store";
 import { parseMascotConfig } from "../../models/mascot-config";
 import type { SavedMascot } from "../../models/mascot-config";
@@ -13,10 +14,23 @@ function getThumbnail(mascot: SavedMascot): string | undefined {
   return node.transparentThumbnailUrl;
 }
 
+const DEBUG_STATES = [
+  { id: "idle", label: "Idle", icon: "💤" },
+  { id: "working", label: "Working", icon: "⚡" },
+  { id: "attention", label: "Need Attention", icon: "🔔" },
+  { id: "thinking", label: "Thinking", icon: "💭" },
+] as const;
+
 export default function MascotGallery() {
   const mascots = () => appStore.mascots.mascots;
   const activeId = () => appStore.mascots.activeMascotId;
   const [showAddModal, setShowAddModal] = createSignal(false);
+  const [activeDebugState, setActiveDebugState] = createSignal<string | null>(null);
+
+  function setDebugState(stateId: string) {
+    setActiveDebugState(stateId);
+    emit("debug-set-state", stateId).catch(() => { });
+  }
 
   return (
     <div class="space-y-4">
@@ -53,6 +67,30 @@ export default function MascotGallery() {
           </button>
         </div>
       </Show>
+
+      {/* Debug: test animation states */}
+      <div class="bg-surface rounded-[--radius-card] border border-border p-4 space-y-3">
+        <p class="text-xs text-text-muted font-body font-semibold uppercase tracking-wider">
+          Debug States
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <For each={DEBUG_STATES}>
+            {(state) => (
+              <button
+                class="px-3 py-1.5 text-sm font-body font-medium rounded-lg border transition-all"
+                classList={{
+                  "bg-orange-primary text-white border-orange-primary": activeDebugState() === state.id,
+                  "bg-surface text-text-primary border-border hover:border-orange-primary hover:text-orange-primary": activeDebugState() !== state.id,
+                }}
+                onClick={() => setDebugState(state.id)}
+              >
+                <span class="mr-1.5">{state.icon}</span>
+                {state.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
 
       {/* Community link */}
       <div class="bg-surface rounded-[--radius-card] border border-border border-dashed p-4 text-center">
