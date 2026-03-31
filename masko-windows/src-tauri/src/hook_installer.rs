@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 9";
+const SCRIPT_VERSION: &str = "# version: 12";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -58,6 +58,15 @@ fn generate_script(port: u16) -> String {
 INPUT=$(cat 2>/dev/null || echo '{{}}')
 EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] event=$EVENT_NAME input=$INPUT" >> /tmp/masko-hook.txt
+
+# Stop/SessionEnd/StopFailure: parent kills entire process tree via Windows Job Object
+# before curl can finish. Write to a drop file instead — Rust server watches the directory.
+if [ "$EVENT_NAME" = "Stop" ] || [ "$EVENT_NAME" = "SessionEnd" ] || [ "$EVENT_NAME" = "StopFailure" ]; then
+    DROPDIR="$HOME/.masko-desktop/hook-drops"
+    mkdir -p "$DROPDIR" 2>/dev/null
+    echo "$INPUT" > "$DROPDIR/$(date +%s%N)-$EVENT_NAME.json"
+    exit 0
+fi
 
 # Exit instantly if the desktop app server isn't reachable (avoids curl timeout latency)
 curl -s --connect-timeout 0.3 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0

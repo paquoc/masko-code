@@ -306,6 +306,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
               color: a().buttonTextColor,
             }}
             onClick={handleApprove}
+            title="Ctrl+⏎"
           >
             {isQ() ? "Submit" : selectedSuggestion() ? "Allow Rule" : "Approve"}
           </button>
@@ -320,6 +321,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                 color: a().mutedColor,
               }}
               onClick={handleDeny}
+              title="Ctrl+←"
             >
               Deny
             </button>

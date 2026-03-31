@@ -12,6 +12,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, Mutex};
 
 use crate::models::{AgentEvent, InputEvent};
+use std::path::PathBuf;
 
 const DEFAULT_PORT: u16 = 45832;
 pub const MAX_PORT_ATTEMPTS: u16 = 10;
@@ -50,6 +51,11 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                 app_handle
                     .emit("server-status", serde_json::json!({"running": true, "port": port}))
                     .ok();
+
+                // Start polling for hook drop files (Stop/SessionEnd events
+                // that can't use HTTP because Windows kills the process tree)
+                let poll_handle = app_handle.clone();
+                tokio::spawn(poll_hook_drops(poll_handle));
 
                 axum::serve(listener, app).await?;
                 return Ok(());
@@ -167,5 +173,55 @@ pub async fn resolve(
         tx.send(decision).map_err(|_| "channel closed".to_string())
     } else {
         Err(format!("no pending permission with id {request_id}"))
+    }
+}
+
+/// Poll ~/.masko-desktop/hook-drops/ for JSON files written by the hook script
+/// when the parent process kills the tree before curl can finish (Stop, SessionEnd, etc.)
+async fn poll_hook_drops(app_handle: AppHandle) {
+    let drop_dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".masko-desktop")
+        .join("hook-drops");
+
+    // Ensure directory exists
+    let _ = std::fs::create_dir_all(&drop_dir);
+
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        let entries = match std::fs::read_dir(&drop_dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+
+            // Read and parse
+            match std::fs::read_to_string(&path) {
+                Ok(contents) => {
+                    // Remove file immediately to avoid re-processing
+                    let _ = std::fs::remove_file(&path);
+
+                    match serde_json::from_str::<AgentEvent>(&contents) {
+                        Ok(event) => {
+                            mlog!("Hook (drop): {}", event.hook_event_name);
+                            app_handle.emit("hook-event", &event).ok();
+                        }
+                        Err(e) => {
+                            mlog_err!("Failed to parse drop file {}: {e}", path.display());
+                        }
+                    }
+                }
+                Err(e) => {
+                    mlog_err!("Failed to read drop file {}: {e}", path.display());
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
     }
 }

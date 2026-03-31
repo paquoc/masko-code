@@ -90,13 +90,14 @@ function show(toolName: string, projectName: string, sessionId: string, toolDeta
   autoHideTimer = setTimeout(hide, 20000);
 }
 
-function showDone() {
+function showDone(projectName?: string) {
   if (!settings.showSessionEnd) return;
   if (autoHideTimer) clearTimeout(autoHideTimer);
   setState({
     visible: true,
     status: "done",
     toolName: "DONE",
+    ...(projectName ? { projectName } : {}),
   });
   autoHideTimer = setTimeout(hide, 10000);
 }

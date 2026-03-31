@@ -3,10 +3,69 @@ import { createSignal } from "solid-js";
 import type { AgentEvent } from "../models/agent-event";
 import type { PendingPermission, PermissionDecision } from "../models/permission";
 import { invoke } from "@tauri-apps/api/core";
+import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { log, error } from "../services/log";
 
 const [pending, setPending] = createStore<PendingPermission[]>([]);
-const [onPendingCountChange, setOnPendingCountChange] = createSignal(0);
+const [onPendingCountChange, _setOnPendingCountChange] = createSignal(0);
+/** Bump the count signal AND sync hotkeys */
+function setOnPendingCountChange(fn: (v: number) => number): void {
+  _setOnPendingCountChange(fn);
+  syncHotkeys();
+}
+
+// --- Global hotkey management ---
+let hotkeysRegistered = false;
+
+async function registerHotkeys(): Promise<void> {
+  if (hotkeysRegistered) return;
+  try {
+    await register("CommandOrControl+Enter", (e) => {
+      if (e.state === "Pressed") {
+        const perm = pending.find((p) => !p.collapsed);
+        if (perm) {
+          log("Hotkey Ctrl+Enter → approve permission", perm.id);
+          resolve(perm.id, "allow");
+        }
+      }
+    });
+    await register("CommandOrControl+Backspace", (e) => {
+      if (e.state === "Pressed") {
+        const perm = pending.find((p) => !p.collapsed);
+        if (perm) {
+          log("Hotkey Ctrl+Backspace → deny permission", perm.id);
+          resolve(perm.id, "deny");
+        }
+      }
+    });
+    hotkeysRegistered = true;
+    log("Permission hotkeys registered (Ctrl+Enter, Ctrl+Backspace)");
+  } catch (e) {
+    error("Failed to register permission hotkeys:", e);
+  }
+}
+
+async function unregisterHotkeys(): Promise<void> {
+  if (!hotkeysRegistered) return;
+  try {
+    await unregister("CommandOrControl+Enter");
+    await unregister("CommandOrControl+Backspace");
+    hotkeysRegistered = false;
+    log("Permission hotkeys unregistered");
+  } catch (e) {
+    error("Failed to unregister permission hotkeys:", e);
+  }
+}
+
+/** Sync hotkey registration with pending permission count */
+function syncHotkeys(): void {
+  const hasUncollapsed = pending.some((p) => !p.collapsed);
+  if (hasUncollapsed && !hotkeysRegistered) {
+    registerHotkeys();
+  } else if (!hasUncollapsed && hotkeysRegistered) {
+    unregisterHotkeys();
+  }
+}
 
 // Cache PreToolUse toolUseId → correlate with PermissionRequest
 const preToolUseCache = new Map<string, string>(); // key: `${sessionId}:${toolName}` → toolUseId
@@ -107,6 +166,7 @@ export function collapse(id: string): void {
   const idx = pending.findIndex((p) => p.id === id);
   if (idx !== -1) {
     setPending(idx, "collapsed", true);
+    syncHotkeys();
   }
 }
 
@@ -114,6 +174,7 @@ export function expand(id: string): void {
   const idx = pending.findIndex((p) => p.id === id);
   if (idx !== -1) {
     setPending(idx, "collapsed", false);
+    syncHotkeys();
   }
 }
 
