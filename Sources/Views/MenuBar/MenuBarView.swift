@@ -142,6 +142,27 @@ struct MenuBarView: View {
             .padding(.horizontal)
             .padding(.vertical, 6)
 
+            Button(action: {
+                AppDelegate.showDashboard()
+                // Navigate to settings + open doctor after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(name: .openConnectionDoctor, object: nil)
+                }
+            }) {
+                HStack {
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 12))
+                        .foregroundColor(Constants.orangePrimary)
+                    Text("Diagnose Connection...")
+                        .font(Constants.body(size: 13))
+                        .foregroundColor(Constants.textPrimary)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+
             if appUpdater.isAvailable {
                 Button(action: { appUpdater.checkForUpdates() }) {
                     HStack {

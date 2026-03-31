@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var extensionBusy = false
     @State private var installingIDE: String?  // command of IDE currently being installed
     @State private var autoHideDelayText: String = "15"
+    @State private var showConnectionDoctor = false
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
@@ -334,6 +335,30 @@ struct SettingsView: View {
             }
 
             Section {
+                Button {
+                    showConnectionDoctor = true
+                } label: {
+                    HStack {
+                        Image(systemName: "stethoscope")
+                            .foregroundColor(Constants.orangePrimary)
+                        Text("Run Connection Doctor")
+                            .foregroundColor(Constants.orangePrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Constants.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Text("Diagnose and repair issues with the Claude Code connection.")
+                    .font(.system(size: 11))
+                    .foregroundColor(Constants.textMuted)
+            } header: {
+                Text("Troubleshooting").font(Constants.heading(size: 13, weight: .semibold))
+            }
+
+            Section {
                 HStack {
                     Text("Version")
                         .foregroundColor(Constants.textPrimary)
@@ -351,12 +376,12 @@ struct SettingsView: View {
                             .font(.caption)
                     }
                 }
-                Link(destination: URL(string: Constants.githubRepoURL)!) {
+                Link(destination: URL(string: Constants.maskoBaseURL + "/community")!) {
                     HStack {
-                        Image(systemName: "star")
+                        Image(systemName: "sparkles")
                             .foregroundColor(Constants.orangePrimary)
                             .font(.system(size: 12))
-                        Text("Star on GitHub")
+                        Text("Browse Skins")
                             .foregroundColor(Constants.orangePrimary)
                         Spacer()
                         Image(systemName: "arrow.up.forward")
@@ -412,6 +437,13 @@ struct SettingsView: View {
             ideStatuses = statuses
             ideExtensionInstalled = statuses.contains { $0.isInstalled }
             appStore.cachedIDEStatuses = statuses
+        }
+        .sheet(isPresented: $showConnectionDoctor) {
+            ConnectionDoctorView()
+                .environment(appStore)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openConnectionDoctor)) { _ in
+            showConnectionDoctor = true
         }
         .alert("Uninstall Masko?", isPresented: $showUninstallConfirm) {
             Button("Cancel", role: .cancel) {}

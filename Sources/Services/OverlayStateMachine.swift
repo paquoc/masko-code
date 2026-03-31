@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Runs the canvas animation state machine using the inputs + conditions model.
@@ -141,6 +142,9 @@ final class OverlayStateMachine {
         if conditionlessCount > 0 {
             print("[masko-desktop] WARNING: \(conditionlessCount) transition edges have NO CONDITIONS")
         }
+
+        // Preload audio files
+        EdgeAudioService.shared.preload(config)
 
         arriveAtNode(currentNodeId)
     }
@@ -409,17 +413,26 @@ final class OverlayStateMachine {
         inputs["nodeTime"] = .number(0)
         inputs["clicked"] = .bool(false)
 
+        // Stop looping audio (e.g. permission alert), let one-shot sounds finish
+        EdgeAudioService.shared.stopLooping()
+
         let nodeName = config.nodes.first(where: { $0.id == nodeId })?.name ?? nodeId
 
         // Find loop edge for this node
         let loopEdge = config.edges.first { $0.source == nodeId && $0.target == nodeId && $0.isLoop }
 
         if let loopEdge, let hevc = loopEdge.videos.hevc, let url = URL(string: hevc) {
-            currentVideoURL = VideoCache.shared.resolve(url)
-            currentPlaybackRate = Float(loopEdge.speed ?? 1.0)
+            let resolved = VideoCache.shared.resolve(url)
+            currentVideoURL = resolved
+            currentPlaybackRate = playbackRate(for: loopEdge, videoURL: resolved)
             isLoopVideo = true
             phase = .looping
             print("[masko-desktop] Arrived at \(nodeName) — looping")
+
+            // Play loop sound if present (e.g. permission alert loop)
+            if let sound = loopEdge.sound {
+                EdgeAudioService.shared.play(sound)
+            }
         } else {
             phase = .idle
             print("[masko-desktop] Arrived at \(nodeName) — idle (no loop video)")
@@ -485,9 +498,19 @@ final class OverlayStateMachine {
         print("[masko-desktop] Playing transition: \(sourceName) → \(targetName)")
 
         cancelNodeTimeTimer()
+
+        // Stop any loop sound from the current node
+        EdgeAudioService.shared.stop()
+
+        // Play transition sound if present
+        if let sound = edge.sound {
+            EdgeAudioService.shared.play(sound)
+        }
+
         pendingEdge = edge
-        currentVideoURL = VideoCache.shared.resolve(url)
-        currentPlaybackRate = Float(edge.speed ?? 1.0)
+        let resolved = VideoCache.shared.resolve(url)
+        currentVideoURL = resolved
+        currentPlaybackRate = playbackRate(for: edge, videoURL: resolved)
         isLoopVideo = false
         phase = .transitioning
     }
@@ -503,5 +526,17 @@ final class OverlayStateMachine {
 
     private func conditionValuesEqual(_ a: ConditionValue, _ b: ConditionValue) -> Bool {
         a.doubleValue == b.doubleValue
+    }
+
+    /// Compute playback rate for an edge.
+    /// If `speed` is explicitly set, use it. Otherwise, derive rate from video duration / edge duration.
+    private func playbackRate(for edge: MaskoAnimationEdge, videoURL: URL) -> Float {
+        if let speed = edge.speed { return Float(speed) }
+        let asset = AVAsset(url: videoURL)
+        let videoDuration = CMTimeGetSeconds(asset.duration)
+        guard videoDuration > 0, edge.duration > 0 else { return 1.0 }
+        let rate = Float(videoDuration / edge.duration)
+        if abs(rate - 1.0) < 0.01 { return 1.0 }
+        return rate
     }
 }

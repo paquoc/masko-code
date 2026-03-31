@@ -360,20 +360,20 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 6: Star on GitHub
+    // MARK: - Step 6: All Set
 
     private var githubStarStep: some View {
         VStack(spacing: 20) {
-            Image(systemName: "star.fill")
+            Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.yellow)
+                .foregroundStyle(Constants.orangePrimary)
 
             VStack(spacing: 8) {
                 Text("You're all set!")
                     .font(Constants.heading(size: 24, weight: .bold))
                     .foregroundStyle(Constants.textPrimary)
 
-                Text("Masko Code is free and open source.\nIf you like it, a GitHub star helps us grow!")
+                Text("Your mascot is ready.\nBrowse more skins on masko.ai!")
                     .font(Constants.body(size: 14))
                     .foregroundStyle(Constants.textMuted)
                     .multilineTextAlignment(.center)
@@ -381,8 +381,8 @@ struct OnboardingView: View {
                     .padding(.horizontal, 20)
             }
 
-            primaryButton("Star on GitHub") {
-                if let url = URL(string: Constants.githubRepoURL) {
+            primaryButton("Browse Skins") {
+                if let url = URL(string: Constants.maskoBaseURL + "/community") {
                     NSWorkspace.shared.open(url)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

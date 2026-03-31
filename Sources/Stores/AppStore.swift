@@ -434,7 +434,7 @@ final class AppStore {
         // Only request permissions if onboarding is done.
         // During onboarding, each permission is requested by its dedicated step.
         if hasCompletedOnboarding {
-            hotkeyManager.start()
+            await MainActor.run { hotkeyManager.start() }
             await notificationService.requestPermission()
 
             // Auto-upgrade IDE extension if a newer version is bundled

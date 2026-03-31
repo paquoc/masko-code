@@ -89,6 +89,9 @@ struct ContentView: View {
                 selectedSection = .masko
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openConnectionDoctor)) { _ in
+            selectedSection = .settings
+        }
     }
 
     private func badgeCount(for section: SidebarSection) -> Int {

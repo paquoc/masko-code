@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let openConnectionDoctor = Notification.Name("openConnectionDoctor")
+}
+
 enum Constants {
     private static let serverPortKey = "serverPort"
 
@@ -9,7 +13,6 @@ enum Constants {
     #else
     static let maskoBaseURL = "https://masko.ai"
     #endif
-    static let githubRepoURL = "https://github.com/RousselPaul/masko-code"
 
     // Local hook server
     static let legacyDefaultServerPort: UInt16 = 49152
