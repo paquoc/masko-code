@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 7";
+const SCRIPT_VERSION: &str = "# version: 8";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -48,48 +48,26 @@ fn hook_command() -> String {
 }
 
 /// Generate the bash hook script content (works via Git Bash on Windows)
+/// Matches macOS v15 logic: hardcoded port, health check before stdin, no scanning
 fn generate_script(port: u16) -> String {
     format!(
         r#"#!/bin/bash
 {SCRIPT_VERSION}
 # hook-sender.sh — Forwards Claude Code hook events to masko-desktop (Windows)
-
-# Read stdin immediately before anything else (prevents pipe race conditions)
+# Exit instantly if the desktop app server isn't reachable (avoids curl timeout latency)
+curl -s --connect-timeout 0.3 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0
 INPUT=$(cat 2>/dev/null || echo '{{}}')
-
-# Discover server port — cached per session for speed, scan on first call
-PORT_CACHE="/tmp/masko-port-cache"
-PORT=""
-if [ -f "$PORT_CACHE" ]; then
-  CACHED=$(cat "$PORT_CACHE" 2>/dev/null)
-  if curl -s --connect-timeout 0.3 "http://localhost:$CACHED/health" >/dev/null 2>&1; then
-    PORT=$CACHED
-  fi
-fi
-if [ -z "$PORT" ]; then
-  for p in $(seq {port} {port_end}); do
-    if curl -s --connect-timeout 0.3 "http://localhost:$p/health" >/dev/null 2>&1; then
-      PORT=$p
-      echo "$p" > "$PORT_CACHE" 2>/dev/null
-      break
-    fi
-  done
-fi
-[ -z "$PORT" ] && echo "$(date '+%H:%M:%S.%3N') [NO-PORT] no server found" >> /tmp/masko-hook.txt && exit 0
-
-# Extract event name (handles optional whitespace around colon)
-EVENT_NAME=$(echo "$INPUT" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-SESSION_ID=$(echo "$INPUT" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-TOOL=$(echo "$INPUT" | sed -n 's/.*"tool_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-SID_SHORT=$(echo "$SESSION_ID" | cut -c1-8)
-echo "$(date '+%H:%M:%S.%3N') [HOOK] $EVENT_NAME tool=$TOOL sid=$SID_SHORT port=$PORT" >> /tmp/masko-hook.txt
+EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 if [ "$EVENT_NAME" = "PermissionRequest" ]; then
-    # Blocking: wait for user decision
+    # Blocking: wait for user decision. Run curl in background so we can
+    # trap SIGTERM/SIGHUP and kill it — when Claude Code resolves a permission
+    # from the terminal, it kills this script, and we must ensure curl dies too
+    # (otherwise the TCP connection stays open and the desktop bubble sticks).
     TMPFILE=$(mktemp /tmp/masko-hook.XXXXXX 2>/dev/null || mktemp)
     curl -s -w "\n%{{http_code}}" -X POST \
       -H "Content-Type: application/json" -d "$INPUT" \
-      "http://localhost:$PORT/hook" \
+      "http://localhost:{port}/hook" \
       --connect-timeout 2 >"$TMPFILE" 2>/dev/null &
     CURL_PID=$!
     trap 'kill $CURL_PID 2>/dev/null; rm -f "$TMPFILE"; exit 0' TERM HUP INT
@@ -99,22 +77,18 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
     BODY=$(echo "$RESPONSE" | sed '$d')
     [ -n "$BODY" ] && echo "$BODY"
-    echo "$(date '+%H:%M:%S.%3N') [RESP] PermissionRequest http=$HTTP_CODE" >> /tmp/masko-hook.txt
     [ "$HTTP_CODE" = "403" ] && exit 2
     exit 0
 else
     # Fire-and-forget for all other events
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{{http_code}}" -X POST \
-      -H "Content-Type: application/json" -d "$INPUT" \
-      "http://localhost:$PORT/hook" \
-      --connect-timeout 2 --max-time 5 2>/dev/null) || HTTP_CODE="fail"
-    echo "$(date '+%H:%M:%S.%3N') [RESP] $EVENT_NAME http=$HTTP_CODE" >> /tmp/masko-hook.txt
+    curl -s -X POST -H "Content-Type: application/json" -d "$INPUT" \
+      "http://localhost:{port}/hook" \
+      --connect-timeout 1 --max-time 2 2>/dev/null || true
     exit 0
 fi
 "#,
         SCRIPT_VERSION = SCRIPT_VERSION,
         port = port,
-        port_end = port + crate::server::MAX_PORT_ATTEMPTS - 1,
     )
 }
 
