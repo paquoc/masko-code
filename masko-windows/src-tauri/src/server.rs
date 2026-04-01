@@ -105,9 +105,9 @@ async fn handle_hook(
         // Also forward as regular event for tracking
         state.app_handle.emit("permission-request", &payload).ok();
 
-        // Wait for user decision (timeout 120s)
-        match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
-            Ok(Ok(decision)) => {
+        // Wait for user decision (no timeout — waits until user responds or channel drops)
+        match rx.await {
+            Ok(decision) => {
                 let body = serde_json::to_string(&decision).unwrap_or_default();
                 mlog!("Permission resolved, body: {}", body);
                 // Check if decision contains deny behavior
@@ -120,12 +120,12 @@ async fn handle_hook(
                 }
                 (StatusCode::OK, body)
             }
-            _ => {
-                // Timeout or channel dropped — clean up and notify frontend
+            Err(_) => {
+                // Channel dropped (sender gone) — clean up and notify frontend
                 state.pending_permissions.lock().await.remove(&request_id);
                 state.app_handle.emit("permission-dismissed",
                     serde_json::json!({"request_id": request_id})).ok();
-                (StatusCode::REQUEST_TIMEOUT, "timeout".to_string())
+                (StatusCode::INTERNAL_SERVER_ERROR, "channel dropped".to_string())
             }
         }
     } else {
