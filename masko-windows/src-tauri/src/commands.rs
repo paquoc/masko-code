@@ -114,10 +114,7 @@ pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), Stri
 #[tauri::command]
 pub fn open_devtools(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("overlay") {
-        #[cfg(debug_assertions)]
         win.open_devtools();
-        #[cfg(not(debug_assertions))]
-        let _ = win;
     }
     Ok(())
 }

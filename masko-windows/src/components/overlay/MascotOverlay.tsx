@@ -488,7 +488,7 @@ function MascotOverlay() {
 
       // PostToolUse means CLI already accepted — dismiss matching permission
       if (eventType === HookEventType.PostToolUse && event.session_id && event.tool_name) {
-        permissionStore.dismissIfCliAccepted(event.session_id, event.tool_name);
+        permissionStore.dismissIfCliAccepted(event.session_id, event.tool_name, event.tool_input);
       }
 
       if (!sm) return;

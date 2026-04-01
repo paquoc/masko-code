@@ -76,25 +76,6 @@ export function cachePreToolUse(sessionId: string, agentId: string | undefined, 
 }
 
 export function add(event: AgentEvent, requestId: string): void {
-  const sessionId = event.session_id || requestId;
-
-  // Deduplicate: one permission per session — replace existing if same session
-  const existingIdx = pending.findIndex((p) => p.id === sessionId);
-  if (existingIdx !== -1) {
-    // Update the existing permission with the new request (keeps queue position)
-    setPending(existingIdx, {
-      event,
-      requestId,
-      receivedAt: new Date(),
-      resolvedToolUseId: event.tool_use_id || preToolUseCache.get(
-        `${event.session_id || ""}:${event.agent_id || ""}:${event.tool_name || ""}`,
-      ),
-      collapsed: false,
-    });
-    setOnPendingCountChange((v) => v + 1);
-    return;
-  }
-
   // Try to resolve toolUseId from cache
   const key = `${event.session_id || ""}:${event.agent_id || ""}:${event.tool_name || ""}`;
   const resolvedToolUseId = event.tool_use_id || preToolUseCache.get(key);
@@ -103,7 +84,7 @@ export function add(event: AgentEvent, requestId: string): void {
   }
 
   const perm: PendingPermission = {
-    id: sessionId,
+    id: requestId,
     event,
     requestId,
     receivedAt: new Date(),
@@ -205,11 +186,13 @@ export function dismissByRequestId(requestId: string): void {
   }
 }
 
-/** Dismiss pending permission when CLI already accepted (PostToolUse for same session+tool) */
-export function dismissIfCliAccepted(sessionId: string, toolName: string): void {
-  const toRemove = pending.filter(
-    (p) => p.event.session_id === sessionId && p.event.tool_name === toolName,
-  );
+/** Dismiss pending permission when CLI already accepted (PostToolUse for same session+tool+input) */
+export function dismissIfCliAccepted(sessionId: string, toolName: string, toolInput?: unknown): void {
+  const toRemove = pending.filter((p) => {
+    if (p.event.session_id !== sessionId || p.event.tool_name !== toolName) return false;
+    if (toolInput === undefined) return true;
+    return JSON.stringify(p.event.tool_input) === JSON.stringify(toolInput);
+  });
   for (const p of toRemove) {
     resolve(p.id, "allow").catch(() => {});
   }
