@@ -3,7 +3,7 @@ import type { PendingPermission } from "../../models/permission";
 import { parsePermissionSuggestions, type PermissionSuggestion } from "../../models/permission";
 import { getAssistantDisplayName, getProjectName } from "../../models/agent-event";
 import { permissionStore } from "../../stores/permission-store";
-import { workingBubbleStore } from "../../stores/working-bubble-store";
+import { workingBubbleStore, type BubbleAppearance } from "../../stores/working-bubble-store";
 import { log } from "../../services/log";
 import { BubbleTail, type TailDir } from "./BubbleTail";
 
@@ -47,7 +47,7 @@ function parseQuestions(event: PendingPermission["event"]): Array<{
   }));
 }
 
-export default function PermissionPrompt(props: { permission: PendingPermission; tailDir?: TailDir; expanded?: boolean; onToggleExpand?: () => void }) {
+export default function PermissionPrompt(props: { permission: PendingPermission; tailDir?: TailDir; expanded?: boolean; onToggleExpand?: () => void; appearance?: BubbleAppearance }) {
   const [selectedSuggestion, setSelectedSuggestion] = createSignal<PermissionSuggestion | null>(null);
   const [answer, setAnswer] = createSignal("");
   const [selectedOptions, setSelectedOptions] = createSignal<Set<string>>(new Set());
@@ -105,7 +105,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     });
   };
 
-  const a = () => workingBubbleStore.settings.appearance;
+  const a = () => props.appearance || workingBubbleStore.settings.appearance;
 
   // Derived font sizes from the setting — permission uses +2 as base
   const fs = () => a().fontSize + 2;       // base (was 13px at default 11)
@@ -128,7 +128,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     >
       {/* Speech bubble card */}
       <div
-        class="rounded-[14px] shrink-0 transition-[width] duration-200 ease-out"
+        class="rounded-[14px] shrink-0 transition-all duration-200 ease-out"
         style={{
           width: props.expanded ? "27rem" : "18rem",
           background: a().bgColor,
@@ -223,7 +223,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             <Show when={toolInput()}>
               <div
                 class="rounded-lg px-2 py-1 mb-1.5 font-mono leading-snug overflow-y-auto"
-                classList={{ "max-h-16": !props.expanded, "max-h-[32rem]": !!props.expanded }}
+                classList={{ "max-h-16": !props.expanded, "max-h-40": !!props.expanded }}
                 style={{
                   "font-size": `${fsMono()}px`,
                   "overflow-wrap": "break-word",
@@ -238,7 +238,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             </Show>
 
             <Show when={event().message}>
-              <p class="leading-snug mb-1.5 overflow-y-auto" classList={{ "max-h-12": !props.expanded, "max-h-[28rem]": !!props.expanded }} style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}>
+              <p class="leading-snug mb-1.5 overflow-y-auto" classList={{ "max-h-12": !props.expanded, "max-h-[7.5rem]": !!props.expanded }} style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}>
                 {event().message}
               </p>
             </Show>
@@ -268,6 +268,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                       class="absolute min-w-32 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50"
                       style={{
                         "font-size": `${fsXs()}px`,
+                        "font-family": "var(--font-mono, monospace)",
+                        "text-align": "left",
                         "white-space": "pre-wrap",
                         "overflow-wrap": "break-word",
                         "word-break": "normal",

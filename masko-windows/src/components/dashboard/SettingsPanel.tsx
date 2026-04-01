@@ -3,6 +3,9 @@ import { createStore, unwrap } from "solid-js/store";
 import { emit } from "@tauri-apps/api/event";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus } from "../../services/ipc";
 import type { WorkingBubbleSettings, BubbleAppearance } from "../../stores/working-bubble-store";
+import WorkingBubble from "../overlay/WorkingBubble";
+import PermissionPrompt from "../overlay/PermissionPrompt";
+import type { PendingPermission } from "../../models/permission";
 import { error } from "../../services/log";
 
 const SETTINGS_KEY = "masko_working_bubble_settings";
@@ -37,6 +40,22 @@ function loadBubbleSettings(): WorkingBubbleSettings {
   } catch { /* ignore */ }
   return defaults;
 }
+
+const previewPermission: PendingPermission = {
+  id: "preview",
+  event: {
+    hook_event_name: "PermissionRequest",
+    tool_name: "Bash",
+    tool_input: { command: "npm run build -- --output-dir=dist/production" },
+    permission_suggestions: [
+      { type: "setMode", mode: "acceptEdits", destination: "session" },
+      { type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm run build/**" }], destination: "session", behavior: "allow" },
+    ],
+  } as any,
+  requestId: "preview",
+  receivedAt: new Date(),
+  collapsed: false,
+};
 
 export default function SettingsPanel() {
   const [hooksInstalled, setHooksInstalled] = createSignal(false);
@@ -172,8 +191,23 @@ export default function SettingsPanel() {
         <div class="space-y-3">
           {/* Previews */}
           <div class="flex items-end justify-center gap-3 py-2">
-            <BubblePreview appearance={bubbleSettings.appearance} />
-            <PermissionPreview appearance={bubbleSettings.appearance} />
+            <WorkingBubble
+              appearance={bubbleSettings.appearance}
+              previewState={{
+                visible: true,
+                status: "working",
+                toolName: "Edit",
+                toolDetail: "src/components/App.tsx",
+                projectName: "my-project",
+                sessionId: "",
+              }}
+            />
+            <div style={{ transform: "scale(0.85)", "transform-origin": "bottom center" }}>
+              <PermissionPrompt
+                appearance={bubbleSettings.appearance}
+                permission={previewPermission}
+              />
+            </div>
           </div>
 
           {/* Font size */}
@@ -232,174 +266,6 @@ function Section(props: { title: string; children: any }) {
     <div class="bg-surface rounded-[--radius-card] border border-border p-4">
       <h3 class="font-heading font-semibold text-sm text-text-primary mb-3">{props.title}</h3>
       {props.children}
-    </div>
-  );
-}
-
-/** Live mini-preview of the working bubble */
-function BubblePreview(props: { appearance: BubbleAppearance }) {
-  const a = () => props.appearance;
-  return (
-    <div class="w-44 select-none" style={{ "font-family": "var(--font-body)" }}>
-      <div
-        class="rounded-xl px-3 py-2 overflow-hidden"
-        style={{
-          background: a().bgColor,
-          "box-shadow": "0 2px 8px rgba(35,17,60,0.12), 0 0 0 1px rgba(35,17,60,0.06)",
-        }}
-      >
-        <div class="truncate leading-tight" style={{ "font-size": `${a().fontSize - 2}px`, color: a().mutedColor }}>
-          my-project
-        </div>
-        <div class="flex items-center gap-1.5 mt-0.5">
-          <span class="relative flex h-1.5 w-1.5 shrink-0">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: a().accentColor }} />
-            <span class="relative inline-flex rounded-full h-1.5 w-1.5" style={{ background: a().accentColor }} />
-          </span>
-          <span class="font-medium truncate" style={{ "font-size": `${a().fontSize}px`, color: a().textColor }}>
-            Edit
-          </span>
-        </div>
-      </div>
-      <div class="flex justify-end pr-8">
-        <div style={{
-          width: "0", height: "0",
-          "border-left": "6px solid transparent",
-          "border-right": "6px solid transparent",
-          "border-top": `6px solid ${a().bgColor}`,
-        }} />
-      </div>
-    </div>
-  );
-}
-
-/** Live mini-preview of the permission bubble — mirrors real PermissionPrompt layout */
-function PermissionPreview(props: { appearance: BubbleAppearance }) {
-  const a = () => props.appearance;
-  const fs = () => a().fontSize + 2;
-  const fsSm = () => a().fontSize + 1;
-  const fsMono = () => a().fontSize;
-  const fsMuted = () => a().fontSize - 1;
-  const fsXs = () => a().fontSize - 2;
-
-  const [selectedSuggestion, setSelectedSuggestion] = createSignal<string | null>(null);
-
-  const suggestions = [
-    { id: "once", short: "Allow once", full: "Allow this tool once for this session" },
-    { id: "project", short: "Allow for project", full: "Always allow Bash in masko-windows project" },
-  ];
-
-  return (
-    <div class="w-44 select-none" style={{ "font-family": "var(--font-body)", transform: "scale(0.85)", "transform-origin": "bottom center" }}>
-      <div
-        class="rounded-[14px] overflow-hidden"
-        style={{
-          background: a().bgColor,
-          "box-shadow": "0 2px 12px rgba(35,17,60,0.15), 0 0 0 1px rgba(35,17,60,0.06)",
-        }}
-      >
-        {/* Header */}
-        <div class="px-3 pt-2 pb-1">
-          <div class="flex items-center gap-1.5">
-            <span class="font-semibold" style={{ "font-size": `${fs()}px`, color: a().accentColor }}>Bash</span>
-            <span class="ml-auto" style={{ "font-size": `${fsMuted()}px`, color: a().mutedColor }}>my-project</span>
-          </div>
-        </div>
-        {/* Command — long command to demo word wrap */}
-        <div class="px-3 pb-1.5">
-          <div
-            class="rounded-lg px-2 py-1 font-mono leading-snug max-h-16 overflow-y-auto"
-            style={{
-              "font-size": `${fsMono()}px`,
-              "overflow-wrap": "break-word",
-              "word-break": "normal",
-              background: "rgba(35,17,60,0.04)",
-              border: "1px solid rgba(35,17,60,0.06)",
-              color: a().textColor,
-            }}
-          >
-            npm run build -- --output-dir=dist/production
-          </div>
-        </div>
-        {/* Permission suggestions */}
-        <div class="px-3 pb-1.5">
-          <div class="flex flex-wrap gap-1">
-            {suggestions.map((s) => (
-              <button
-                class="relative group px-1.5 py-0.5 rounded-md border transition-colors"
-                style={{
-                  "font-size": `${fsXs()}px`,
-                  "white-space": "nowrap",
-                  background: selectedSuggestion() === s.id ? `${a().accentColor}14` : a().bgColor,
-                  "border-color": selectedSuggestion() === s.id ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
-                  color: selectedSuggestion() === s.id ? a().accentColor : a().mutedColor,
-                }}
-                onClick={() => setSelectedSuggestion((prev) => (prev === s.id ? null : s.id))}
-              >
-                {s.short}
-                {/* Tooltip */}
-                <div
-                  class="absolute min-w-28 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50"
-                  style={{
-                    "font-size": `${fsXs()}px`,
-                    "white-space": "pre-wrap",
-                    "overflow-wrap": "break-word",
-                    "word-break": "normal",
-                    "max-width": "200px",
-                    background: a().textColor,
-                    color: a().bgColor,
-                    "box-shadow": "0 2px 8px rgba(0,0,0,0.2)",
-                  }}
-                >
-                  {s.full}
-                  <div
-                    class="absolute top-full left-1/2 -translate-x-1/2"
-                    style={{
-                      width: "0", height: "0",
-                      "border-left": "4px solid transparent",
-                      "border-right": "4px solid transparent",
-                      "border-top": `4px solid ${a().textColor}`,
-                    }}
-                  />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-        {/* Buttons */}
-        <div class="px-3 pb-2 flex items-center gap-1.5">
-          <button
-            class="flex-1 px-2 py-0.5 rounded-lg font-semibold"
-            style={{
-              "font-size": `${fsSm()}px`,
-              "font-family": "var(--font-heading)",
-              background: a().accentColor,
-              color: a().buttonTextColor,
-            }}
-          >
-            {selectedSuggestion() ? "Allow Rule" : "Approve"}
-          </button>
-          <button
-            class="px-2 py-0.5 rounded-lg font-medium border"
-            style={{
-              "font-size": `${fsSm()}px`,
-              "font-family": "var(--font-heading)",
-              "border-color": "rgba(35,17,60,0.12)",
-              color: a().mutedColor,
-            }}
-          >
-            Deny
-          </button>
-        </div>
-      </div>
-      <div class="flex justify-end pr-8">
-        <div style={{
-          width: "0", height: "0",
-          "border-left": "8px solid transparent",
-          "border-right": "8px solid transparent",
-          "border-top": `8px solid ${a().bgColor}`,
-        }} />
-      </div>
     </div>
   );
 }

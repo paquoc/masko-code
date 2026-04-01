@@ -1,10 +1,14 @@
 import { Show } from "solid-js";
-import { workingBubbleStore } from "../../stores/working-bubble-store";
+import { workingBubbleStore, type BubbleAppearance, type WorkingBubbleState } from "../../stores/working-bubble-store";
 import { BubbleTail, type TailDir } from "./BubbleTail";
 
-export default function WorkingBubble(props: { tailDir?: TailDir }) {
-  const s = () => workingBubbleStore.state;
-  const a = () => workingBubbleStore.settings.appearance;
+export default function WorkingBubble(props: {
+  tailDir?: TailDir;
+  appearance?: BubbleAppearance;
+  previewState?: Partial<WorkingBubbleState>;
+}) {
+  const s = () => ({ ...workingBubbleStore.state, ...props.previewState }) as WorkingBubbleState;
+  const a = () => props.appearance || workingBubbleStore.settings.appearance;
   const dir = () => props.tailDir || "down";
 
   return (
