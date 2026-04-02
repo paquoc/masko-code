@@ -18,6 +18,8 @@
     "core:webview:allow-create-webview-window",
     "core:window:allow-set-ignore-cursor-events",
     "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
     "notification:default",
     "updater:default",
     "process:default"

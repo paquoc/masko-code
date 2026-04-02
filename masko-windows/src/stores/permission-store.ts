@@ -5,6 +5,7 @@ import type { PendingPermission, PermissionDecision } from "../models/permission
 import { invoke } from "@tauri-apps/api/core";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { log, error } from "../services/log";
+import { hotkeyStore } from "./hotkey-store";
 
 const [pending, setPending] = createStore<PendingPermission[]>([]);
 const [onPendingCountChange, _setOnPendingCountChange] = createSignal(0);
@@ -14,55 +15,93 @@ function setOnPendingCountChange(fn: (v: number) => number): void {
   syncHotkeys();
 }
 
-// --- Global hotkey management ---
-let hotkeysRegistered = false;
+// --- Global shortcut + window keydown fallback ---
+let globalRegistered = false;
+let windowRegistered = false;
+let registeredAccelerators: string[] = [];
+
+function handleApprove(): void {
+  const perm = pending.find((p) => !p.collapsed);
+  if (perm) {
+    log("[hotkey] approve", perm.id);
+    resolve(perm.id, "allow");
+  }
+}
+
+function handleDeny(): void {
+  const perm = pending.find((p) => !p.collapsed);
+  if (perm) {
+    log("[hotkey] deny", perm.id);
+    resolve(perm.id, "deny");
+  }
+}
+
+// Window keydown fallback (works when overlay has focus)
+function handleKeyDown(e: KeyboardEvent): void {
+  const { approve, deny } = hotkeyStore.settings;
+  if (hotkeyStore.matchesBinding(e, approve)) { e.preventDefault(); handleApprove(); }
+  else if (hotkeyStore.matchesBinding(e, deny)) { e.preventDefault(); handleDeny(); }
+}
 
 async function registerHotkeys(): Promise<void> {
-  if (hotkeysRegistered) return;
-  try {
-    await register("CommandOrControl+Enter", (e) => {
-      if (e.state === "Pressed") {
-        const perm = pending.find((p) => !p.collapsed);
-        if (perm) {
-          log("Hotkey Ctrl+Enter → approve permission", perm.id);
-          resolve(perm.id, "allow");
-        }
-      }
-    });
-    await register("CommandOrControl+Backspace", (e) => {
-      if (e.state === "Pressed") {
-        const perm = pending.find((p) => !p.collapsed);
-        if (perm) {
-          log("Hotkey Ctrl+Backspace → deny permission", perm.id);
-          resolve(perm.id, "deny");
-        }
-      }
-    });
-    hotkeysRegistered = true;
-    log("Permission hotkeys registered (Ctrl+Enter, Ctrl+Backspace)");
-  } catch (e) {
-    error("Failed to register permission hotkeys:", e);
+  const { approve, deny } = hotkeyStore.settings;
+  const approveAccel = hotkeyStore.bindingToTauriAccelerator(approve);
+  const denyAccel = hotkeyStore.bindingToTauriAccelerator(deny);
+
+  // 1) Global shortcuts (OS-level, works without focus)
+  if (!globalRegistered) {
+    try {
+      // Unregister leftover from previous run
+      await unregister(approveAccel).catch(() => {});
+      await unregister(denyAccel).catch(() => {});
+      await register(approveAccel, (e) => {
+        if (e.state === "Pressed") handleApprove();
+      });
+      await register(denyAccel, (e) => {
+        if (e.state === "Pressed") handleDeny();
+      });
+      globalRegistered = true;
+      registeredAccelerators = [approveAccel, denyAccel];
+      log(`[registerHotkeys] ✓ Global: ${approveAccel}, ${denyAccel}`);
+    } catch (e) {
+      error("[registerHotkeys] ✗ Global shortcut failed:", e);
+    }
+  }
+
+  // 2) Window keydown fallback
+  if (!windowRegistered) {
+    window.addEventListener("keydown", handleKeyDown);
+    windowRegistered = true;
   }
 }
 
 async function unregisterHotkeys(): Promise<void> {
-  if (!hotkeysRegistered) return;
-  try {
-    await unregister("CommandOrControl+Enter");
-    await unregister("CommandOrControl+Backspace");
-    hotkeysRegistered = false;
-    log("Permission hotkeys unregistered");
-  } catch (e) {
-    error("Failed to unregister permission hotkeys:", e);
+  if (globalRegistered) {
+    for (const accel of registeredAccelerators) {
+      await unregister(accel).catch(() => {});
+    }
+    globalRegistered = false;
+    registeredAccelerators = [];
   }
+  if (windowRegistered) {
+    window.removeEventListener("keydown", handleKeyDown);
+    windowRegistered = false;
+  }
+}
+
+/** Re-register hotkeys when settings change */
+export async function reloadHotkeys(): Promise<void> {
+  await unregisterHotkeys();
+  const hasUncollapsed = pending.some((p) => !p.collapsed);
+  if (hasUncollapsed) await registerHotkeys();
 }
 
 /** Sync hotkey registration with pending permission count */
 function syncHotkeys(): void {
   const hasUncollapsed = pending.some((p) => !p.collapsed);
-  if (hasUncollapsed && !hotkeysRegistered) {
+  if (hasUncollapsed && !globalRegistered) {
     registerHotkeys();
-  } else if (!hasUncollapsed && hotkeysRegistered) {
+  } else if (!hasUncollapsed && (globalRegistered || windowRegistered)) {
     unregisterHotkeys();
   }
 }

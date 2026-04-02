@@ -9,6 +9,8 @@ import type { PendingPermission } from "../../models/permission";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { error } from "../../services/log";
+import { hotkeyStore, eventToBinding, bindingToLabel, type HotkeyBinding, type HotkeySettings } from "../../stores/hotkey-store";
+import { reloadHotkeys } from "../../stores/permission-store";
 
 const SETTINGS_KEY = "masko_working_bubble_settings";
 
@@ -213,6 +215,20 @@ export default function SettingsPanel() {
               {loading() === "uninstall" ? "Removing..." : "Uninstall"}
             </button>
           </Show>
+        </div>
+      </Section>
+
+      {/* Keyboard Shortcuts */}
+      <Section title="Keyboard Shortcuts">
+        <div class="space-y-3">
+          <HotkeyRow
+            label="Approve permission"
+            action="approve"
+          />
+          <HotkeyRow
+            label="Deny permission"
+            action="deny"
+          />
         </div>
       </Section>
 
@@ -507,6 +523,61 @@ function ColorRow(props: { label: string; value: string; onChange: (v: string) =
           </div>
         </Show>
       </div>
+    </div>
+  );
+}
+
+function HotkeyRow(props: { label: string; action: keyof HotkeySettings }) {
+  const [recording, setRecording] = createSignal(false);
+  const binding = () => hotkeyStore.settings[props.action];
+
+  async function startRecording() {
+    // Pause global shortcuts so they don't steal the key combo
+    await reloadHotkeys();
+    setRecording(true);
+  }
+
+  function stopRecording() {
+    setRecording(false);
+    reloadHotkeys();
+  }
+
+  function handleKeyDown(e: KeyboardEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") { stopRecording(); return; }
+    const b = eventToBinding(e);
+    if (!b) return; // lone modifier, wait for actual key
+    if (!b.ctrlKey && !b.shiftKey && !b.altKey && !b.metaKey) return;
+    hotkeyStore.setHotkey(props.action, b);
+    stopRecording();
+  }
+
+  return (
+    <div class="flex items-center justify-between">
+      <p class="text-sm font-body text-text-primary">{props.label}</p>
+      <Show
+        when={!recording()}
+        fallback={
+          <div
+            tabIndex={0}
+            class="px-3 py-1.5 text-sm font-mono rounded-[--radius-card-sm] border-2 border-orange-primary bg-orange-primary/10 text-orange-primary animate-pulse focus:outline-none cursor-default"
+            onKeyDown={handleKeyDown}
+            onBlur={() => stopRecording()}
+            ref={(el) => requestAnimationFrame(() => el.focus())}
+          >
+            Press keys...
+          </div>
+        }
+      >
+        <button
+          class="px-3 py-1.5 text-sm font-mono rounded-[--radius-card-sm] border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+          onClick={startRecording}
+          title="Click to record new shortcut"
+        >
+          {bindingToLabel(binding())}
+        </button>
+      </Show>
     </div>
   );
 }

@@ -2297,7 +2297,7 @@ dependencies = [
 
 [[package]]
 name = "masko-windows"
-version = "0.1.0"
+version = "1.7.0"
 dependencies = [
  "axum",
  "chrono",
