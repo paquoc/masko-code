@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicI32;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Dwm::*;
 use windows::Win32::Graphics::Gdi::*;
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
@@ -254,8 +254,12 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             return false;
         }
 
-        let dpi = GetDpiForWindow(hwnd);
-        let scale = if dpi > 0 { dpi as f64 / 96.0 } else { 1.0 };
+        // Get DPI for the monitor where the cursor actually is (not the overlay window's DPI)
+        let hmon = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+        let mut dpi_x: u32 = 96;
+        let mut dpi_y: u32 = 96;
+        let _ = GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
+        let scale = if dpi_x > 0 { dpi_x as f64 / 96.0 } else { 1.0 };
 
         let client_x = cursor.x - rect.left;
         let client_y = cursor.y - rect.top;
