@@ -15,6 +15,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let menu = Menu::with_items(app, &[&show, &dashboard, &sep1, &settings, &sep2, &quit])?;
 
     TrayIconBuilder::new()
+        .icon(app.default_window_icon().cloned().unwrap())
         .menu(&menu)
         .tooltip("Masko Code")
         .on_menu_event(|app, event| match event.id.as_ref() {

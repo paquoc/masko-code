@@ -40,11 +40,7 @@
         "shadow": false
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "tooltip": "Masko Code"
-    }
+    "trayIcon": null
   },
   "bundle": {
     "active": true,

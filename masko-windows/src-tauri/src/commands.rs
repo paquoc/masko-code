@@ -112,6 +112,12 @@ pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn open_devtools(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("overlay") {
         win.open_devtools();

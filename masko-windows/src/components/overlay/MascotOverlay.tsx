@@ -42,8 +42,9 @@ function ContextMenu(props: {
     invoke("open_devtools").catch(() => { });
   }
 
-  function closeMenu() {
+  function quitApp() {
     props.onClose();
+    invoke("quit_app").catch(() => { });
   }
 
   // Menu position: flip left/up if near screen edge
@@ -130,8 +131,8 @@ function ContextMenu(props: {
 
         <div class="h-px bg-white/10 mx-2" />
 
-        {/* Close — red */}
-        <MenuRow label="Close" icon="✕" onClick={closeMenu} />
+        {/* Quit app */}
+        <MenuRow label="Quit" icon="✕" onClick={quitApp} danger />
       </div>
     </>
   );
