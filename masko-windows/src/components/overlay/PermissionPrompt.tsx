@@ -33,6 +33,7 @@ function isQuestion(event: PendingPermission["event"]): boolean {
 function parseQuestions(event: PendingPermission["event"]): Array<{
   question: string;
   options: Array<{ label: string; description?: string }>;
+  multiSelect: boolean;
 }> {
   if (!event.tool_input?.questions) return [];
   const raw = event.tool_input.questions;
@@ -44,6 +45,7 @@ function parseQuestions(event: PendingPermission["event"]): Array<{
           typeof o === "string" ? { label: o } : { label: o.label || "", description: o.description },
         )
       : [],
+    multiSelect: q.multiSelect === true,
   }));
 }
 
@@ -51,6 +53,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   const [selectedSuggestion, setSelectedSuggestion] = createSignal<PermissionSuggestion | null>(null);
   const [answer, setAnswer] = createSignal("");
   const [selectedOptions, setSelectedOptions] = createSignal<Set<string>>(new Set());
+  const [otherActive, setOtherActive] = createSignal(false);
+  const [otherText, setOtherText] = createSignal("");
 
   const event = () => props.permission.event;
   const toolName = () => event().tool_name || "Unknown";
@@ -68,8 +72,11 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
       // Send answer
       const answerText = answer().trim();
       if (questions().length > 0 && questions()[0].options.length > 0) {
-        // Option-based answer
+        // Option-based answer — include "Other" text if active
         const selected = [...selectedOptions()];
+        if (otherActive() && otherText().trim()) {
+          selected.push(otherText().trim());
+        }
         permissionStore.resolve(props.permission.id, "allow", {
           type: "updatedInput",
           answers: selected,
@@ -96,13 +103,21 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     permissionStore.collapse(props.permission.id);
   };
 
-  const toggleOption = (label: string) => {
-    setSelectedOptions((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
+  const toggleOption = (label: string, multiSelect: boolean) => {
+    if (multiSelect) {
+      setSelectedOptions((prev) => {
+        const next = new Set(prev);
+        if (next.has(label)) next.delete(label);
+        else next.add(label);
+        return next;
+      });
+    } else {
+      // Single select: replace selection
+      setSelectedOptions((prev) => prev.has(label) ? new Set<string>() : new Set<string>([label]));
+    }
+    // Deactivate "Other" when selecting a predefined option
+    setOtherActive(false);
+    setOtherText("");
   };
 
   const a = () => props.appearance || workingBubbleStore.settings.appearance;
@@ -184,15 +199,53 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                               "border-color": selectedOptions().has(opt.label) ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
                               color: selectedOptions().has(opt.label) ? a().textColor : a().mutedColor,
                             }}
-                            onClick={() => toggleOption(opt.label)}
+                            onClick={() => toggleOption(opt.label, q.multiSelect)}
                           >
+                            {q.multiSelect ? (selectedOptions().has(opt.label) ? "☑ " : "☐ ") : (selectedOptions().has(opt.label) ? "● " : "○ ")}
                             {opt.label}
                             <Show when={opt.description}>
-                              <span class="block" style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>{opt.description}</span>
+                              <span class="block ml-4" style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>{opt.description}</span>
                             </Show>
                           </button>
                         )}
                       </For>
+                      {/* "Other" option */}
+                      <button
+                        class="w-full text-left px-2 py-1 rounded-lg border transition-colors"
+                        style={{
+                          "font-size": `${fsSm()}px`,
+                          background: otherActive() ? `${a().accentColor}0d` : a().bgColor,
+                          "border-color": otherActive() ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
+                          color: otherActive() ? a().textColor : a().mutedColor,
+                        }}
+                        onClick={() => {
+                          if (!q.multiSelect) setSelectedOptions(new Set<string>());
+                          setOtherActive((v) => !v);
+                          if (otherActive()) setOtherText("");
+                        }}
+                      >
+                        {q.multiSelect ? (otherActive() ? "☑ " : "☐ ") : (otherActive() ? "● " : "○ ")}
+                        Other
+                      </button>
+                      <Show when={otherActive()}>
+                        <input
+                          type="text"
+                          class="w-full px-2 py-1 rounded-lg border focus:outline-none"
+                          style={{
+                            "font-size": `${fsSm()}px`,
+                            "border-color": `${a().accentColor}40`,
+                            background: "rgba(35,17,60,0.02)",
+                            color: a().textColor,
+                          }}
+                          placeholder="Type your answer..."
+                          value={otherText()}
+                          onInput={(e) => setOtherText(e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleApprove();
+                          }}
+                          autofocus
+                        />
+                      </Show>
                     </div>
                   </Show>
                   <Show when={q.options.length === 0}>
