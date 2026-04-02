@@ -64,7 +64,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCRUM5Q0VDRDM5RDhCRDMKUldUVGk1M1Q3SnpzdTdLaUZwZHgvMkkvRHl0QjYzTDhnS2loUkpWcEtHRlRsM3g5cnRjdTZXTUcK",
       "endpoints": [
-        "https://github.com/RousselPaul/masko-code/releases/latest/download/latest.json"
+        "https://github.com/paquoc/masko-code/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
