@@ -121,6 +121,13 @@ function ContextMenu(props: {
           />
         </Show>
 
+        {/* Flip Y */}
+        <MenuRow
+          label="Flip"
+          icon="↕"
+          onClick={() => { overlayPositionStore.toggleFlipY(); props.onClose(); }}
+        />
+
         <div class="h-px bg-white/10 mx-2" />
 
         {/* Open dashboard */}
@@ -903,6 +910,7 @@ function MascotOverlay() {
             transition: "none",
             "will-change": "opacity",
             "pointer-events": activeSlot() === "A" ? "auto" : "none",
+            transform: overlayPositionStore.flipY ? "scaleY(-1)" : "none",
           }}
         />
         <video
@@ -921,6 +929,7 @@ function MascotOverlay() {
             transition: "none",
             "will-change": "opacity",
             "pointer-events": activeSlot() === "B" ? "auto" : "none",
+            transform: overlayPositionStore.flipY ? "scaleY(-1)" : "none",
           }}
         />
       </div>

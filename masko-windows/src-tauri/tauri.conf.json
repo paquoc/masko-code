@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/ts-json-schema-generator/refs/heads/master/tauri-v2-schema.json",
   "productName": "Masko",
-  "version": "0.1.0",
+  "version": "1.7.0",
   "identifier": "ai.masko.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",

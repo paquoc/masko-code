@@ -305,7 +305,7 @@ export default function SettingsPanel() {
           <div>
             <Show when={updateStatus() === "idle"}>
               <p class="text-sm font-body text-text-primary">You're up to date</p>
-              <p class="text-xs text-text-muted mt-0.5">Current version: v0.1.0</p>
+              <p class="text-xs text-text-muted mt-0.5">Current version: v1.7.0</p>
             </Show>
             <Show when={updateStatus() === "checking"}>
               <p class="text-sm font-body text-text-primary">Checking for updates...</p>
@@ -353,7 +353,7 @@ export default function SettingsPanel() {
       {/* About */}
       <Section title="About">
         <div class="space-y-1 text-sm text-text-muted font-body">
-          <p><span class="text-text-primary font-medium">Masko Code</span> v0.1.0</p>
+          <p><span class="text-text-primary font-medium">Masko Code</span> v1.7.0</p>
           <p>Your AI coding assistant companion for Windows.</p>
           <p class="text-xs mt-2">
             <a href="https://masko.ai" class="text-orange-primary hover:underline" target="_blank">
