@@ -47,3 +47,16 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      - name: Upload portable exe
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $exe = Get-ChildItem "masko-windows/src-tauri/target/release/masko-windows.exe" -ErrorAction SilentlyContinue
+          if ($exe) {
+            $name = "Masko-${tag}-portable.exe"
+            Copy-Item $exe.FullName $name
+            gh release upload $tag $name --clobber
+          }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
