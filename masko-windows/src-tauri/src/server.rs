@@ -12,6 +12,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, Mutex};
 
 use crate::models::{AgentEvent, InputEvent};
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::path::PathBuf;
 
 const DEFAULT_PORT: u16 = 45832;
@@ -52,10 +53,9 @@ pub async fn start(app_handle: AppHandle, pending_permissions: PendingPermission
                     .emit("server-status", serde_json::json!({"running": true, "port": port}))
                     .ok();
 
-                // Start polling for hook drop files (Stop/SessionEnd events
-                // that can't use HTTP because Windows kills the process tree)
-                let poll_handle = app_handle.clone();
-                tokio::spawn(poll_hook_drops(poll_handle));
+                // Watch hook-drops directory for spool files from the hook script
+                let watch_handle = app_handle.clone();
+                tokio::spawn(watch_hook_drops(watch_handle));
 
                 axum::serve(listener, app).await?;
                 return Ok(());
@@ -176,9 +176,37 @@ pub async fn resolve(
     }
 }
 
-/// Poll ~/.masko-desktop/hook-drops/ for JSON files written by the hook script
-/// when the parent process kills the tree before curl can finish (Stop, SessionEnd, etc.)
-async fn poll_hook_drops(app_handle: AppHandle) {
+/// Process a single .json drop file: read, parse, emit, then delete.
+fn process_drop_file(path: &std::path::Path, app_handle: &AppHandle) {
+    if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        return;
+    }
+
+    match std::fs::read_to_string(path) {
+        Ok(contents) => {
+            // Delete immediately to avoid re-processing
+            let _ = std::fs::remove_file(path);
+
+            match serde_json::from_str::<AgentEvent>(&contents) {
+                Ok(event) => {
+                    mlog!("Hook (drop): {}", event.hook_event_name);
+                    app_handle.emit("hook-event", &event).ok();
+                }
+                Err(e) => {
+                    mlog_err!("Failed to parse drop file {}: {e}", path.display());
+                }
+            }
+        }
+        Err(e) => {
+            mlog_err!("Failed to read drop file {}: {e}", path.display());
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Watch ~/.masko-desktop/hook-drops/ for JSON spool files written by the hook script.
+/// Uses a file watcher (ReadDirectoryChangesW on Windows) for near-instant pickup.
+async fn watch_hook_drops(app_handle: AppHandle) {
     let drop_dir = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".masko-desktop")
@@ -187,8 +215,67 @@ async fn poll_hook_drops(app_handle: AppHandle) {
     // Ensure directory exists
     let _ = std::fs::create_dir_all(&drop_dir);
 
+    // Process any files that were written before the watcher started
+    if let Ok(entries) = std::fs::read_dir(&drop_dir) {
+        for entry in entries.flatten() {
+            process_drop_file(&entry.path(), &app_handle);
+        }
+    }
+
+    // Set up file watcher — channel-based so we can process on the tokio runtime
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<PathBuf>(256);
+
+    let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+        if let Ok(event) = res {
+            // React to Create (direct write) and Rename-To (atomic mv).
+            // On Windows, `mv a.tmp a.json` fires Modify(Name(RenameMode::To)),
+            // not Create. Accept both to be safe across platforms.
+            let dominated = matches!(
+                event.kind,
+                EventKind::Create(_) | EventKind::Modify(notify::event::ModifyKind::Name(_))
+            );
+            if dominated {
+                for path in event.paths {
+                    if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                        let _ = tx.blocking_send(path);
+                    }
+                }
+            }
+        }
+    }) {
+        Ok(w) => w,
+        Err(e) => {
+            mlog_err!("Failed to create file watcher: {e}, falling back to polling");
+            poll_hook_drops_fallback(app_handle).await;
+            return;
+        }
+    };
+
+    if let Err(e) = watcher.watch(&drop_dir, RecursiveMode::NonRecursive) {
+        mlog_err!("Failed to watch hook-drops dir: {e}, falling back to polling");
+        poll_hook_drops_fallback(app_handle).await;
+        return;
+    }
+
+    mlog!("File watcher active on {}", drop_dir.display());
+
+    // Keep watcher alive and process events
+    // _watcher must stay in scope or the watch stops
+    let _watcher = watcher;
+    while let Some(path) = rx.recv().await {
+        process_drop_file(&path, &app_handle);
+    }
+}
+
+/// Fallback polling loop if the file watcher fails to initialize.
+async fn poll_hook_drops_fallback(app_handle: AppHandle) {
+    let drop_dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".masko-desktop")
+        .join("hook-drops");
+
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         let entries = match std::fs::read_dir(&drop_dir) {
             Ok(e) => e,
@@ -196,32 +283,7 @@ async fn poll_hook_drops(app_handle: AppHandle) {
         };
 
         for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-
-            // Read and parse
-            match std::fs::read_to_string(&path) {
-                Ok(contents) => {
-                    // Remove file immediately to avoid re-processing
-                    let _ = std::fs::remove_file(&path);
-
-                    match serde_json::from_str::<AgentEvent>(&contents) {
-                        Ok(event) => {
-                            mlog!("Hook (drop): {}", event.hook_event_name);
-                            app_handle.emit("hook-event", &event).ok();
-                        }
-                        Err(e) => {
-                            mlog_err!("Failed to parse drop file {}: {e}", path.display());
-                        }
-                    }
-                }
-                Err(e) => {
-                    mlog_err!("Failed to read drop file {}: {e}", path.display());
-                    let _ = std::fs::remove_file(&path);
-                }
-            }
+            process_drop_file(&entry.path(), &app_handle);
         }
     }
 }

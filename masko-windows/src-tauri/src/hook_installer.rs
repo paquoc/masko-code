@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 12";
+const SCRIPT_VERSION: &str = "# version: 15";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -59,43 +59,56 @@ INPUT=$(cat 2>/dev/null || echo '{{}}')
 EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] event=$EVENT_NAME input=$INPUT" >> /tmp/masko-hook.txt
 
-# Stop/SessionEnd/StopFailure: parent kills entire process tree via Windows Job Object
-# before curl can finish. Write to a drop file instead — Rust server watches the directory.
-if [ "$EVENT_NAME" = "Stop" ] || [ "$EVENT_NAME" = "SessionEnd" ] || [ "$EVENT_NAME" = "StopFailure" ]; then
-    DROPDIR="$HOME/.masko-desktop/hook-drops"
-    mkdir -p "$DROPDIR" 2>/dev/null
-    echo "$INPUT" > "$DROPDIR/$(date +%s%N)-$EVENT_NAME.json"
-    exit 0
-fi
-
-# Exit instantly if the desktop app server isn't reachable (avoids curl timeout latency)
-curl -s --connect-timeout 0.3 "http://localhost:{port}/health" >/dev/null 2>&1 || exit 0
+DROPDIR="$HOME/.masko-desktop/hook-drops"
 
 if [ "$EVENT_NAME" = "PermissionRequest" ]; then
+    # PermissionRequest needs HTTP — must return a response to Claude Code.
+    # Health-check first (retry 5 times, 1s timeout each)
+    HEALTH_OK=0
+    for _i in 1 2 3 4 5; do
+        HC_RESULT=$(curl -s -o /dev/null -w "%{{http_code}}" --connect-timeout 1 "http://localhost:{port}/health" 2>&1)
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] health check port={port} result=$HC_RESULT" >> /tmp/masko-hook.txt
+        if [ "$HC_RESULT" = "200" ]; then
+            HEALTH_OK=1
+            break
+        fi
+        sleep 0.2
+    done
+    if [ "$HEALTH_OK" != "1" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] health check failed after 5 tries, aborting PermissionRequest" >> /tmp/masko-hook.txt
+        exit 0
+    fi
+
     # Blocking: wait for user decision. Run curl in background so we can
     # trap SIGTERM/SIGHUP and kill it — when Claude Code resolves a permission
     # from the terminal, it kills this script, and we must ensure curl dies too
     # (otherwise the TCP connection stays open and the desktop bubble sticks).
     TMPFILE=$(mktemp /tmp/masko-hook.XXXXXX 2>/dev/null || mktemp)
+    INFILE=$(mktemp /tmp/masko-in.XXXXXX 2>/dev/null || mktemp)
+    printf '%s' "$INPUT" > "$INFILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] sending PermissionRequest to http://localhost:{port}/hook" >> /tmp/masko-hook.txt
     curl -s -w "\n%{{http_code}}" -X POST \
-      -H "Content-Type: application/json" -d "$INPUT" \
+      -H "Content-Type: application/json" \
+      --data-binary "@$INFILE" \
       "http://localhost:{port}/hook" \
       --connect-timeout 2 >"$TMPFILE" 2>/dev/null &
     CURL_PID=$!
-    trap 'kill $CURL_PID 2>/dev/null; rm -f "$TMPFILE"; exit 0' TERM HUP INT
+    trap 'kill $CURL_PID 2>/dev/null; rm -f "$TMPFILE" "$INFILE"; exit 0' TERM HUP INT
     wait $CURL_PID
     RESPONSE=$(cat "$TMPFILE")
-    rm -f "$TMPFILE"
+    rm -f "$TMPFILE" "$INFILE"
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PermissionRequest response http_code=$HTTP_CODE" >> /tmp/masko-hook.txt
     BODY=$(echo "$RESPONSE" | sed '$d')
     [ -n "$BODY" ] && echo "$BODY"
     [ "$HTTP_CODE" = "403" ] && exit 2
     exit 0
 else
-    # Fire-and-forget for all other events
-    curl -s -X POST -H "Content-Type: application/json" -d "$INPUT" \
-      "http://localhost:{port}/hook" \
-      --connect-timeout 1 --max-time 2 2>/dev/null || true
+    # All other events: write to drop file (file watcher picks them up).
+    # Atomic write: tmp file + mv to prevent reading partial data.
+    mkdir -p "$DROPDIR" 2>/dev/null
+    DROPFILE="$DROPDIR/$(date +%s%N)-$EVENT_NAME.json"
+    echo "$INPUT" > "$DROPFILE.tmp" && mv "$DROPFILE.tmp" "$DROPFILE"
     exit 0
 fi
 "#,
