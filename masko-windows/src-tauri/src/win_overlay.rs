@@ -26,6 +26,7 @@ pub static DRAGGING: AtomicBool = AtomicBool::new(false);
 const WM_NCPAINT: u32 = 0x0085;
 const WM_NCACTIVATE: u32 = 0x0086;
 const WM_STYLECHANGING: u32 = 0x007C;
+const WM_DISPLAYCHANGE: u32 = 0x007E;
 
 // Dynamic mascot position in logical (CSS) pixels — set by frontend via Tauri command
 static MASCOT_X: AtomicI32 = AtomicI32::new(60); // default: roughly center of 320
@@ -89,6 +90,16 @@ unsafe extern "system" fn overlay_wndproc(
         }
         WM_NCPAINT => {
             return LRESULT(0);
+        }
+        WM_DISPLAYCHANGE => {
+            // Monitor config changed (resolution, arrangement, dock/undock).
+            // Resize overlay to span the updated virtual desktop.
+            let (vx, vy, vw, vh) = get_virtual_desktop_bounds();
+            SetWindowPos(
+                hwnd, HWND_TOPMOST,
+                vx, vy, vw, vh,
+                SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            ).ok();
         }
         _ => {}
     }
@@ -179,6 +190,22 @@ pub fn monitor_bounds_at_point(x: i32, y: i32) -> (i32, i32, i32, i32) {
 /// Get primary monitor bounds (physical pixels).
 pub fn get_primary_monitor_bounds() -> (i32, i32, i32, i32) {
     monitor_bounds_at_point(0, 0)
+}
+
+/// Get the bounding rectangle of the entire virtual desktop (all monitors).
+/// Returns (left, top, width, height) in physical pixels.
+pub fn get_virtual_desktop_bounds() -> (i32, i32, i32, i32) {
+    unsafe {
+        let x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        let y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        let w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        let h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        if w > 0 && h > 0 {
+            (x, y, w, h)
+        } else {
+            get_primary_monitor_bounds()
+        }
+    }
 }
 
 /// Resize overlay window to cover a specific monitor.

@@ -119,6 +119,19 @@ pub fn open_devtools(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns (left, top, width, height) of the entire virtual desktop (all monitors).
+#[tauri::command]
+pub fn get_virtual_desktop_bounds() -> Result<(i32, i32, i32, i32), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(crate::win_overlay::get_virtual_desktop_bounds())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok((0, 0, 1920, 1080))
+    }
+}
+
 /// Move overlay window to cover the monitor at the given screen point. Returns new bounds.
 #[tauri::command]
 pub fn move_overlay_to_monitor(app: AppHandle, x: i32, y: i32) -> Result<(i32, i32, i32, i32), String> {

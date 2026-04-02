@@ -710,10 +710,11 @@ function MascotOverlay() {
       if (!moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       moved = true;
       if (!isDragging()) setIsDragging(true);
+      // Overlay spans the entire virtual desktop — position is clamped to all monitors
       overlayPositionStore.updatePosition(ev.clientX - offsetX, ev.clientY - offsetY);
     };
 
-    const onUp = async () => {
+    const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       setIsDragging(false);
@@ -721,24 +722,6 @@ function MascotOverlay() {
 
       if (moved) {
         overlayPositionStore.persistPosition();
-
-        // Check if mascot moved to a different monitor
-        const center = overlayPositionStore.screenCenter();
-        try {
-          const newBounds = await invoke<[number, number, number, number]>(
-            "get_monitor_at_point", { x: center.x, y: center.y }
-          );
-          const [mx, my, mw, mh] = newBounds;
-          if (mx !== overlayPositionStore.monitorX || my !== overlayPositionStore.monitorY) {
-            // Snapshot screen coords before async invoke changes anything
-            const snapScreenX = overlayPositionStore.monitorX + overlayPositionStore.x;
-            const snapScreenY = overlayPositionStore.monitorY + overlayPositionStore.y;
-            await invoke("move_overlay_to_monitor", { x: center.x, y: center.y });
-            overlayPositionStore.setMonitorBounds(mx, my, mw, mh);
-            overlayPositionStore.updatePosition(snapScreenX - mx, snapScreenY - my);
-            overlayPositionStore.persistPosition();
-          }
-        } catch { /* ignore monitor detection errors */ }
       }
     };
 

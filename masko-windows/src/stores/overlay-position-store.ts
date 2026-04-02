@@ -99,31 +99,32 @@ async function restorePosition() {
     } catch { /* fall through to default */ }
   }
 
-  // Query monitor at saved position (or primary if no saved position)
+  // Overlay spans the entire virtual desktop — query its bounds
   try {
-    const queryX = hasSaved ? savedScreenX : 0;
-    const queryY = hasSaved ? savedScreenY : 0;
-    const bounds = await invoke<[number, number, number, number]>("get_monitor_at_point", { x: queryX, y: queryY });
+    const bounds = await invoke<[number, number, number, number]>("get_virtual_desktop_bounds");
     setMonitorX(bounds[0]);
     setMonitorY(bounds[1]);
     setMonitorW(bounds[2]);
     setMonitorH(bounds[3]);
-
-    // Move overlay to the correct monitor if saved position is on a different one
-    if (hasSaved) {
-      await invoke("move_overlay_to_monitor", { x: savedScreenX, y: savedScreenY });
-    }
   } catch { /* use defaults */ }
 
   if (hasSaved) {
-    // Convert screen coords to window-relative
+    // Convert screen coords to window-relative (CSS logical px)
     updatePosition(savedScreenX - monitorX(), savedScreenY - monitorY());
   } else {
-    // Default: bottom-center
-    const size = mascotSize();
-    const defaultX = (window.innerWidth - size) / 2;
-    const defaultY = window.innerHeight - size;
-    updatePosition(defaultX, defaultY);
+    // Default: bottom-center of primary monitor
+    try {
+      const primary = await invoke<[number, number, number, number]>("get_monitor_at_point", { x: 0, y: 0 });
+      const [px, py, pw, ph] = primary;
+      const dpr = window.devicePixelRatio || 1;
+      const size = mascotSize();
+      const defaultX = (px - monitorX()) / dpr + (pw / dpr - size) / 2;
+      const defaultY = (py - monitorY()) / dpr + ph / dpr - size;
+      updatePosition(defaultX, defaultY);
+    } catch {
+      const size = mascotSize();
+      updatePosition((window.innerWidth - size) / 2, window.innerHeight - size);
+    }
   }
 }
 

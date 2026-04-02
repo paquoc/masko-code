@@ -51,10 +51,10 @@ pub fn run() {
                         crate::win_overlay::strip_frame(hwnd_ptr);
                         crate::win_overlay::subclass_overlay(hwnd_ptr);
 
-                        // Resize overlay to cover primary monitor
-                        let (mx, my, mw, mh) = crate::win_overlay::get_primary_monitor_bounds();
+                        // Resize overlay to cover entire virtual desktop (all monitors)
+                        let (mx, my, mw, mh) = crate::win_overlay::get_virtual_desktop_bounds();
                         crate::win_overlay::resize_to_monitor(hwnd_ptr, mx, my, mw, mh);
-                        mlog!("Overlay resized to monitor: {}x{} at ({},{})", mw, mh, mx, my);
+                        mlog!("Overlay resized to virtual desktop: {}x{} at ({},{})", mw, mh, mx, my);
                     }
 
                     // Poll cursor ~60fps, emit zone changes so frontend can toggle
@@ -102,6 +102,7 @@ pub fn run() {
             commands::set_overlay_dragging,
             commands::update_mascot_position,
             commands::get_monitor_at_point,
+            commands::get_virtual_desktop_bounds,
             commands::move_overlay_to_monitor,
             commands::open_devtools,
             commands::update_working_bubble_zone,
