@@ -111,6 +111,58 @@ pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), Stri
     Ok(())
 }
 
+/// Temporarily allow keyboard focus on the overlay window (removes WS_EX_NOACTIVATE).
+#[tauri::command]
+pub fn focus_overlay(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::sync::atomic::Ordering;
+        // Tell WM_STYLECHANGING handler to stop forcing WS_EX_NOACTIVATE
+        crate::win_overlay::FOCUS_ALLOWED.store(true, Ordering::Relaxed);
+
+        if let Some(overlay) = app.get_webview_window("overlay") {
+            let hwnd = overlay.hwnd().map_err(|e| e.to_string())?;
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::*;
+                use windows::Win32::Foundation::HWND;
+                let h = HWND(hwnd.0 as *mut std::ffi::c_void);
+                // Remove WS_EX_NOACTIVATE so the window can receive focus
+                let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
+                SetWindowLongW(h, GWL_EXSTYLE, (ex & !WS_EX_NOACTIVATE.0) as i32);
+                let _ = SetForegroundWindow(h);
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+    Ok(())
+}
+
+/// Restore WS_EX_NOACTIVATE on the overlay so it stops stealing focus.
+#[tauri::command]
+pub fn unfocus_overlay(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::sync::atomic::Ordering;
+        // Tell WM_STYLECHANGING handler to resume forcing WS_EX_NOACTIVATE
+        crate::win_overlay::FOCUS_ALLOWED.store(false, Ordering::Relaxed);
+
+        if let Some(overlay) = app.get_webview_window("overlay") {
+            let hwnd = overlay.hwnd().map_err(|e| e.to_string())?;
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::*;
+                use windows::Win32::Foundation::HWND;
+                let h = HWND(hwnd.0 as *mut std::ffi::c_void);
+                let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
+                SetWindowLongW(h, GWL_EXSTYLE, (ex | WS_EX_NOACTIVATE.0) as i32);
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn quit_app(app: AppHandle) -> Result<(), String> {
     app.exit(0);

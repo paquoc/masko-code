@@ -156,6 +156,8 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
       hookDecision.updatedPermissions = [suggestion];
     } else if (suggestion.type === "setMode" && suggestion.mode) {
       hookDecision.updatedPermissions = [suggestion];
+    } else if (suggestion.type === "feedback" && suggestion.reason) {
+      hookDecision.message = suggestion.reason;
     }
     log("Permission suggestion applied:", JSON.stringify(suggestion));
   }

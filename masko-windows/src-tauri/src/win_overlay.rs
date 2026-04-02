@@ -22,6 +22,8 @@ pub static PERMISSION_HIT_VISIBLE: AtomicBool = AtomicBool::new(false);
 pub static WORKING_BUBBLE_VISIBLE: AtomicBool = AtomicBool::new(false);
 /// When true, cursor polling always reports interactive (suppresses click-through during drag)
 pub static DRAGGING: AtomicBool = AtomicBool::new(false);
+/// When true, WM_STYLECHANGING will NOT force WS_EX_NOACTIVATE (allows keyboard focus)
+pub static FOCUS_ALLOWED: AtomicBool = AtomicBool::new(false);
 
 const WM_NCPAINT: u32 = 0x0085;
 const WM_NCACTIVATE: u32 = 0x0086;
@@ -80,8 +82,11 @@ unsafe extern "system" fn overlay_wndproc(
             } else if wparam.0 as i32 == GWL_EXSTYLE.0 {
                 // Strip frame bits but preserve WS_EX_TRANSPARENT (click-through toggle)
                 ss.new_style = (ss.new_style & !BANNED_EXSTYLE)
-                    | WS_EX_NOACTIVATE.0
                     | WS_EX_TOOLWINDOW.0;
+                // Only force WS_EX_NOACTIVATE when focus is not requested
+                if !FOCUS_ALLOWED.load(Ordering::Relaxed) {
+                    ss.new_style |= WS_EX_NOACTIVATE.0;
+                }
             }
             return LRESULT(0);
         }

@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 15";
+const SCRIPT_VERSION: &str = "# version: 16";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -101,7 +101,7 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] PermissionRequest response http_code=$HTTP_CODE" >> /tmp/masko-hook.txt
     BODY=$(echo "$RESPONSE" | sed '$d')
     [ -n "$BODY" ] && echo "$BODY"
-    [ "$HTTP_CODE" = "403" ] && exit 2
+    # Always exit 0 so Claude Code reads JSON stdout (exit 2 ignores stdout)
     exit 0
 else
     # All other events: write to drop file (file watcher picks them up).

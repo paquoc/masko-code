@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show, type JSX } from "solid-js";
 import { appStore } from "./stores/app-store";
+import { updateStore } from "./stores/update-store";
 import SessionList from "./components/dashboard/SessionList";
 import NotificationCenter from "./components/dashboard/NotificationCenter";
 import MascotGallery from "./components/dashboard/MascotGallery";
@@ -21,6 +22,8 @@ function App() {
 
   onMount(async () => {
     await appStore.start();
+    // Check for updates in background
+    updateStore.checkForUpdates();
   });
 
   const tabContent: Record<Tab, () => JSX.Element> = {
@@ -63,6 +66,20 @@ function App() {
 
         {/* Content */}
         <main class="flex-1 overflow-y-auto p-6">
+          {/* Update banner */}
+          <Show when={updateStore.hasUpdate && activeTab() !== "settings"}>
+            <div class="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-[--radius-card-sm] bg-orange-subtle border border-orange-primary/20">
+              <span class="text-sm font-body text-text-primary">
+                Update <span class="font-medium text-orange-primary">v{updateStore.version}</span> available
+              </span>
+              <button
+                class="ml-auto px-3 py-1 text-xs font-body font-medium rounded-[--radius-card-sm] bg-orange-primary text-white hover:bg-orange-hover transition-colors"
+                onClick={() => setActiveTab("settings")}
+              >
+                Update
+              </button>
+            </div>
+          </Show>
           <h2 class="font-heading text-xl font-bold text-text-primary mb-4">
             {TAB_META[activeTab()].label}
           </h2>
@@ -77,7 +94,7 @@ function tabBadge(tab: Tab): number {
   switch (tab) {
     case "sessions": return appStore.sessions.activeSessions.length;
     case "notifications": return appStore.notifications.unreadCount;
-    case "activity": return 0;
+    case "settings": return updateStore.hasUpdate ? 1 : 0;
     default: return 0;
   }
 }

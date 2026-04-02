@@ -110,6 +110,8 @@ pub fn run() {
             commands::open_devtools,
             commands::update_working_bubble_zone,
             commands::update_permission_zone,
+            commands::focus_overlay,
+            commands::unfocus_overlay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");

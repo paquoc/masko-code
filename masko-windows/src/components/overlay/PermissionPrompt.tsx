@@ -1,4 +1,5 @@
 import { Show, For, createSignal, createEffect } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import type { PendingPermission } from "../../models/permission";
 import { parsePermissionSuggestions, type PermissionSuggestion } from "../../models/permission";
 import { getAssistantDisplayName, getProjectName } from "../../models/agent-event";
@@ -55,6 +56,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   const [selectedOptions, setSelectedOptions] = createSignal<Set<string>>(new Set());
   const [otherActive, setOtherActive] = createSignal(false);
   const [otherText, setOtherText] = createSignal("");
+  const [feedback, setFeedback] = createSignal("");
 
   const event = () => props.permission.event;
   const toolName = () => event().tool_name || "Unknown";
@@ -96,7 +98,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
   const handleDeny = () => {
     log("handleDeny called, id:", props.permission.id);
-    permissionStore.resolve(props.permission.id, "deny");
+    const fb = feedback().trim();
+    permissionStore.resolve(props.permission.id, "deny", fb ? { type: "feedback", reason: fb } : undefined);
   };
 
   const handleCollapse = () => {
@@ -240,6 +243,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                           placeholder="Type your answer..."
                           value={otherText()}
                           onInput={(e) => setOtherText(e.currentTarget.value)}
+                          onFocus={() => invoke("focus_overlay").catch(() => {})}
+                          onBlur={() => invoke("unfocus_overlay").catch(() => {})}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") handleApprove();
                           }}
@@ -261,6 +266,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                       placeholder="Type your answer..."
                       value={answer()}
                       onInput={(e) => setAnswer(e.currentTarget.value)}
+                      onFocus={() => invoke("focus_overlay").catch(() => {})}
+                      onBlur={() => invoke("unfocus_overlay").catch(() => {})}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleApprove();
                       }}
@@ -383,15 +390,31 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
           </Show>
 
 
-          {/* <button
-            class="px-1.5 py-1.5 rounded-lg transition-colors"
-            style={{ "font-size": `${fsSm()}px`, color: a().mutedColor }}
-            onClick={handleCollapse}
-            title="Later"
-          >
-            ▼
-          </button> */}
         </div>
+
+        {/* Feedback input — for tool permissions only */}
+        <Show when={!isQ()}>
+          <div class="px-3 pb-2.5">
+            <input
+              type="text"
+              class="w-full px-2 py-1 rounded-lg border focus:outline-none"
+              style={{
+                "font-size": `${fsXs()}px`,
+                "border-color": "rgba(35,17,60,0.10)",
+                background: "rgba(35,17,60,0.02)",
+                color: a().textColor,
+              }}
+              placeholder="Tell what to do instead..."
+              value={feedback()}
+              onInput={(e) => setFeedback(e.currentTarget.value)}
+              onFocus={() => invoke("focus_overlay").catch(() => {})}
+              onBlur={() => invoke("unfocus_overlay").catch(() => {})}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleDeny();
+              }}
+            />
+          </div>
+        </Show>
       </div>
 
       {/* Speech bubble tail */}
