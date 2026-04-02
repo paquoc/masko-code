@@ -45,6 +45,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -56,6 +57,17 @@
       "digestAlgorithm": "sha256",
       "nsis": {
         "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCRUM5Q0VDRDM5RDhCRDMKUldUVGk1M1Q3SnpzdTdLaUZwZHgvMkkvRHl0QjYzTDhnS2loUkpWcEtHRlRsM3g5cnRjdTZXTUcK",
+      "endpoints": [
+        "https://github.com/RousselPaul/masko-code/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

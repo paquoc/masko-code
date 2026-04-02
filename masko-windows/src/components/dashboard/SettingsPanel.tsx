@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, Show } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import { emit } from "@tauri-apps/api/event";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus } from "../../services/ipc";
@@ -6,6 +6,8 @@ import type { WorkingBubbleSettings, BubbleAppearance } from "../../stores/worki
 import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
 import type { PendingPermission } from "../../models/permission";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { error } from "../../services/log";
 
 const SETTINGS_KEY = "masko_working_bubble_settings";
@@ -63,6 +65,12 @@ export default function SettingsPanel() {
   const [loading, setLoading] = createSignal("");
   const [bubbleSettings, setBubbleSettings] = createStore<WorkingBubbleSettings>(loadBubbleSettings());
 
+  // Update state
+  const [updateStatus, setUpdateStatus] = createSignal<"idle" | "checking" | "available" | "downloading" | "error">("idle");
+  const [updateVersion, setUpdateVersion] = createSignal("");
+  const [updateProgress, setUpdateProgress] = createSignal(0);
+  const [updateError, setUpdateError] = createSignal("");
+
   onMount(async () => {
     try {
       setHooksInstalled(await isHooksRegistered());
@@ -71,7 +79,53 @@ export default function SettingsPanel() {
     } catch (e) {
       error("Settings load error:", e);
     }
+    // Check for updates on mount
+    checkForUpdates();
   });
+
+  async function checkForUpdates() {
+    setUpdateStatus("checking");
+    setUpdateError("");
+    try {
+      const update = await check();
+      if (update) {
+        setUpdateVersion(update.version);
+        setUpdateStatus("available");
+      } else {
+        setUpdateStatus("idle");
+      }
+    } catch (e) {
+      error("Update check failed:", e);
+      setUpdateError(String(e));
+      setUpdateStatus("error");
+    }
+  }
+
+  async function downloadAndInstall() {
+    setUpdateStatus("downloading");
+    setUpdateProgress(0);
+    try {
+      const update = await check();
+      if (!update) return;
+      let totalLength = 0;
+      let downloaded = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started" && event.data.contentLength) {
+          totalLength = event.data.contentLength;
+        } else if (event.event === "Progress") {
+          downloaded += event.data.chunkLength;
+          if (totalLength > 0) {
+            setUpdateProgress(Math.round((downloaded / totalLength) * 100));
+          }
+        }
+      });
+      await relaunch();
+    } catch (e) {
+      error("Update install failed:", e);
+      setUpdateError(String(e));
+      setUpdateStatus("error");
+    }
+  }
 
   function persistAndEmit() {
     const data = JSON.parse(JSON.stringify(unwrap(bubbleSettings)));
@@ -242,6 +296,57 @@ export default function SettingsPanel() {
           >
             Reset to defaults
           </button>
+        </div>
+      </Section>
+
+      {/* Updates */}
+      <Section title="Updates">
+        <div class="flex items-center justify-between">
+          <div>
+            <Show when={updateStatus() === "idle"}>
+              <p class="text-sm font-body text-text-primary">You're up to date</p>
+              <p class="text-xs text-text-muted mt-0.5">Current version: v0.1.0</p>
+            </Show>
+            <Show when={updateStatus() === "checking"}>
+              <p class="text-sm font-body text-text-primary">Checking for updates...</p>
+            </Show>
+            <Show when={updateStatus() === "available"}>
+              <p class="text-sm font-body text-text-primary">
+                Update available: <span class="font-medium text-orange-primary">v{updateVersion()}</span>
+              </p>
+              <p class="text-xs text-text-muted mt-0.5">Ready to download and install</p>
+            </Show>
+            <Show when={updateStatus() === "downloading"}>
+              <p class="text-sm font-body text-text-primary">Downloading update...</p>
+              <div class="mt-1.5 w-48 h-1.5 rounded-full bg-border overflow-hidden">
+                <div
+                  class="h-full rounded-full bg-orange-primary transition-all duration-300"
+                  style={{ width: `${updateProgress()}%` }}
+                />
+              </div>
+              <p class="text-xs text-text-muted mt-0.5">{updateProgress()}%</p>
+            </Show>
+            <Show when={updateStatus() === "error"}>
+              <p class="text-sm font-body text-destructive">Update failed</p>
+              <p class="text-xs text-text-muted mt-0.5">{updateError()}</p>
+            </Show>
+          </div>
+          <Show when={updateStatus() === "available"}>
+            <button
+              class="px-3 py-1.5 text-sm font-body font-medium rounded-[--radius-card-sm] bg-orange-primary text-white hover:bg-orange-hover transition-colors"
+              onClick={downloadAndInstall}
+            >
+              Install
+            </button>
+          </Show>
+          <Show when={updateStatus() === "idle" || updateStatus() === "error"}>
+            <button
+              class="px-3 py-1.5 text-sm font-body font-medium rounded-[--radius-card-sm] border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+              onClick={checkForUpdates}
+            >
+              Check
+            </button>
+          </Show>
         </div>
       </Section>
 
