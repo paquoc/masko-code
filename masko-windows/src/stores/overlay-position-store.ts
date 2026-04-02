@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 const STORAGE_KEY = "mascot_position";
 const SIZE_KEY = "mascot_size";
 const OPACITY_KEY = "mascot_opacity";
-const FLIP_Y_KEY = "mascot_flip_y";
+const FLIP_X_KEY = "mascot_flip_x";
 const DEFAULT_MASCOT_SIZE = 200;
 const SYNC_THROTTLE_MS = 16; // ~60fps
 
@@ -32,8 +32,8 @@ const [mascotSize, setMascotSizeSignal] = createSignal(
 const [mascotOpacity, setMascotOpacitySignal] = createSignal(
   isNaN(savedOpacity) ? 1 : Math.max(0.1, Math.min(1, savedOpacity)),
 );
-const [flipY, setFlipYSignal] = createSignal(
-  localStorage.getItem(FLIP_Y_KEY) === "true",
+const [flipX, setFlipXSignal] = createSignal(
+  localStorage.getItem(FLIP_X_KEY) === "true",
 );
 
 let lastSyncTime = 0;
@@ -80,10 +80,10 @@ function setMascotOpacity(opacity: number) {
   localStorage.setItem(OPACITY_KEY, String(clamped));
 }
 
-function toggleFlipY() {
-  const next = !flipY();
-  setFlipYSignal(next);
-  localStorage.setItem(FLIP_Y_KEY, String(next));
+function toggleFlipX() {
+  const next = !flipX();
+  setFlipXSignal(next);
+  localStorage.setItem(FLIP_X_KEY, String(next));
 }
 
 function persistPosition() {
@@ -163,7 +163,7 @@ export const overlayPositionStore = {
   get monitorH() { return monitorH(); },
   get mascotSize() { return mascotSize(); },
   get mascotOpacity() { return mascotOpacity(); },
-  get flipY() { return flipY(); },
+  get flipX() { return flipX(); },
   /** @deprecated use mascotSize getter — kept for compatibility */
   MASCOT_SIZE: DEFAULT_MASCOT_SIZE,
   updatePosition,
@@ -173,5 +173,5 @@ export const overlayPositionStore = {
   screenCenter,
   setMascotSize,
   setMascotOpacity,
-  toggleFlipY,
+  toggleFlipX,
 };
