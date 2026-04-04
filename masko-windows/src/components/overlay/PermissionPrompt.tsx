@@ -130,7 +130,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   const fsSm = () => a().fontSize + 1;     // body text
   const fsMono = () => a().fontSize;        // code block
   const fsMuted = () => a().fontSize - 1;   // secondary
-  const fsXs = () => a().fontSize - 2;      // smallest (suggestions)
+  const fsXs = () => a().fontSize - 1;      // secondary (suggestions)
 
   const dir = () => props.tailDir || "down";
 

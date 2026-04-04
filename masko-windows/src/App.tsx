@@ -1,4 +1,5 @@
-import { createSignal, onMount, Show, type JSX } from "solid-js";
+import { createSignal, onMount, onCleanup, Show, type JSX } from "solid-js";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { appStore } from "./stores/app-store";
 import { updateStore } from "./stores/update-store";
 import SessionList from "./components/dashboard/SessionList";
@@ -20,11 +21,19 @@ const TAB_META: Record<Tab, { label: string; icon: string }> = {
 function App() {
   const [activeTab, setActiveTab] = createSignal<Tab>("sessions");
 
+  let unlisten: UnlistenFn | undefined;
+
   onMount(async () => {
-    await appStore.start();
-    // Check for updates in background
+    appStore.start();
+    // Check for updates independently — don't block on appStore.start()
     updateStore.checkForUpdates();
+    // Listen for tray navigation events
+    unlisten = await listen<string>("navigate", (e) => {
+      if (e.payload === "settings") setActiveTab("settings");
+    });
   });
+
+  onCleanup(() => unlisten?.());
 
   const tabContent: Record<Tab, () => JSX.Element> = {
     sessions: () => <SessionList />,

@@ -12,24 +12,34 @@ const [errorMsg, setErrorMsg] = createSignal("");
 
 let cachedUpdate: Update | null = null;
 
-async function checkForUpdates(): Promise<void> {
+async function checkForUpdates(retries = 2): Promise<void> {
   setStatus("checking");
   setErrorMsg("");
-  try {
-    const update = await check();
-    if (update) {
-      cachedUpdate = update;
-      setVersion(update.version);
-      setStatus("available");
-      log(`[update-store] Update available: v${update.version}`);
-    } else {
-      cachedUpdate = null;
-      setStatus("idle");
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      log(`[update-store] Checking for updates (attempt ${attempt + 1})...`);
+      const update = await check();
+      if (update) {
+        cachedUpdate = update;
+        setVersion(update.version);
+        setStatus("available");
+        log(`[update-store] Update available: v${update.version}`);
+      } else {
+        cachedUpdate = null;
+        setStatus("idle");
+        log("[update-store] Already up to date");
+      }
+      return; // success — exit retry loop
+    } catch (e) {
+      error(`[update-store] Check failed (attempt ${attempt + 1}):`, e);
+      if (attempt < retries) {
+        // Wait before retrying: 3s, 6s
+        await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+      } else {
+        setErrorMsg(String(e));
+        setStatus("error");
+      }
     }
-  } catch (e) {
-    error("[update-store] Check failed:", e);
-    setErrorMsg(String(e));
-    setStatus("error");
   }
 }
 

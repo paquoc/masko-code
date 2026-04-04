@@ -66,9 +66,33 @@ pub fn run() {
                     let emit_handle = app.handle().clone();
                     std::thread::spawn(move || {
                         let mut was_ignore = false;
+                        let mut tick_count: u64 = 0;
                         emit_handle.emit("overlay-cursor-zone", true).ok();
                         loop {
                             std::thread::sleep(std::time::Duration::from_millis(16));
+                            tick_count += 1;
+
+                            // Validate HWND every ~60s (3750 ticks * 16ms)
+                            if tick_count % 3750 == 0 {
+                                let hwnd = windows::Win32::Foundation::HWND(
+                                    hwnd_raw as *mut std::ffi::c_void,
+                                );
+                                let valid = unsafe {
+                                    windows::Win32::UI::WindowsAndMessaging::IsWindow(hwnd)
+                                        .as_bool()
+                                };
+                                let visible = unsafe {
+                                    windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(hwnd)
+                                        .as_bool()
+                                };
+                                if !valid || !visible {
+                                    mlog_err!(
+                                        "[cursor-poll] HWND invalid={} visible={} at tick={}",
+                                        !valid, visible, tick_count
+                                    );
+                                }
+                            }
+
                             let interactive =
                                 crate::win_overlay::is_cursor_in_interactive_area(hwnd_raw);
                             let should_ignore = !interactive;

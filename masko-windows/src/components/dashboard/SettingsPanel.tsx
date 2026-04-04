@@ -6,6 +6,7 @@ import type { WorkingBubbleSettings, BubbleAppearance } from "../../stores/worki
 import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
 import type { PendingPermission } from "../../models/permission";
+import { invoke } from "@tauri-apps/api/core";
 import { error } from "../../services/log";
 import { updateStore } from "../../stores/update-store";
 import { hotkeyStore, eventToBinding, bindingToLabel, type HotkeyBinding, type HotkeySettings } from "../../stores/hotkey-store";
@@ -268,7 +269,7 @@ export default function SettingsPanel() {
           <div>
             <Show when={updateStore.status === "idle"}>
               <p class="text-sm font-body text-text-primary">You're up to date</p>
-              <p class="text-xs text-text-muted mt-0.5">Current version: v1.12.0</p>
+              <p class="text-xs text-text-muted mt-0.5">Current version: v1.13.0</p>
             </Show>
             <Show when={updateStore.status === "checking"}>
               <p class="text-sm font-body text-text-primary">Checking for updates...</p>
@@ -313,10 +314,20 @@ export default function SettingsPanel() {
         </div>
       </Section>
 
+      {/* Debug */}
+      <Section title="Debug">
+        <button
+          class="px-3 py-1.5 text-xs font-body font-medium rounded-[--radius-card-sm] bg-surface-hover text-text-primary hover:bg-border transition-colors"
+          onClick={() => invoke("open_devtools").catch(() => {})}
+        >
+          Open Overlay DevTools
+        </button>
+      </Section>
+
       {/* About */}
       <Section title="About">
         <div class="space-y-1 text-sm text-text-muted font-body">
-          <p><span class="text-text-primary font-medium">Masko Code</span> v1.12.0</p>
+          <p><span class="text-text-primary font-medium">Masko Code</span> v1.13.0</p>
           <p>Your AI coding assistant companion for Windows.</p>
           <p class="text-xs mt-2">
             <a href="https://masko.ai" class="text-orange-primary hover:underline" target="_blank">

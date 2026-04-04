@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 16";
+const SCRIPT_VERSION: &str = "# version: 17";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -57,7 +57,7 @@ fn generate_script(port: u16) -> String {
 # Log ALL hook invocations before any other logic
 INPUT=$(cat 2>/dev/null || echo '{{}}')
 EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] event=$EVENT_NAME input=$INPUT" >> /tmp/masko-hook.txt
+# echo "[$(date '+%Y-%m-%d %H:%M:%S')] event=$EVENT_NAME input=$INPUT" >> /dev/null
 
 DROPDIR="$HOME/.masko-desktop/hook-drops"
 
@@ -67,7 +67,7 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     HEALTH_OK=0
     for _i in 1 2 3 4 5; do
         HC_RESULT=$(curl -s -o /dev/null -w "%{{http_code}}" --connect-timeout 1 "http://localhost:{port}/health" 2>&1)
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] health check port={port} result=$HC_RESULT" >> /tmp/masko-hook.txt
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] health check port={port} result=$HC_RESULT" >> /dev/null
         if [ "$HC_RESULT" = "200" ]; then
             HEALTH_OK=1
             break
@@ -75,7 +75,7 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
         sleep 0.2
     done
     if [ "$HEALTH_OK" != "1" ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] health check failed after 5 tries, aborting PermissionRequest" >> /tmp/masko-hook.txt
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] health check failed after 5 tries, aborting PermissionRequest" >> /dev/null
         exit 0
     fi
 
@@ -86,7 +86,7 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     TMPFILE=$(mktemp /tmp/masko-hook.XXXXXX 2>/dev/null || mktemp)
     INFILE=$(mktemp /tmp/masko-in.XXXXXX 2>/dev/null || mktemp)
     printf '%s' "$INPUT" > "$INFILE"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] sending PermissionRequest to http://localhost:{port}/hook" >> /tmp/masko-hook.txt
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] sending PermissionRequest to http://localhost:{port}/hook" >> /dev/null
     curl -s -w "\n%{{http_code}}" -X POST \
       -H "Content-Type: application/json" \
       --data-binary "@$INFILE" \
@@ -98,7 +98,7 @@ if [ "$EVENT_NAME" = "PermissionRequest" ]; then
     RESPONSE=$(cat "$TMPFILE")
     rm -f "$TMPFILE" "$INFILE"
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PermissionRequest response http_code=$HTTP_CODE" >> /tmp/masko-hook.txt
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PermissionRequest response http_code=$HTTP_CODE" >> /dev/null
     BODY=$(echo "$RESPONSE" | sed '$d')
     [ -n "$BODY" ] && echo "$BODY"
     # Always exit 0 so Claude Code reads JSON stdout (exit 2 ignores stdout)
