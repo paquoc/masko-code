@@ -72,24 +72,21 @@ pub fn run() {
                             std::thread::sleep(std::time::Duration::from_millis(16));
                             tick_count += 1;
 
-                            // Validate HWND every ~60s (3750 ticks * 16ms)
-                            if tick_count % 3750 == 0 {
+                            // Re-assert TOPMOST every ~30s (1875 ticks * 16ms)
+                            // Windows can steal TOPMOST when other apps claim it
+                            if tick_count % 1875 == 0 {
                                 let hwnd = windows::Win32::Foundation::HWND(
                                     hwnd_raw as *mut std::ffi::c_void,
                                 );
-                                let valid = unsafe {
-                                    windows::Win32::UI::WindowsAndMessaging::IsWindow(hwnd)
-                                        .as_bool()
-                                };
-                                let visible = unsafe {
-                                    windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(hwnd)
-                                        .as_bool()
-                                };
-                                if !valid || !visible {
-                                    mlog_err!(
-                                        "[cursor-poll] HWND invalid={} visible={} at tick={}",
-                                        !valid, visible, tick_count
-                                    );
+                                unsafe {
+                                    windows::Win32::UI::WindowsAndMessaging::SetWindowPos(
+                                        hwnd,
+                                        windows::Win32::UI::WindowsAndMessaging::HWND_TOPMOST,
+                                        0, 0, 0, 0,
+                                        windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE
+                                            | windows::Win32::UI::WindowsAndMessaging::SWP_NOSIZE
+                                            | windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE,
+                                    ).ok();
                                 }
                             }
 

@@ -375,7 +375,6 @@ function MascotOverlay() {
     if (!url) {
       // No video for this state — keep the last frame visible instead of hiding mascot.
       // Pause the active video so it freezes on its last frame.
-      log(`[video] url=null, freezing active slot=${activeSlot()}`);
       const active = activeSlot() === "A" ? elA : elB;
       active.loop = false;
       active.pause();
@@ -389,7 +388,6 @@ function MascotOverlay() {
       active.playbackRate = rate;
       return;
     }
-    log(`[video] loading url=${url} (prev=${currentVideoSrc}), slot=${activeSlot()}, isFirst=${isFirstLoad}`);
     currentVideoSrc = url;
 
     if (isFirstLoad) {
@@ -400,13 +398,9 @@ function MascotOverlay() {
       elA.src = url;
       elA.load();
       elA.addEventListener("canplay", () => {
-        log(`[video] first load canplay, showing slot A`);
         elA.play().catch(() => { });
         elA.style.opacity = "1";
         setActiveSlot("A");
-      }, { once: true });
-      elA.addEventListener("error", () => {
-        error(`[video] first load ERROR slot A, src=${elA.src}`);
       }, { once: true });
       return;
     }
@@ -422,31 +416,12 @@ function MascotOverlay() {
     inactiveEl.src = url;
     inactiveEl.load();
     inactiveEl.addEventListener("canplay", () => {
-      log(`[video] canplay slot=${inactiveSlot}, swapping`);
       // Start playback so the compositor gets a frame
       inactiveEl.play().catch(() => { });
       // Wait for the frame to actually render before swapping
       waitForFrameThenSwap(inactiveEl, activeEl, inactiveSlot);
     }, { once: true });
-    inactiveEl.addEventListener("error", () => {
-      error(`[video] load ERROR slot=${inactiveSlot}, src=${inactiveEl.src}`);
-    }, { once: true });
   });
-
-  // --- Periodic visibility diagnostic (every 60s) ---
-  const visibilityInterval = setInterval(() => {
-    const elA = videoRefA();
-    const elB = videoRefB();
-    const slot = activeSlot();
-    const active = slot === "A" ? elA : elB;
-    const sm = stateMachine();
-    log(
-      `[diag] slot=${slot} opacityA=${elA?.style.opacity} opacityB=${elB?.style.opacity}` +
-      ` paused=${active?.paused} readyState=${active?.readyState} src=${active?.src?.slice(-40)}` +
-      ` smUrl=${sm?.currentVideoUrl?.slice(-40) ?? "null"} smPhase=${sm?.phase ?? "?"}`
-    );
-  }, 60_000);
-  onCleanup(() => clearInterval(visibilityInterval));
 
   // Reset alert state when all permissions are resolved
   createEffect(() => {
