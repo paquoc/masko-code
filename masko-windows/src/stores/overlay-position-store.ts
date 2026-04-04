@@ -54,16 +54,16 @@ function syncToRust(px: number, py: number, size?: number) {
   }
 }
 
-function updatePosition(newX: number, newY: number) {
-  // Clamp to window bounds
-  const size = mascotSize();
+function updatePosition(newX: number, newY: number, sizeOverride?: number) {
+  // Clamp to window bounds using effective size
+  const size = sizeOverride ?? mascotSize();
   const maxX = window.innerWidth - size;
   const maxY = window.innerHeight - size;
   const cx = Math.max(0, Math.min(newX, maxX));
   const cy = Math.max(0, Math.min(newY, maxY));
   setX(cx);
   setY(cy);
-  syncToRust(cx, cy);
+  syncToRust(cx, cy, size);
 }
 
 function setMascotSize(size: number) {

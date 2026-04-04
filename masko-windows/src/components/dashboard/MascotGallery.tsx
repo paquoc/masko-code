@@ -45,12 +45,31 @@ export default function MascotGallery() {
         }
       >
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {/* No Mascot card */}
+          <button
+            class="bg-surface rounded-card border-2 p-4 text-center transition-all hover:shadow-sm flex flex-col items-center justify-center gap-2"
+            classList={{
+              "border-orange-primary shadow-sm": appStore.mascots.disabled,
+              "border-border hover:border-border-hover": !appStore.mascots.disabled,
+            }}
+            onClick={() => appStore.mascots.setMascotDisabled(!appStore.mascots.disabled)}
+          >
+            <div class="w-16 h-16 mx-auto rounded-full bg-orange-subtle flex items-center justify-center overflow-hidden">
+              <img src="/logo.png" alt="No mascot" class="w-8 h-8 object-contain opacity-60" />
+            </div>
+            <span class="font-body font-medium text-sm text-text-primary block">No Mascot</span>
+            <span class="text-[10px] font-medium mt-1 block" classList={{ "text-orange-primary": appStore.mascots.disabled, "invisible": !appStore.mascots.disabled }}>Active</span>
+          </button>
+
           <For each={mascots()}>
             {(mascot) => (
               <MascotCard
                 mascot={mascot}
-                isActive={activeId() === mascot.id}
-                onSelect={() => appStore.mascots.setActiveMascot(mascot.id)}
+                isActive={!appStore.mascots.disabled && activeId() === mascot.id}
+                onSelect={() => {
+                  if (appStore.mascots.disabled) appStore.mascots.setMascotDisabled(false);
+                  appStore.mascots.setActiveMascot(mascot.id);
+                }}
                 onRemove={mascot.templateSlug ? undefined : () => {
                   setRemovingMascot(mascot);
                 }}

@@ -7,6 +7,7 @@ import { warn } from "../services/log";
 
 const STORAGE_KEY = "masko_saved_mascots";
 const ACTIVE_KEY = "masko_active_mascot";
+const DISABLED_KEY = "masko_mascot_disabled";
 
 // Load saved mascots from localStorage
 function loadSavedMascots(): SavedMascot[] {
@@ -26,6 +27,19 @@ const [mascots, setMascots] = createStore<SavedMascot[]>(loadSavedMascots());
 const [activeMascotId, setActiveMascotId] = createSignal<string | null>(
   localStorage.getItem(ACTIVE_KEY),
 );
+const [mascotDisabled, setMascotDisabledSignal] = createSignal(
+  localStorage.getItem(DISABLED_KEY) === "true",
+);
+
+export function setMascotDisabled(disabled: boolean): void {
+  setMascotDisabledSignal(disabled);
+  if (disabled) {
+    localStorage.setItem(DISABLED_KEY, "true");
+  } else {
+    localStorage.removeItem(DISABLED_KEY);
+  }
+  emit("mascot-disabled", { disabled }).catch(() => {});
+}
 
 const BUNDLED_SLUGS = ["clippy", "masko", "otto", "nugget", "rusty", 
   "cupidon", "madame-patate", "dog-3d", "neko", "orb", "maya", "eraser", "sprouty"];
@@ -116,8 +130,10 @@ export const mascotStore = {
   get mascots() { return mascots; },
   get activeMascotId() { return activeMascotId(); },
   get activeConfig() { return getActiveMascotConfig(); },
+  get disabled() { return mascotDisabled(); },
   loadBundledMascots,
   addMascot,
   removeMascot,
   setActiveMascot,
+  setMascotDisabled,
 };

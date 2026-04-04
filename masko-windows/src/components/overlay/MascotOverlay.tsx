@@ -239,6 +239,9 @@ function MascotOverlay() {
   const [isDragging, setIsDragging] = createSignal(false);
   const [isHovering, setIsHovering] = createSignal(false);
   const [contextMenu, setContextMenu] = createSignal<{ x: number; y: number } | null>(null);
+  const [mascotDisabled, setMascotDisabled] = createSignal(
+    localStorage.getItem("masko_mascot_disabled") === "true",
+  );
 
   // Track agent state so we can restore it when switching mascots
   const agentState = {
@@ -305,6 +308,11 @@ function MascotOverlay() {
     // Restore mascot position within the fullscreen overlay
     await overlayPositionStore.restorePosition();
 
+    // If starting in disabled mode, sync hit zone with the small icon size
+    if (mascotDisabled()) {
+      overlayPositionStore.updatePosition(overlayPositionStore.x, overlayPositionStore.y, DISABLED_ICON_SIZE);
+    }
+
     const storedId = localStorage.getItem("overlay_mascot_slug");
     const slug = storedId || "clippy";
     await loadMascotBySlug(slug);
@@ -363,6 +371,15 @@ function MascotOverlay() {
       requestAnimationFrame(() => requestAnimationFrame(() => doSwap()));
     }
   };
+
+  // When re-enabling mascot, reset video tracking so the loading effect does a fresh load
+  // (Show unmounts/remounts video elements, but currentVideoSrc still holds the old URL)
+  createEffect(() => {
+    if (!mascotDisabled()) {
+      currentVideoSrc = "";
+      isFirstLoad = true;
+    }
+  });
 
   createEffect(() => {
     const sm = stateMachine();
@@ -674,6 +691,24 @@ function MascotOverlay() {
     onCleanup(unlisten);
   });
 
+  // Listen for mascot disabled toggle from dashboard
+  onMount(async () => {
+    const unlisten = await listen<{ disabled: boolean }>("mascot-disabled", (e) => {
+      const disabled = e.payload.disabled;
+      if (disabled === mascotDisabled()) return;
+      setMascotDisabled(disabled);
+      // Only sync hit zone to Rust — don't change position
+      const size = disabled ? DISABLED_ICON_SIZE : overlayPositionStore.mascotSize;
+      invoke("update_mascot_position", {
+        x: overlayPositionStore.x,
+        y: overlayPositionStore.y,
+        w: size,
+        h: size,
+      }).catch(() => {});
+    });
+    onCleanup(unlisten);
+  });
+
   // Listen for bubble settings changes from dashboard
   onMount(async () => {
     const unlisten = await listen<any>("bubble-settings-changed", (e) => {
@@ -725,8 +760,9 @@ function MascotOverlay() {
       if (!moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       moved = true;
       if (!isDragging()) setIsDragging(true);
-      // Overlay spans the entire virtual desktop — position is clamped to all monitors
-      overlayPositionStore.updatePosition(ev.clientX - offsetX, ev.clientY - offsetY);
+      // When disabled, clamp and sync using the small icon size
+      const sizeOverride = mascotDisabled() ? DISABLED_ICON_SIZE : undefined;
+      overlayPositionStore.updatePosition(ev.clientX - offsetX, ev.clientY - offsetY, sizeOverride);
     };
 
     const onUp = () => {
@@ -769,13 +805,17 @@ function MascotOverlay() {
     if (sm && !sm.isLoopVideo) sm.handleVideoEnded();
   };
 
+  // When disabled, use a fixed small icon size for layout calculations
+  const DISABLED_ICON_SIZE = 44;
+  const effectiveSize = () => mascotDisabled() ? DISABLED_ICON_SIZE : overlayPositionStore.mascotSize;
+
   // Popup layout: depends on mascot position within the screen
   const GAP = 4;
 
   const bubbleLayout = (popupW: number, popupH: number): { x: number; y: number; tail: TailDir } => {
     const mx = overlayPositionStore.x;
     const my = overlayPositionStore.y;
-    const MASCOT = overlayPositionStore.mascotSize;
+    const MASCOT = effectiveSize();
     const screenW = window.innerWidth;
     const screenH = window.innerHeight;
 
@@ -881,65 +921,104 @@ function MascotOverlay() {
         }}
       </Show>
 
-      {/* Mascot video — dynamically positioned and sized */}
-      <div
-        class="absolute cursor-grab rounded-2xl transition-colors duration-200"
-        classList={{ "cursor-grabbing": isDragging() }}
-        style={{
-          left: `${overlayPositionStore.x}px`,
-          top: `${overlayPositionStore.y}px`,
-          width: `${overlayPositionStore.mascotSize}px`,
-          height: `${overlayPositionStore.mascotSize}px`,
-          opacity: String(overlayPositionStore.mascotOpacity),
-          background: isHovering() ? (workingBubbleStore.settings.appearance.hoverColor || "rgba(255,176,72,0.45)") : "transparent",
-        }}
-        onMouseDown={handleMouseDown}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+      {/* Mascot — either full video or small icon when disabled */}
+      <Show
+        when={!mascotDisabled()}
+        fallback={
+          /* Disabled: small fixed-size icon — bubbles stay close */
+          <div
+            class="absolute cursor-grab flex items-center justify-center rounded-xl"
+            classList={{ "cursor-grabbing": isDragging() }}
+            style={{
+              left: `${overlayPositionStore.x}px`,
+              top: `${overlayPositionStore.y}px`,
+              width: `${DISABLED_ICON_SIZE}px`,
+              height: `${DISABLED_ICON_SIZE}px`,
+              opacity: String(overlayPositionStore.mascotOpacity),
+              background: isHovering() ? (workingBubbleStore.settings.appearance.hoverColor || "rgba(255,176,72,0.45)") : "transparent",
+              transition: "background 0.15s",
+            }}
+            onMouseDown={handleMouseDown}
+            onContextMenu={handleContextMenu}
+            onMouseEnter={() => setIsHovering(true)}
+            onMouseLeave={() => setIsHovering(false)}
+          >
+            <img
+              src="/logo.png"
+              alt="Masko"
+              style={{
+                width: "28px",
+                height: "28px",
+                "object-fit": "contain",
+                opacity: isHovering() ? "1" : "1",
+                transition: "opacity 0.15s",
+                "pointer-events": "none",
+                "user-select": "none",
+              }}
+            />
+          </div>
+        }
       >
-        {/* A/B double-buffer: two videos stacked, two-phase swap for flicker-free transitions.
-             Opacity starts at 0 and is controlled purely by JS (waitForFrameThenSwap). */}
-        <video
-          ref={setVideoRefA}
-          muted
-          playsinline
-          onEnded={(e) => handleVideoEnded(e.currentTarget)}
+        {/* Mascot video — dynamically positioned and sized */}
+        <div
+          class="absolute cursor-grab rounded-2xl transition-colors duration-200"
+          classList={{ "cursor-grabbing": isDragging() }}
           style={{
-            position: "absolute",
-            inset: "0",
-            width: "100%",
-            height: "100%",
-            "object-fit": "contain",
-            background: "transparent",
-            opacity: "0",
-            transition: "none",
-            "will-change": "opacity",
-            "pointer-events": activeSlot() === "A" ? "auto" : "none",
-            transform: overlayPositionStore.flipX ? "scaleX(-1)" : "none",
+            left: `${overlayPositionStore.x}px`,
+            top: `${overlayPositionStore.y}px`,
+            width: `${overlayPositionStore.mascotSize}px`,
+            height: `${overlayPositionStore.mascotSize}px`,
+            opacity: String(overlayPositionStore.mascotOpacity),
+            background: isHovering() ? (workingBubbleStore.settings.appearance.hoverColor || "rgba(255,176,72,0.45)") : "transparent",
           }}
-        />
-        <video
-          ref={setVideoRefB}
-          muted
-          playsinline
-          onEnded={(e) => handleVideoEnded(e.currentTarget)}
-          style={{
-            position: "absolute",
-            inset: "0",
-            width: "100%",
-            height: "100%",
-            "object-fit": "contain",
-            background: "transparent",
-            opacity: "0",
-            transition: "none",
-            "will-change": "opacity",
-            "pointer-events": activeSlot() === "B" ? "auto" : "none",
-            transform: overlayPositionStore.flipX ? "scaleX(-1)" : "none",
-          }}
-        />
-      </div>
+          onMouseDown={handleMouseDown}
+          onClick={handleClick}
+          onContextMenu={handleContextMenu}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          {/* A/B double-buffer: two videos stacked, two-phase swap for flicker-free transitions.
+               Opacity starts at 0 and is controlled purely by JS (waitForFrameThenSwap). */}
+          <video
+            ref={setVideoRefA}
+            muted
+            playsinline
+            onEnded={(e) => handleVideoEnded(e.currentTarget)}
+            style={{
+              position: "absolute",
+              inset: "0",
+              width: "100%",
+              height: "100%",
+              "object-fit": "contain",
+              background: "transparent",
+              opacity: "0",
+              transition: "none",
+              "will-change": "opacity",
+              "pointer-events": activeSlot() === "A" ? "auto" : "none",
+              transform: overlayPositionStore.flipX ? "scaleX(-1)" : "none",
+            }}
+          />
+          <video
+            ref={setVideoRefB}
+            muted
+            playsinline
+            onEnded={(e) => handleVideoEnded(e.currentTarget)}
+            style={{
+              position: "absolute",
+              inset: "0",
+              width: "100%",
+              height: "100%",
+              "object-fit": "contain",
+              background: "transparent",
+              opacity: "0",
+              transition: "none",
+              "will-change": "opacity",
+              "pointer-events": activeSlot() === "B" ? "auto" : "none",
+              transform: overlayPositionStore.flipX ? "scaleX(-1)" : "none",
+            }}
+          />
+        </div>
+      </Show>
 
       {/* Context menu */}
       <Show when={contextMenu()}>

@@ -177,7 +177,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
               onClick={(e) => { e.stopPropagation(); props.onToggleExpand?.(); }}
               title={props.expanded ? "Collapse" : "Expand"}
             >
-              {props.expanded ? "⊟" : "⊞"}
+              {props.expanded ? "↘" : "⤡"}
             </button>
           </div>
         </div>
@@ -282,12 +282,13 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             {/* Tool use mode — show command/path */}
             <Show when={toolInput()}>
               <div
-                class="rounded-lg px-2 py-1 mb-1.5 font-mono leading-snug overflow-y-auto"
-                classList={{ "max-h-16": !props.expanded, "max-h-40": !!props.expanded }}
+                class="select-text rounded-lg px-2 py-1 mb-1.5 font-mono leading-snug overflow-y-auto"
+                classList={{ "max-h-20": !props.expanded, "max-h-40": !!props.expanded }}
                 style={{
                   "font-size": `${fsMono()}px`,
                   "overflow-wrap": "break-word",
                   "word-break": "normal",
+                  "user-select": "text",
                   background: "rgba(35,17,60,0.04)",
                   border: "1px solid rgba(35,17,60,0.06)",
                   color: a().textColor,
