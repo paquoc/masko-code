@@ -27,7 +27,8 @@ const [activeMascotId, setActiveMascotId] = createSignal<string | null>(
   localStorage.getItem(ACTIVE_KEY),
 );
 
-const BUNDLED_SLUGS = ["clippy", "masko", "otto", "nugget", "rusty", "cupidon", "madame-patate", "dog-3d", "neko", "orb"];
+const BUNDLED_SLUGS = ["clippy", "masko", "otto", "nugget", "rusty", 
+  "cupidon", "madame-patate", "dog-3d", "neko", "orb", "maya", "eraser", "sprouty"];
 
 /** Load bundled mascot configs from assets, adding any missing ones */
 export async function loadBundledMascots(): Promise<void> {

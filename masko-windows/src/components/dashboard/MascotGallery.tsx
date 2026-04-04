@@ -27,6 +27,7 @@ export default function MascotGallery() {
   const activeId = () => appStore.mascots.activeMascotId;
   const [showAddModal, setShowAddModal] = createSignal(false);
   const [activeDebugState, setActiveDebugState] = createSignal<string | null>(null);
+  const [removingMascot, setRemovingMascot] = createSignal<SavedMascot | null>(null);
 
   function setDebugState(stateId: string) {
     setActiveDebugState(stateId);
@@ -38,7 +39,7 @@ export default function MascotGallery() {
       <Show
         when={mascots().length > 0}
         fallback={
-          <div class="text-sm text-text-muted bg-surface rounded-[--radius-card] border border-border p-6 text-center">
+          <div class="text-sm text-text-muted bg-surface rounded-card border border-border p-6 text-center">
             Loading mascots...
           </div>
         }
@@ -50,13 +51,16 @@ export default function MascotGallery() {
                 mascot={mascot}
                 isActive={activeId() === mascot.id}
                 onSelect={() => appStore.mascots.setActiveMascot(mascot.id)}
+                onRemove={mascot.templateSlug ? undefined : () => {
+                  setRemovingMascot(mascot);
+                }}
               />
             )}
           </For>
 
           {/* Add mascot card */}
           <button
-            class="bg-surface rounded-[--radius-card] border-2 border-dashed border-border hover:border-orange-primary p-4 text-center transition-all hover:shadow-sm flex flex-col items-center justify-center gap-2"
+            class="bg-surface rounded-card border-2 border-dashed border-border hover:border-orange-primary p-4 text-center transition-all hover:shadow-sm flex flex-col items-center justify-center gap-2"
             onClick={() => setShowAddModal(true)}
           >
             <div class="w-16 h-16 mx-auto rounded-full bg-orange-subtle flex items-center justify-center">
@@ -70,7 +74,7 @@ export default function MascotGallery() {
       </Show>
 
       {/* Debug: test animation states */}
-      <div class="bg-surface rounded-[--radius-card] border border-border p-4 space-y-3">
+      <div class="bg-surface rounded-card border border-border p-4 space-y-3">
         <p class="text-xs text-text-muted font-body font-semibold uppercase tracking-wider">
           Debug States
         </p>
@@ -94,7 +98,7 @@ export default function MascotGallery() {
       </div>
 
       {/* Community link */}
-      <div class="bg-surface rounded-[--radius-card] border border-border border-dashed p-4 text-center">
+      <div class="bg-surface rounded-card border border-border border-dashed p-4 text-center">
         <p class="text-sm text-text-muted font-body">
           Want more mascots?
         </p>
@@ -109,6 +113,30 @@ export default function MascotGallery() {
       {/* Add mascot modal */}
       <Show when={showAddModal()}>
         <AddMascotModal onClose={() => setShowAddModal(false)} />
+      </Show>
+
+      {/* Remove mascot confirm */}
+      <Show when={removingMascot()}>
+        {(mascot) => (
+          <ConfirmModal
+            title="Remove mascot"
+            message={`Remove "${mascot().name}"? This cannot be undone.`}
+            confirmLabel="Remove"
+            onConfirm={() => {
+              const id = mascot().id;
+              const wasActive = activeId() === id;
+              appStore.mascots.removeMascot(id);
+              if (wasActive) {
+                const remaining = appStore.mascots.mascots;
+                if (remaining.length > 0) {
+                  appStore.mascots.setActiveMascot(remaining[0].id);
+                }
+              }
+              setRemovingMascot(null);
+            }}
+            onCancel={() => setRemovingMascot(null)}
+          />
+        )}
       </Show>
     </div>
   );
@@ -144,7 +172,7 @@ function AddMascotModal(props: { onClose: () => void }) {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={(e) => e.target === e.currentTarget && props.onClose()}
     >
-      <div class="bg-background rounded-[--radius-card] border border-border shadow-lg w-full max-w-lg mx-4 p-5 space-y-4">
+      <div class="bg-surface rounded-card border border-border shadow-lg w-full max-w-lg mx-4 p-5 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="font-heading font-semibold text-text-primary">Add mascot</h3>
           <button
@@ -167,7 +195,7 @@ function AddMascotModal(props: { onClose: () => void }) {
         </p>
 
         <textarea
-          class="w-full h-48 bg-surface border border-border rounded-[--radius-card] p-3 text-sm font-mono text-text-primary placeholder:text-text-muted resize-none focus:outline-none focus:border-orange-primary transition-colors"
+          class="w-full h-48 bg-surface border border-border rounded-card p-3 text-sm font-mono text-text-primary placeholder:text-text-muted resize-none focus:outline-none focus:border-orange-primary transition-colors"
           placeholder='{"version": "1.0", "name": "My Mascot", ...}'
           value={jsonText()}
           onInput={(e) => {
@@ -192,7 +220,7 @@ function AddMascotModal(props: { onClose: () => void }) {
             Cancel
           </button>
           <button
-            class="px-4 py-2 text-sm font-body font-medium bg-orange-primary text-white rounded-[--radius-card] hover:opacity-90 transition-opacity disabled:opacity-50"
+            class="px-4 py-2 text-sm font-body font-medium bg-orange-primary text-white rounded-card hover:opacity-90 transition-opacity disabled:opacity-50"
             onClick={handleAdd}
             disabled={success()}
           >
@@ -204,39 +232,85 @@ function AddMascotModal(props: { onClose: () => void }) {
   );
 }
 
-function MascotCard(props: { mascot: SavedMascot; isActive: boolean; onSelect: () => void }) {
+function MascotCard(props: { mascot: SavedMascot; isActive: boolean; onSelect: () => void; onRemove?: () => void }) {
   const thumb = () => getThumbnail(props.mascot);
 
   return (
-    <button
-      class="bg-surface rounded-[--radius-card] border-2 p-4 text-center transition-all hover:shadow-sm"
-      classList={{
-        "border-orange-primary shadow-sm": props.isActive,
-        "border-border hover:border-border-hover": !props.isActive,
-      }}
-      onClick={props.onSelect}
-    >
-      {/* Mascot preview */}
-      <div class="w-16 h-16 mx-auto mb-2 rounded-full bg-orange-subtle flex items-center justify-center overflow-hidden">
-        <Show
-          when={thumb()}
-          fallback={<span class="text-2xl">{getMascotEmoji(props.mascot.templateSlug)}</span>}
+    <div class="relative group">
+      <button
+        class="w-full bg-surface rounded-card border-2 p-4 text-center transition-all hover:shadow-sm"
+        classList={{
+          "border-orange-primary shadow-sm": props.isActive,
+          "border-border hover:border-border-hover": !props.isActive,
+        }}
+        onClick={props.onSelect}
+      >
+        {/* Mascot preview */}
+        <div class="w-16 h-16 mx-auto mb-2 rounded-full bg-orange-subtle flex items-center justify-center overflow-hidden">
+          <Show
+            when={thumb()}
+            fallback={<span class="text-2xl">{getMascotEmoji(props.mascot.templateSlug)}</span>}
+          >
+            <img
+              src={thumb()!}
+              alt={props.mascot.name}
+              class="w-full h-full object-contain"
+              loading="lazy"
+            />
+          </Show>
+        </div>
+        <span class="font-body font-medium text-sm text-text-primary block">
+          {props.mascot.name}
+        </span>
+        <span class="text-[10px] font-medium mt-1 block" classList={{ "text-orange-primary": props.isActive, "invisible": !props.isActive }}>Active</span>
+      </button>
+      <Show when={props.onRemove}>
+        <button
+          class="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500/80 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onRemove!();
+          }}
+          title="Remove mascot"
         >
-          <img
-            src={thumb()!}
-            alt={props.mascot.name}
-            class="w-full h-full object-contain"
-            loading="lazy"
-          />
-        </Show>
-      </div>
-      <span class="font-body font-medium text-sm text-text-primary block">
-        {props.mascot.name}
-      </span>
-      <Show when={props.isActive}>
-        <span class="text-[10px] text-orange-primary font-medium mt-1 block">Active</span>
+          ×
+        </button>
       </Show>
-    </button>
+    </div>
+  );
+}
+
+function ConfirmModal(props: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => e.target === e.currentTarget && props.onCancel()}
+    >
+      <div class="bg-surface rounded-card border border-border shadow-lg w-full max-w-sm mx-4 p-5 space-y-4">
+        <h3 class="font-heading font-semibold text-text-primary">{props.title}</h3>
+        <p class="text-sm text-text-muted font-body">{props.message}</p>
+        <div class="flex gap-2 justify-end">
+          <button
+            class="px-4 py-2 text-sm font-body text-text-muted hover:text-text-primary transition-colors"
+            onClick={props.onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            class="px-4 py-2 text-sm font-body font-medium bg-red-500 text-white rounded-card hover:bg-red-600 transition-colors"
+            onClick={props.onConfirm}
+          >
+            {props.confirmLabel ?? "Confirm"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

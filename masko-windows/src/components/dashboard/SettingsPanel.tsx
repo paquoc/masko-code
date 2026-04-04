@@ -180,7 +180,7 @@ export default function SettingsPanel() {
             when={hooksInstalled()}
             fallback={
               <button
-                class="px-3 py-1.5 text-sm font-body font-medium rounded-[--radius-card-sm] bg-orange-primary text-white hover:bg-orange-hover transition-colors disabled:opacity-50"
+                class="px-3 py-1.5 text-sm font-body font-medium rounded-card-sm bg-orange-primary text-white hover:bg-orange-hover transition-colors disabled:opacity-50"
                 onClick={handleInstallHooks}
                 disabled={loading() === "install"}
               >
@@ -189,7 +189,7 @@ export default function SettingsPanel() {
             }
           >
             <button
-              class="px-3 py-1.5 text-sm font-body font-medium rounded-[--radius-card-sm] border border-border text-text-muted hover:text-destructive hover:border-destructive transition-colors disabled:opacity-50"
+              class="px-3 py-1.5 text-sm font-body font-medium rounded-card-sm border border-border text-text-muted hover:text-destructive hover:border-destructive transition-colors disabled:opacity-50"
               onClick={handleUninstallHooks}
               disabled={loading() === "uninstall"}
             >
@@ -302,7 +302,7 @@ export default function SettingsPanel() {
           <div>
             <Show when={updateStore.status === "idle"}>
               <p class="text-sm font-body text-text-primary">You're up to date</p>
-              <p class="text-xs text-text-muted mt-0.5">Current version: v1.13.0</p>
+              <p class="text-xs text-text-muted mt-0.5">Current version: v1.14.0</p>
             </Show>
             <Show when={updateStore.status === "checking"}>
               <p class="text-sm font-body text-text-primary">Checking for updates...</p>
@@ -330,7 +330,7 @@ export default function SettingsPanel() {
           </div>
           <Show when={updateStore.status === "available"}>
             <button
-              class="px-3 py-1.5 text-sm font-body font-medium rounded-[--radius-card-sm] bg-orange-primary text-white hover:bg-orange-hover transition-colors"
+              class="px-3 py-1.5 text-sm font-body font-medium rounded-card-sm bg-orange-primary text-white hover:bg-orange-hover transition-colors"
               onClick={updateStore.downloadAndInstall}
             >
               Install
@@ -338,7 +338,7 @@ export default function SettingsPanel() {
           </Show>
           <Show when={updateStore.status === "idle" || updateStore.status === "error"}>
             <button
-              class="px-3 py-1.5 text-sm font-body font-medium rounded-[--radius-card-sm] border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+              class="px-3 py-1.5 text-sm font-body font-medium rounded-card-sm border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
               onClick={() => updateStore.checkForUpdates()}
             >
               Check
@@ -350,7 +350,7 @@ export default function SettingsPanel() {
       {/* Debug */}
       <Section title="Debug">
         <button
-          class="px-3 py-1.5 text-xs font-body font-medium rounded-[--radius-card-sm] bg-surface-hover text-text-primary hover:bg-border transition-colors"
+          class="px-3 py-1.5 text-xs font-body font-medium rounded-card-sm bg-surface-hover text-text-primary hover:bg-border transition-colors"
           onClick={() => invoke("open_devtools").catch(() => {})}
         >
           Open Overlay DevTools
@@ -360,7 +360,7 @@ export default function SettingsPanel() {
       {/* About */}
       <Section title="About">
         <div class="space-y-1 text-sm text-text-muted font-body">
-          <p><span class="text-text-primary font-medium">Masko Code</span> v1.13.0</p>
+          <p><span class="text-text-primary font-medium">Masko Code</span> v1.14.0</p>
           <p>Your AI coding assistant companion for Windows.</p>
           <p class="text-xs mt-2">
             <button
@@ -378,7 +378,7 @@ export default function SettingsPanel() {
 
 function Section(props: { title: string; children: any }) {
   return (
-    <div class="bg-surface rounded-[--radius-card] border border-border p-4">
+    <div class="bg-surface rounded-card border border-border p-4">
       <h3 class="font-heading font-semibold text-sm text-text-primary mb-3">{props.title}</h3>
       {props.children}
     </div>
@@ -555,7 +555,7 @@ function HotkeyRow(props: { label: string; action: keyof HotkeySettings }) {
         fallback={
           <div
             tabIndex={0}
-            class="px-3 py-1.5 text-sm font-mono rounded-[--radius-card-sm] border-2 border-orange-primary bg-orange-primary/10 text-orange-primary animate-pulse focus:outline-none cursor-default"
+            class="px-3 py-1.5 text-sm font-mono rounded-card-sm border-2 border-orange-primary bg-orange-primary/10 text-orange-primary animate-pulse focus:outline-none cursor-default"
             onKeyDown={handleKeyDown}
             onBlur={() => stopRecording()}
             ref={(el) => requestAnimationFrame(() => el.focus())}
@@ -565,7 +565,7 @@ function HotkeyRow(props: { label: string; action: keyof HotkeySettings }) {
         }
       >
         <button
-          class="px-3 py-1.5 text-sm font-mono rounded-[--radius-card-sm] border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+          class="px-3 py-1.5 text-sm font-mono rounded-card-sm border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
           onClick={startRecording}
           title="Click to record new shortcut"
         >

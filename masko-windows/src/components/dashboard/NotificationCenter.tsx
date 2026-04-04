@@ -57,7 +57,7 @@ export default function NotificationCenter() {
       <Show
         when={notifications().length > 0}
         fallback={
-          <div class="text-sm text-text-muted bg-surface rounded-[--radius-card] border border-border p-6 text-center">
+          <div class="text-sm text-text-muted bg-surface rounded-card border border-border p-6 text-center">
             No notifications yet. Events from your AI sessions will appear here.
           </div>
         }
@@ -77,7 +77,7 @@ function NotificationItem(props: { notif: AppNotification }) {
 
   return (
     <div
-      class={`bg-surface rounded-[--radius-card-sm] border border-border p-3 border-l-[3px] ${PRIORITY_BORDER[n().priority]} cursor-pointer hover:border-border-hover transition-colors`}
+      class={`bg-surface rounded-card-sm border border-border p-3 border-l-[3px] ${PRIORITY_BORDER[n().priority]} cursor-pointer hover:border-border-hover transition-colors`}
       classList={{ "opacity-60": n().read }}
       onClick={() => {
         if (!n().read) appStore.notifications.markAsRead(n().id);

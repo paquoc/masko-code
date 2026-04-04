@@ -46,7 +46,7 @@ export default function SessionList() {
         <Show
           when={active().length > 0}
           fallback={
-            <div class="text-sm text-text-muted bg-surface rounded-[--radius-card] border border-border p-4">
+            <div class="text-sm text-text-muted bg-surface rounded-card border border-border p-4">
               No active sessions. Start Claude Code or Codex to see sessions here.
             </div>
           }
@@ -80,7 +80,7 @@ function SessionCard(props: { session: AgentSession }) {
   const s = () => props.session;
 
   return (
-    <div class="bg-surface rounded-[--radius-card] border border-border p-3 hover:border-border-hover transition-colors">
+    <div class="bg-surface rounded-card border border-border p-3 hover:border-border-hover transition-colors">
       <div class="flex items-center gap-2">
         {/* Status dot */}
         <div class={`w-2.5 h-2.5 rounded-full shrink-0 ${phaseColor(s())}`} />

@@ -77,12 +77,12 @@ function App() {
         <main class="flex-1 overflow-y-auto p-6">
           {/* Update banner */}
           <Show when={updateStore.hasUpdate && activeTab() !== "settings"}>
-            <div class="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-[--radius-card-sm] bg-orange-subtle border border-orange-primary/20">
+            <div class="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-card-sm bg-orange-subtle border border-orange-primary/20">
               <span class="text-sm font-body text-text-primary">
                 Update <span class="font-medium text-orange-primary">v{updateStore.version}</span> available
               </span>
               <button
-                class="ml-auto px-3 py-1 text-xs font-body font-medium rounded-[--radius-card-sm] bg-orange-primary text-white hover:bg-orange-hover transition-colors"
+                class="ml-auto px-3 py-1 text-xs font-body font-medium rounded-card-sm bg-orange-primary text-white hover:bg-orange-hover transition-colors"
                 onClick={() => setActiveTab("settings")}
               >
                 Update

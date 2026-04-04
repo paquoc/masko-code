@@ -23,7 +23,7 @@ export default function ActivityFeed() {
       <Show
         when={events().length > 0}
         fallback={
-          <div class="text-sm text-text-muted bg-surface rounded-[--radius-card] border border-border p-6 text-center">
+          <div class="text-sm text-text-muted bg-surface rounded-card border border-border p-6 text-center">
             No activity yet. Events will appear here as your AI sessions run.
           </div>
         }
@@ -45,7 +45,7 @@ function ActivityItem(props: { event: AgentEvent }) {
   const project = () => getProjectName(e());
 
   return (
-    <div class="flex items-center gap-2 py-1.5 px-3 rounded-[--radius-card-sm] hover:bg-orange-subtle transition-colors">
+    <div class="flex items-center gap-2 py-1.5 px-3 rounded-card-sm hover:bg-orange-subtle transition-colors">
       <div class={`w-2 h-2 rounded-full shrink-0 ${color()}`} />
       <span class="text-sm font-body text-text-primary">{label()}</span>
       <Show when={e().tool_name}>
