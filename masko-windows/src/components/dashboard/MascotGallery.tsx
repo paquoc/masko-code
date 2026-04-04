@@ -1,5 +1,6 @@
 import { For, Show, createSignal } from "solid-js";
 import { emit } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { appStore } from "../../stores/app-store";
 import { parseMascotConfig } from "../../models/mascot-config";
 import type { SavedMascot } from "../../models/mascot-config";
@@ -97,13 +98,12 @@ export default function MascotGallery() {
         <p class="text-sm text-text-muted font-body">
           Want more mascots?
         </p>
-        <a
-          href="https://masko.ai/claude-code"
-          target="_blank"
-          class="text-sm text-orange-primary font-medium hover:underline"
+        <button
+          onClick={() => openUrl("https://masko.ai/claude-code")}
+          class="text-sm text-orange-primary font-medium hover:underline cursor-pointer bg-transparent border-none"
         >
           Browse community mascots
-        </a>
+        </button>
       </div>
 
       {/* Add mascot modal */}
@@ -157,13 +157,12 @@ function AddMascotModal(props: { onClose: () => void }) {
 
         <p class="text-sm text-text-muted font-body">
           Paste the mascot JSON config below. You can find mascot configs on{" "}
-          <a
-            href="https://masko.ai/claude-code"
-            target="_blank"
-            class="text-orange-primary hover:underline"
+          <button
+            onClick={() => openUrl("https://masko.ai/claude-code")}
+            class="text-orange-primary hover:underline cursor-pointer bg-transparent border-none p-0 text-sm font-body inline"
           >
             masko.ai/claude-code
-          </a>
+          </button>
           .
         </p>
 

@@ -7,6 +7,7 @@ import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
 import type { PendingPermission } from "../../models/permission";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { error } from "../../services/log";
 import { updateStore } from "../../stores/update-store";
 import { hotkeyStore, eventToBinding, bindingToLabel, type HotkeyBinding, type HotkeySettings } from "../../stores/hotkey-store";
@@ -362,9 +363,12 @@ export default function SettingsPanel() {
           <p><span class="text-text-primary font-medium">Masko Code</span> v1.13.0</p>
           <p>Your AI coding assistant companion for Windows.</p>
           <p class="text-xs mt-2">
-            <a href="https://masko.ai" class="text-orange-primary hover:underline" target="_blank">
+            <button
+              onClick={() => openUrl("https://masko.ai")}
+              class="text-orange-primary hover:underline cursor-pointer bg-transparent border-none p-0 text-sm font-body"
+            >
               masko.ai
-            </a>
+            </button>
           </p>
         </div>
       </Section>
