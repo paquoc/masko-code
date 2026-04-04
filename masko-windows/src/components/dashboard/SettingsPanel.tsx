@@ -306,7 +306,7 @@ export default function SettingsPanel() {
           <Show when={updateStore.status === "idle" || updateStore.status === "error"}>
             <button
               class="px-3 py-1.5 text-sm font-body font-medium rounded-[--radius-card-sm] border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
-              onClick={updateStore.checkForUpdates}
+              onClick={() => updateStore.checkForUpdates()}
             >
               Check
             </button>
