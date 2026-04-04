@@ -6,6 +6,9 @@ mod models;
 mod server;
 mod tray;
 
+#[cfg(target_os = "windows")]
+mod autostart;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
@@ -42,6 +45,7 @@ pub fn run() {
                 Ok(()) => mlog!("Hooks installed/updated"),
                 Err(e) => mlog_err!("Hook install failed: {e}"),
             }
+
 
             if let Some(overlay) = app.get_webview_window("overlay") {
                 #[cfg(target_os = "windows")]
@@ -133,6 +137,8 @@ pub fn run() {
             commands::update_permission_zone,
             commands::focus_overlay,
             commands::unfocus_overlay,
+            commands::get_autostart,
+            commands::set_autostart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");

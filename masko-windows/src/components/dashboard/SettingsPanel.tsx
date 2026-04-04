@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import { emit } from "@tauri-apps/api/event";
-import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus } from "../../services/ipc";
+import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus, getAutostart, setAutostart } from "../../services/ipc";
 import type { WorkingBubbleSettings, BubbleAppearance } from "../../stores/working-bubble-store";
 import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
@@ -61,21 +61,43 @@ const previewPermission: PendingPermission = {
   collapsed: false,
 };
 
+const AUTOSTART_INIT_KEY = "masko_autostart_initialized";
+
 export default function SettingsPanel() {
   const [hooksInstalled, setHooksInstalled] = createSignal(false);
   const [serverPort, setServerPort] = createSignal(45832);
   const [loading, setLoading] = createSignal("");
   const [bubbleSettings, setBubbleSettings] = createStore<WorkingBubbleSettings>(loadBubbleSettings());
+  const [autostartEnabled, setAutostartEnabled] = createSignal(false);
 
   onMount(async () => {
     try {
       setHooksInstalled(await isHooksRegistered());
       const status = await getServerStatus();
       setServerPort(status.port);
+
+      // Enable autostart by default on first run
+      if (!localStorage.getItem(AUTOSTART_INIT_KEY)) {
+        await setAutostart(true);
+        localStorage.setItem(AUTOSTART_INIT_KEY, "true");
+        setAutostartEnabled(true);
+      } else {
+        setAutostartEnabled(await getAutostart());
+      }
     } catch (e) {
       error("Settings load error:", e);
     }
   });
+
+  async function toggleAutostart() {
+    const next = !autostartEnabled();
+    try {
+      await setAutostart(next);
+      setAutostartEnabled(next);
+    } catch (e) {
+      error("Autostart toggle failed:", e);
+    }
+  }
 
   function persistAndEmit() {
     const data = JSON.parse(JSON.stringify(unwrap(bubbleSettings)));
@@ -130,6 +152,16 @@ export default function SettingsPanel() {
             Running on port {serverPort()}
           </span>
         </div>
+      </Section>
+
+      {/* Startup */}
+      <Section title="Startup">
+        <ToggleRow
+          label="Start with Windows"
+          description="Launch Masko automatically when Windows starts"
+          checked={autostartEnabled()}
+          onChange={toggleAutostart}
+        />
       </Section>
 
       {/* Hook management */}

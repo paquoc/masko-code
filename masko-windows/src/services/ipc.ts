@@ -67,3 +67,13 @@ export async function uninstallHooks(): Promise<void> {
 export async function isHooksRegistered(): Promise<boolean> {
   return invoke("is_hooks_registered");
 }
+
+/** Get whether app starts with Windows */
+export async function getAutostart(): Promise<boolean> {
+  return invoke("get_autostart");
+}
+
+/** Enable or disable app starting with Windows */
+export async function setAutostart(enabled: boolean): Promise<void> {
+  return invoke("set_autostart", { enabled });
+}

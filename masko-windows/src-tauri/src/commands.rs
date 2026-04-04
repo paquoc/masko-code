@@ -164,6 +164,25 @@ pub fn unfocus_overlay(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn get_autostart() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    return Ok(crate::autostart::is_enabled());
+    #[cfg(not(target_os = "windows"))]
+    Ok(false)
+}
+
+#[tauri::command]
+pub fn set_autostart(enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    return crate::autostart::set_enabled(enabled);
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enabled;
+        Ok(())
+    }
+}
+
+#[tauri::command]
 pub fn quit_app(app: AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
