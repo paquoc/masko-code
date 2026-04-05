@@ -62,8 +62,6 @@ const previewPermission: PendingPermission = {
   collapsed: false,
 };
 
-const AUTOSTART_INIT_KEY = "masko_autostart_initialized";
-
 export default function SettingsPanel() {
   const [hooksInstalled, setHooksInstalled] = createSignal(false);
   const [serverPort, setServerPort] = createSignal(45832);
@@ -77,14 +75,7 @@ export default function SettingsPanel() {
       const status = await getServerStatus();
       setServerPort(status.port);
 
-      // Enable autostart by default on first run
-      if (!localStorage.getItem(AUTOSTART_INIT_KEY)) {
-        await setAutostart(true);
-        localStorage.setItem(AUTOSTART_INIT_KEY, "true");
-        setAutostartEnabled(true);
-      } else {
-        setAutostartEnabled(await getAutostart());
-      }
+      setAutostartEnabled(await getAutostart());
     } catch (e) {
       error("Settings load error:", e);
     }
