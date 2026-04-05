@@ -26,7 +26,7 @@
 |---|---|---|
 | 🎭 | **Animated overlay** | A mascot that floats above all windows and reacts to Claude Code state — click or hover to interact |
 | 🔐 | **Permission handling** | Approve, deny, or defer tool use requests from a speech bubble — permissions stack in a queue |
-| 🔄 | **Auto-updates** | Built-in Tauri updater — always on the latest version |
+| 🔄 | **Auto-updates** | Automatically checks, downloads, and installs updates on launch |
 | 🖥️ | **System tray** | Lives in the system tray, no taskbar clutter |
 
 ## How It Works

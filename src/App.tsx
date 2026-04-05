@@ -25,8 +25,8 @@ function App() {
 
   onMount(async () => {
     appStore.start();
-    // Check for updates independently — don't block on appStore.start()
-    updateStore.checkForUpdates();
+    // Auto-update on launch — check, download, and install silently
+    updateStore.checkForUpdates({ autoInstall: true });
     // Listen for tray navigation events
     unlisten = await listen<string>("navigate", (e) => {
       if (e.payload === "settings") setActiveTab("settings");

@@ -12,7 +12,8 @@ const [errorMsg, setErrorMsg] = createSignal("");
 
 let cachedUpdate: Update | null = null;
 
-async function checkForUpdates(retries = 2): Promise<void> {
+async function checkForUpdates(opts: { autoInstall?: boolean; retries?: number } = {}): Promise<void> {
+  const { autoInstall = false, retries = 2 } = opts;
   setStatus("checking");
   setErrorMsg("");
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -24,6 +25,9 @@ async function checkForUpdates(retries = 2): Promise<void> {
         setVersion(update.version);
         setStatus("available");
         log(`[update-store] Update available: v${update.version}`);
+        if (autoInstall) {
+          await downloadAndInstall();
+        }
       } else {
         cachedUpdate = null;
         setStatus("idle");
