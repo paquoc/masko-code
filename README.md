@@ -5,7 +5,7 @@
 <h1 align="center">Masko Code</h1>
 
 <p align="center">
-  A living mascot that floats above your windows, reacts to Claude Code and Codex, and lets you handle everything without leaving your flow.
+  A living mascot that floats above your windows, reacts to Claude Code, and lets you handle everything without leaving your flow.
 </p>
 
 <p align="center">
@@ -22,22 +22,20 @@
 
 ## Features
 
-| Feature | Description |
-|---|---|
-| **Animated overlay** | A mascot that floats above all windows and reacts to Claude Code + Codex state |
-| **Permission handling** | Approve, deny, or defer tool use requests from a speech bubble |
-| **Session tracking** | Monitor active sessions, subagents, and status at a glance |
-| **Notification dashboard** | Priority levels, resolution tracking, color-coded activity feed |
-| **Auto-updates** | Built-in Tauri updater — always on the latest version |
-| **System tray** | Lives in the system tray, no taskbar clutter |
+| | Feature | Description |
+|---|---|---|
+| 🎭 | **Animated overlay** | A mascot that floats above all windows and reacts to Claude Code state — click or hover to interact |
+| 🔐 | **Permission handling** | Approve, deny, or defer tool use requests from a speech bubble — permissions stack in a queue |
+| 🔄 | **Auto-updates** | Built-in Tauri updater — always on the latest version |
+| 🖥️ | **System tray** | Lives in the system tray, no taskbar clutter |
 
 ## How It Works
 
 ```
-┌─────────────┐     hook events     ┌─────────────┐
-│ Claude/Codex │ ──────────────────▶ │    Masko     │
-│  (terminal)  │                     │ (system tray)│
-└─────────────┘                     └─────────────┘
+┌──────────────────────────────┐   hook events   ┌────────────────┐
+│           Claude             │ ──────────────▶ │     Masko      │
+│  (terminal/extension/app)    │                 │  (system tray) │
+└──────────────────────────────┘                 └────────────────┘
         │                                   │
         │  streams events from hooks        │  updates mascot animation,
         │                                   │  shows permission prompts,
@@ -49,13 +47,13 @@
 1. **Install the app** — Run the installer or use the one-liner below.
 2. **Hooks are auto-configured** — First launch installs Claude Code hooks into `~/.claude/settings.json`.
 3. **Pick a mascot** — Choose the default Masko or bring your own from [masko.ai](https://masko.ai).
-4. **Start coding** — Open Claude Code or Codex. Your mascot springs to life.
+4. **Start coding** — Open Claude Code. Your mascot springs to life.
 
 ## Requirements
 
 - Windows 11 (or Windows 10 1803+)
 - WebView2 runtime (pre-installed on Windows 11)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and/or [Codex CLI](https://github.com/openai/codex) installed
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
 
 ## Install
 

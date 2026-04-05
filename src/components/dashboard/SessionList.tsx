@@ -47,7 +47,7 @@ export default function SessionList() {
           when={active().length > 0}
           fallback={
             <div class="text-sm text-text-muted bg-surface rounded-card border border-border p-4">
-              No active sessions. Start Claude Code or Codex to see sessions here.
+              No active sessions. Start Claude Code to see sessions here.
             </div>
           }
         >
