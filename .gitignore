@@ -1,13 +1,5 @@
-.build/
-build/
-.swiftpm/
-Package.resolved
+node_modules/
+dist/
+src-tauri/target/
 .DS_Store
-*.xcodeproj
-xcuserdata/
-DerivedData/
-
-# Gradle (JetBrains plugin)
-.gradle/
-.kotlin/
-masko-windows/.claude/settings.local.json
+.claude/settings.local.json
