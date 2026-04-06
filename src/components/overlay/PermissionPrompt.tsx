@@ -1,4 +1,4 @@
-import { Show, For, createSignal, createEffect } from "solid-js";
+import { Show, For, createSignal, createEffect, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { PendingPermission } from "../../models/permission";
 import { parsePermissionSuggestions, type PermissionSuggestion } from "../../models/permission";
@@ -7,6 +7,8 @@ import { permissionStore } from "../../stores/permission-store";
 import { workingBubbleStore, type BubbleAppearance } from "../../stores/working-bubble-store";
 import { log } from "../../services/log";
 import { BubbleTail, type TailDir } from "./BubbleTail";
+import { autoApproveStore } from "../../stores/auto-approve-store";
+import { shouldShowCountdown } from "../../services/bash-risk-analyzer";
 
 /** Format tool input for display */
 function formatToolInput(event: PendingPermission["event"]): string | null {
@@ -66,6 +68,43 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   const suggestions = () => parsePermissionSuggestions(event().permission_suggestions);
   const questions = () => parseQuestions(event());
   const isQ = () => isQuestion(event());
+
+  // Auto-approve countdown
+  const [countdown, setCountdown] = createSignal<number | null>(null);
+  const [countdownPaused, setCountdownPaused] = createSignal(false);
+
+  // Determine if this permission should auto-approve
+  const shouldCountdown = () => {
+    if (isQ()) return false;
+    return shouldShowCountdown(event().tool_name, event().tool_input);
+  };
+
+  // Start countdown timer
+  createEffect(() => {
+    if (!shouldCountdown()) {
+      setCountdown(null);
+      return;
+    }
+
+    const seconds = autoApproveStore.settings.countdownSeconds;
+    setCountdown(seconds);
+
+    const interval = setInterval(() => {
+      if (countdownPaused()) return;
+      setCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(interval);
+          // Auto-approve
+          handleApprove();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    onCleanup(() => clearInterval(interval));
+  });
 
   const handleApprove = () => {
     log("handleApprove called, id:", props.permission.id);
@@ -143,6 +182,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
         "flex-row-reverse": dir() === "left",
       }}
       style={{ "font-family": "var(--font-body)" }}
+      onMouseEnter={() => setCountdownPaused(true)}
+      onMouseLeave={() => setCountdownPaused(false)}
     >
       {/* Speech bubble card */}
       <div
@@ -358,10 +399,29 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
           </Show>
         </div>
 
+        {/* Session auto-approve checkbox */}
+        <Show when={!isQ()}>
+          <div class="px-3.5 pb-1">
+            <label
+              class="flex items-center gap-1.5 cursor-pointer select-none"
+            >
+              <input
+                type="checkbox"
+                checked={autoApproveStore.sessionAutoApprove}
+                onChange={() => autoApproveStore.toggleSessionAutoApprove()}
+                class="w-3 h-3 accent-orange-500 rounded"
+              />
+              <span style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>
+                Auto Approve for this session
+              </span>
+            </label>
+          </div>
+        </Show>
+
         {/* Action buttons */}
         <div class="px-3.5 pb-2.5 flex items-center gap-1.5">
           <button
-            class="flex-1 px-3 py-1.5 rounded-lg font-semibold transition-colors"
+            class="flex-1 px-3 py-1.5 rounded-lg font-semibold transition-colors relative overflow-hidden"
             style={{
               "font-size": `${fsSm()}px`,
               "font-family": "var(--font-heading)",
@@ -371,7 +431,24 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             onClick={handleApprove}
             title="Ctrl+⏎"
           >
-            {isQ() ? "Submit" : selectedSuggestion() ? "Allow Rule" : "Approve"}
+            {/* Countdown progress bar */}
+            <Show when={countdown() !== null && countdown()! > 0}>
+              <div
+                class="absolute inset-0 bg-black/15 origin-left transition-transform duration-1000 ease-linear"
+                style={{
+                  transform: `scaleX(${1 - (countdown()! / autoApproveStore.settings.countdownSeconds)})`,
+                }}
+              />
+            </Show>
+            <span class="relative">
+              {isQ()
+                ? "Submit"
+                : selectedSuggestion()
+                  ? "Allow Rule"
+                  : countdown() !== null && countdown()! > 0
+                    ? `Approve (${countdown()})`
+                    : "Approve"}
+            </span>
           </button>
 
           <Show when={!isQ()}>
@@ -383,14 +460,12 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                 "border-color": "rgba(35,17,60,0.12)",
                 color: a().mutedColor,
               }}
-              onClick={handleDeny}
+              onClick={() => { setCountdown(null); handleDeny(); }}
               title="Ctrl+←"
             >
               Deny
             </button>
           </Show>
-
-
         </div>
 
         {/* Feedback input — for tool permissions only */}

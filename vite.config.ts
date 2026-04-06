@@ -10,7 +10,15 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // bash-parser sub-deps have broken jsnext:main pointing to non-existent files
+      "iterable-transform-replace": path.resolve(__dirname, "node_modules/iterable-transform-replace/index.js"),
+      "transform-spread-iterable": path.resolve(__dirname, "node_modules/transform-spread-iterable/index.js"),
     },
+    // Exclude jsnext:main to avoid broken legacy field in bash-parser deps
+    mainFields: ["module", "main"],
+  },
+  optimizeDeps: {
+    include: ["bash-parser"],
   },
   build: {
     rollupOptions: {

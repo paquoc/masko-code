@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import { emit } from "@tauri-apps/api/event";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus, getAutostart, setAutostart } from "../../services/ipc";
@@ -12,6 +12,7 @@ import { error } from "../../services/log";
 import { updateStore } from "../../stores/update-store";
 import { hotkeyStore, eventToBinding, bindingToLabel, type HotkeyBinding, type HotkeySettings } from "../../stores/hotkey-store";
 import { reloadHotkeys } from "../../stores/permission-store";
+import { autoApproveStore, type RiskLevel } from "../../stores/auto-approve-store";
 
 const SETTINGS_KEY = "masko_working_bubble_settings";
 
@@ -204,6 +205,98 @@ export default function SettingsPanel() {
         </div>
       </Section>
 
+      {/* Auto Approve Rules */}
+      <Section title="Auto Approve Rules">
+        <p class="text-xs text-text-muted mb-3">
+          All commands in a script must match an auto-approve rule for the countdown to start. One line per pattern (plain text or regex).
+        </p>
+
+        {/* Countdown setting */}
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-sm font-body text-text-primary">Countdown</p>
+          <div class="flex items-center gap-2">
+            <input
+              type="range"
+              min="2"
+              max="10"
+              step="1"
+              value={autoApproveStore.settings.countdownSeconds}
+              onInput={(e) => autoApproveStore.setCountdown(Number(e.currentTarget.value))}
+              class="w-20 accent-orange-primary"
+            />
+            <span class="text-xs text-text-muted w-6 text-right">{autoApproveStore.settings.countdownSeconds}s</span>
+          </div>
+        </div>
+
+        {/* Rules table */}
+        <div class="space-y-2">
+          <For each={autoApproveStore.settings.rules}>
+            {(rule) => (
+              <div class="flex items-center gap-2 p-2 rounded-lg border border-border bg-bg-light">
+                {/* Patterns textarea */}
+                <textarea
+                  value={rule.patterns}
+                  onInput={(e) => autoApproveStore.updateRule(rule.id, { patterns: e.currentTarget.value })}
+                  class="flex-1 min-w-0 px-2 py-1 text-xs font-mono rounded border border-border bg-surface text-text-primary focus:border-orange-primary focus:outline-none resize-none leading-relaxed overflow-hidden"
+                  rows={Math.max(2, rule.patterns.split("\n").length)}
+                  style={{ "field-sizing": "content" }}
+                  placeholder={"ls\necho\npwd\ngit\\s+(status|log|diff)"}
+                  spellcheck={false}
+                />
+
+                {/* Risk level */}
+                <select
+                  value={rule.risk}
+                  onChange={(e) => autoApproveStore.updateRule(rule.id, { risk: e.currentTarget.value as RiskLevel })}
+                  class="px-1.5 py-1 text-xs rounded border border-border bg-surface focus:outline-none shrink-0"
+                  classList={{
+                    "text-green-600": rule.risk === "safe",
+                    "text-yellow-600": rule.risk === "medium",
+                    "text-red-500": rule.risk === "high",
+                  }}
+                >
+                  <option value="safe" style={{ color: "#16a34a" }}>Safe</option>
+                  <option value="medium" style={{ color: "#ca8a04" }}>Medium</option>
+                  <option value="high" style={{ color: "#ef4444" }}>High</option>
+                </select>
+
+                {/* Auto approve toggle */}
+                <button
+                  class="relative w-8 h-5 rounded-full transition-colors duration-200 shrink-0"
+                  classList={{
+                    "bg-orange-primary": rule.autoApprove,
+                    "bg-border": !rule.autoApprove,
+                  }}
+                  onClick={() => autoApproveStore.updateRule(rule.id, { autoApprove: !rule.autoApprove })}
+                  title="Auto Approve"
+                >
+                  <span
+                    class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200"
+                    classList={{ "translate-x-3": rule.autoApprove }}
+                  />
+                </button>
+
+                {/* Delete */}
+                <button
+                  class="text-base text-text-muted hover:text-destructive shrink-0 leading-none cursor-pointer"
+                  onClick={() => autoApproveStore.removeRule(rule.id)}
+                  title="Remove rule"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </For>
+        </div>
+
+        <button
+          class="mt-2 w-full py-1.5 text-xs font-body text-text-muted hover:text-text-primary border border-dashed border-border rounded-lg transition-colors"
+          onClick={() => autoApproveStore.addRule()}
+        >
+          + Add Rule
+        </button>
+      </Section>
+
       {/* Working Bubble */}
       <Section title="Working Bubble">
         <div class="space-y-3">
@@ -293,7 +386,7 @@ export default function SettingsPanel() {
           <div>
             <Show when={updateStore.status === "idle"}>
               <p class="text-sm font-body text-text-primary">You're up to date</p>
-              <p class="text-xs text-text-muted mt-0.5">Current version: v1.15.0</p>
+              <p class="text-xs text-text-muted mt-0.5">Current version: v1.16.0</p>
             </Show>
             <Show when={updateStore.status === "checking"}>
               <p class="text-sm font-body text-text-primary">Checking for updates...</p>
@@ -351,7 +444,7 @@ export default function SettingsPanel() {
       {/* About */}
       <Section title="About">
         <div class="space-y-1 text-sm text-text-muted font-body">
-          <p><span class="text-text-primary font-medium">Masko Code</span> v1.15.0</p>
+          <p><span class="text-text-primary font-medium">Masko Code</span> v1.16.0</p>
           <p>Your AI coding assistant companion for Windows.</p>
           <p class="text-xs mt-2">
             <button
