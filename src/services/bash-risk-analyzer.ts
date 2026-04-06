@@ -66,10 +66,12 @@ function compilePattern(pattern: string): RegExp | null {
   }
 }
 
-/** Parse newline-separated patterns into compiled regexes */
+/** Parse comma or newline-separated patterns into compiled regexes */
 function compileRulePatterns(rule: AutoApproveRule): RegExp[] {
   return rule.patterns
-    .split("\n")
+    .split(/[,\n]/)
+    .map((p) => p.trim())
+    .filter(Boolean)
     .map(compilePattern)
     .filter((r): r is RegExp => r !== null);
 }

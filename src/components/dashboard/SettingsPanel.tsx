@@ -205,10 +205,10 @@ export default function SettingsPanel() {
         </div>
       </Section>
 
-      {/* Auto Approve Rules */}
-      <Section title="Auto Approve Rules">
+      {/* Auto-approve Rules */}
+      <Section title="Auto-approve Rules">
         <p class="text-xs text-text-muted mb-3">
-          All commands in a script must match an auto-approve rule for the countdown to start. One line per pattern (plain text or regex).
+          All commands in a script must match an auto-approve rule for the countdown to start. Comma-separated patterns (plain text or regex).
         </p>
 
         {/* Countdown setting */}
@@ -237,10 +237,10 @@ export default function SettingsPanel() {
                 <textarea
                   value={rule.patterns}
                   onInput={(e) => autoApproveStore.updateRule(rule.id, { patterns: e.currentTarget.value })}
-                  class="flex-1 min-w-0 px-2 py-1 text-xs font-mono rounded border border-border bg-surface text-text-primary focus:border-orange-primary focus:outline-none resize-none leading-relaxed overflow-hidden"
-                  rows={Math.max(2, rule.patterns.split("\n").length)}
+                  class="flex-1 min-w-0 px-2 py-1 text-xs font-mono rounded border border-border bg-surface text-text-primary focus:border-orange-primary focus:outline-none resize-none overflow-hidden"
+                  rows={1}
                   style={{ "field-sizing": "content" }}
-                  placeholder={"ls\necho\npwd\ngit\\s+(status|log|diff)"}
+                  placeholder="ls, echo, pwd, git\\s+(status|log|diff)"
                   spellcheck={false}
                 />
 
@@ -268,7 +268,7 @@ export default function SettingsPanel() {
                     "bg-border": !rule.autoApprove,
                   }}
                   onClick={() => autoApproveStore.updateRule(rule.id, { autoApprove: !rule.autoApprove })}
-                  title="Auto Approve"
+                  title="Auto-approve"
                 >
                   <span
                     class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200"
@@ -386,7 +386,7 @@ export default function SettingsPanel() {
           <div>
             <Show when={updateStore.status === "idle"}>
               <p class="text-sm font-body text-text-primary">You're up to date</p>
-              <p class="text-xs text-text-muted mt-0.5">Current version: v1.17.0</p>
+              <p class="text-xs text-text-muted mt-0.5">Current version: v1.18.0</p>
             </Show>
             <Show when={updateStore.status === "checking"}>
               <p class="text-sm font-body text-text-primary">Checking for updates...</p>
@@ -444,7 +444,7 @@ export default function SettingsPanel() {
       {/* About */}
       <Section title="About">
         <div class="space-y-1 text-sm text-text-muted font-body">
-          <p><span class="text-text-primary font-medium">Masko Code</span> v1.17.0</p>
+          <p><span class="text-text-primary font-medium">Masko Code</span> v1.18.0</p>
           <p>Your AI coding assistant companion for Windows.</p>
           <p class="text-xs mt-2">
             <button

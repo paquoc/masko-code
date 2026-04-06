@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@keyframes countdown-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
 /* Brand colors from Constants.swift */
 @theme {
   --color-orange-primary: #f95d02;

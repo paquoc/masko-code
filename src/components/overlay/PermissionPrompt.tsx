@@ -59,6 +59,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   const [otherActive, setOtherActive] = createSignal(false);
   const [otherText, setOtherText] = createSignal("");
   const [feedback, setFeedback] = createSignal("");
+  let progressBarRef: HTMLDivElement | undefined;
 
   const event = () => props.permission.event;
   const toolName = () => event().tool_name || "Unknown";
@@ -82,30 +83,62 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   };
 
   // Start countdown timer
+  let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+  const clearCountdownInterval = () => {
+    if (countdownInterval !== null) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+  };
+
+  // Track permission id to restart countdown when permission changes
+  const [animKey, setAnimKey] = createSignal(0);
+
   createEffect(() => {
+    // Access permission id so effect re-runs when it changes
+    const permId = props.permission.id;
+    clearCountdownInterval();
+    setAnimKey((k) => k + 1);
+
     if (!shouldCountdown()) {
       setCountdown(null);
+      log("[countdown] skip for", permId);
       return;
     }
 
     const seconds = autoApproveStore.settings.countdownSeconds;
+    log("[countdown] init, countdownSeconds =", seconds, "permId =", permId);
     setCountdown(seconds);
 
-    const interval = setInterval(() => {
+    countdownInterval = setInterval(() => {
       if (countdownPaused()) return;
       setCountdown((prev) => {
+        log("[countdown] tick, prev =", prev);
         if (prev === null) return null;
-        if (prev <= 1) {
-          clearInterval(interval);
-          // Auto-approve
+        const next = prev - 1;
+        if (next <= 0) {
+          log("[countdown] reached 0, approving");
+          clearCountdownInterval();
           handleApprove();
-          return 0;
+          return null;
         }
-        return prev - 1;
+        log("[countdown] next =", next);
+        return next;
       });
     }, 1000);
 
-    onCleanup(() => clearInterval(interval));
+    onCleanup(clearCountdownInterval);
+  });
+
+  // Restart CSS animation when permission changes
+  createEffect(() => {
+    const _key = animKey();
+    if (progressBarRef) {
+      progressBarRef.style.animation = "none";
+      progressBarRef.offsetHeight; // reflow
+      progressBarRef.style.animation = `countdown-fill ${autoApproveStore.settings.countdownSeconds}s linear forwards`;
+    }
   });
 
   const handleApprove = () => {
@@ -414,7 +447,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                 class="w-3 h-3 accent-orange-500 rounded"
               />
               <span style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>
-                Auto Approve for this session
+                Auto-approve for this session
               </span>
             </label>
           </div>
@@ -433,12 +466,14 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             onClick={handleApprove}
             title="Ctrl+⏎"
           >
-            {/* Countdown progress bar */}
-            <Show when={countdown() !== null && countdown()! > 0}>
+            {/* Countdown progress bar — smooth CSS animation, keyed to restart on permission change */}
+            <Show when={countdown() !== null}>
               <div
-                class="absolute inset-0 bg-black/15 origin-left transition-transform duration-1000 ease-linear"
+                ref={(el) => { progressBarRef = el; }}
+                class="absolute inset-0 bg-black/15 origin-left"
                 style={{
-                  transform: `scaleX(${1 - (countdown()! / autoApproveStore.settings.countdownSeconds)})`,
+                  animation: `countdown-fill ${autoApproveStore.settings.countdownSeconds}s linear forwards`,
+                  "animation-play-state": countdownPaused() ? "paused" : "running",
                 }}
               />
             </Show>

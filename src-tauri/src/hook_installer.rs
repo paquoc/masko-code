@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 17";
+const SCRIPT_VERSION: &str = "# version: 18";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -107,6 +107,13 @@ else
     # All other events: write to drop file (file watcher picks them up).
     # Atomic write: tmp file + mv to prevent reading partial data.
     mkdir -p "$DROPDIR" 2>/dev/null
+
+    # Cap at 50 files — remove oldest when over limit
+    COUNT=$(ls -1 "$DROPDIR"/*.json 2>/dev/null | wc -l)
+    if [ "$COUNT" -ge 50 ]; then
+        ls -1t "$DROPDIR"/*.json 2>/dev/null | tail -n +51 | xargs rm -f 2>/dev/null
+    fi
+
     DROPFILE="$DROPDIR/$(date +%s%N)-$EVENT_NAME.json"
     echo "$INPUT" > "$DROPFILE.tmp" && mv "$DROPFILE.tmp" "$DROPFILE"
     exit 0

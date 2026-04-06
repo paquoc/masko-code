@@ -22,37 +22,37 @@ const STORAGE_KEY = "masko_auto_approve_settings";
 const defaultRules: AutoApproveRule[] = [
   {
     id: crypto.randomUUID(),
-    patterns: "ls\npwd\necho\ncat\nhead\ntail\ndate\nwhoami\ngrep\nfind\nwc\nsort\ndiff\nfile\nwhich\ntype",
+    patterns: "ls, pwd, echo, cat, head, tail, date, whoami, grep, find, wc, sort, diff, file, which, type",
     risk: "safe",
     autoApprove: false,
   },
   {
     id: crypto.randomUUID(),
-    patterns: "git\\s+(status|log|diff|branch|show)\ncd",
+    patterns: "git\\s+(status|log|diff|branch|show), cd",
     risk: "safe",
     autoApprove: false,
   },
   {
     id: crypto.randomUUID(),
-    patterns: "npm\\s+(run|test|start|build)\nyarn\\s+(run|test|start|build)\npnpm\\s+(run|test|start|build)\nnpx",
+    patterns: "npm\\s+(run|test|start|build), yarn\\s+(run|test|start|build), pnpm\\s+(run|test|start|build), npx",
     risk: "medium",
     autoApprove: false,
   },
   {
     id: crypto.randomUUID(),
-    patterns: "git\\s+(push|pull|merge|rebase|reset|checkout)\ncp\nmv\nmkdir\ntouch",
+    patterns: "git\\s+(push|pull|merge|rebase|reset|checkout), cp, mv, mkdir, touch",
     risk: "medium",
     autoApprove: false,
   },
   {
     id: crypto.randomUUID(),
-    patterns: "curl\nwget\nssh",
+    patterns: "curl, wget, ssh",
     risk: "medium",
     autoApprove: false,
   },
   {
     id: crypto.randomUUID(),
-    patterns: "rm\nchmod\nchown\nsudo\nsu\neval\nbash\\s+-c",
+    patterns: "rm, chmod, chown, sudo, su, eval, bash\\s+-c",
     risk: "high",
     autoApprove: false,
   },
