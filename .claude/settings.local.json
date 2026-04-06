@@ -4,7 +4,8 @@
       "Bash(npm run:*)",
       "Bash(where link.exe)",
       "Bash(npx tauri:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(cargo clean:*)"
     ]
   }
 }

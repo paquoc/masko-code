@@ -50,7 +50,7 @@ Current Branch: feat/windows-tauri-port
 
 ## Project Structure
 
-d:\project\other\masko-code\masko-windows/
+d:\project\other\masko-code/
 ├── src/                           (Frontend - Solid.js TypeScript)
 │   ├── App.tsx                   (Main dashboard)
 │   ├── index.tsx                 (Main window entry)

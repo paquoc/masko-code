@@ -155,8 +155,8 @@ export function analyzeBashCommand(commandStr: string): AnalysisResult {
 }
 
 /** Check if countdown should show for this permission */
-export function shouldShowCountdown(toolName: string | undefined, toolInput: Record<string, any> | undefined): boolean {
-  if (autoApproveStore.sessionAutoApprove) return true;
+export function shouldShowCountdown(toolName: string | undefined, toolInput: Record<string, any> | undefined, sessionId?: string): boolean {
+  if (autoApproveStore.isSessionAutoApprove(sessionId)) return true;
   if (toolName !== "Bash" || !toolInput?.command) return false;
   return analyzeBashCommand(String(toolInput.command)).shouldAutoApprove;
 }

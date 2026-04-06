@@ -73,10 +73,12 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   const [countdown, setCountdown] = createSignal<number | null>(null);
   const [countdownPaused, setCountdownPaused] = createSignal(false);
 
+  const sessionId = () => event().session_id;
+
   // Determine if this permission should auto-approve
   const shouldCountdown = () => {
     if (isQ()) return false;
-    return shouldShowCountdown(event().tool_name, event().tool_input);
+    return shouldShowCountdown(event().tool_name, event().tool_input, sessionId());
   };
 
   // Start countdown timer
@@ -407,8 +409,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             >
               <input
                 type="checkbox"
-                checked={autoApproveStore.sessionAutoApprove}
-                onChange={() => autoApproveStore.toggleSessionAutoApprove()}
+                checked={autoApproveStore.isSessionAutoApprove(sessionId())}
+                onChange={() => autoApproveStore.toggleSessionAutoApprove(sessionId())}
                 class="w-3 h-3 accent-orange-500 rounded"
               />
               <span style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>

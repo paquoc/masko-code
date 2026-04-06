@@ -74,7 +74,8 @@ function loadSettings(): AutoApproveSettings {
 }
 
 const [settings, setSettings] = createStore<AutoApproveSettings>(loadSettings());
-const [sessionAutoApprove, setSessionAutoApprove] = createSignal(false);
+/** Set of session IDs that have session-wide auto-approve enabled */
+const [sessionAutoApproveSessions, setSessionAutoApproveSessions] = createSignal<Set<string>>(new Set());
 
 function persist(): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
@@ -110,14 +111,24 @@ function setCountdown(seconds: number): void {
   persist();
 }
 
-function toggleSessionAutoApprove(): void {
-  setSessionAutoApprove((v) => !v);
+function isSessionAutoApprove(sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  return sessionAutoApproveSessions().has(sessionId);
+}
+
+function toggleSessionAutoApprove(sessionId: string | undefined): void {
+  if (!sessionId) return;
+  setSessionAutoApproveSessions((prev) => {
+    const next = new Set(prev);
+    if (next.has(sessionId)) next.delete(sessionId);
+    else next.add(sessionId);
+    return next;
+  });
 }
 
 export const autoApproveStore = {
   get settings() { return settings; },
-  get sessionAutoApprove() { return sessionAutoApprove(); },
-  setSessionAutoApprove,
+  isSessionAutoApprove,
   toggleSessionAutoApprove,
   addRule,
   updateRule,
