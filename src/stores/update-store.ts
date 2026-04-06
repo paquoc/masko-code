@@ -2,8 +2,9 @@ import { createSignal } from "solid-js";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { log, error } from "../services/log";
+import { workingBubbleStore } from "./working-bubble-store";
 
-export type UpdateStatus = "idle" | "checking" | "available" | "downloading" | "error";
+export type UpdateStatus = "idle" | "checking" | "available" | "downloading" | "installing" | "error";
 
 const [status, setStatus] = createSignal<UpdateStatus>("idle");
 const [version, setVersion] = createSignal("");
@@ -54,6 +55,7 @@ async function downloadAndInstall(): Promise<void> {
     // Re-check if we lost the cached update reference
     const update = cachedUpdate ?? await check();
     if (!update) return;
+    workingBubbleStore.show("Updating...", "Masko Code", "", `Downloading v${update.version}`);
     let totalLength = 0;
     let downloaded = 0;
     await update.downloadAndInstall((event) => {
@@ -62,10 +64,16 @@ async function downloadAndInstall(): Promise<void> {
       } else if (event.event === "Progress") {
         downloaded += event.data.chunkLength;
         if (totalLength > 0) {
-          setProgress(Math.round((downloaded / totalLength) * 100));
+          const pct = Math.round((downloaded / totalLength) * 100);
+          setProgress(pct);
+          workingBubbleStore.show("Updating...", "Masko Code", "", `Downloading v${update.version} (${pct}%)`);
         }
       }
     });
+    log("[update-store] Download complete, relaunching in 3s...");
+    setStatus("installing");
+    workingBubbleStore.show("Restarting...", "Masko Code", "", `v${update.version} installed`);
+    await new Promise((r) => setTimeout(r, 3000));
     await relaunch();
   } catch (e) {
     error("[update-store] Install failed:", e);

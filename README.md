@@ -64,6 +64,8 @@ irm https://raw.githubusercontent.com/paquoc/masko-code/main/scripts/install.ps1
 
 Or download the `.exe` installer manually from [**Releases**](https://github.com/paquoc/masko-code/releases/latest).
 
+> Both methods install the NSIS version which includes **auto-updates** — the app updates itself on launch.
+
 ## Build from Source
 
 ```bash

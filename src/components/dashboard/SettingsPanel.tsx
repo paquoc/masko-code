@@ -407,6 +407,9 @@ export default function SettingsPanel() {
               </div>
               <p class="text-xs text-text-muted mt-0.5">{updateStore.progress}%</p>
             </Show>
+            <Show when={updateStore.status === "installing"}>
+              <p class="text-sm font-body text-text-primary">Installing update, restarting shortly...</p>
+            </Show>
             <Show when={updateStore.status === "error"}>
               <p class="text-sm font-body text-destructive">Update failed</p>
               <p class="text-xs text-text-muted mt-0.5">{updateStore.error}</p>
