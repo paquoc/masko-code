@@ -395,9 +395,12 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                       "border-color": selectedSuggestion()?.id === s.id ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
                       color: selectedSuggestion()?.id === s.id ? a().accentColor : a().mutedColor,
                     }}
-                    onClick={() =>
-                      setSelectedSuggestion((prev) => (prev?.id === s.id ? null : s))
-                    }
+                    onClick={() => {
+                      setSelectedSuggestion((prev) => (prev?.id === s.id ? null : s));
+                      // Stop countdown when user interacts with suggestions
+                      clearCountdownInterval();
+                      setCountdown(null);
+                    }}
                   >
                     {s.displayLabel.length > 40 ? s.displayLabel.slice(0, 37) + "..." : s.displayLabel}
                     {/* Tooltip — shows full untruncated label */}
