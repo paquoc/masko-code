@@ -851,13 +851,16 @@ function MascotOverlay() {
     setPermExpanded(false);
   });
 
-  // Permission bubble dimensions — doubles width when expanded
+  // Permission bubble dimensions — defaults used until ResizeObserver reports actual rendered size
   const PERM_W_NORMAL = 288;
   const PERM_W_EXPANDED = PERM_W_NORMAL * 1.5;  // 1.5x
   const PERM_H_NORMAL = 280;
-  const PERM_H_EXPANDED = PERM_H_NORMAL * 2;  // 3x
-  const permW = () => permExpanded() ? PERM_W_EXPANDED : PERM_W_NORMAL;
-  const permH = () => permExpanded() ? PERM_H_EXPANDED : PERM_H_NORMAL;
+  const PERM_H_EXPANDED = PERM_H_NORMAL * 2;  // 2x
+  // Actual measured size (CSS px) of the rendered permission bubble — overrides defaults when > 0
+  const [permActualW, setPermActualW] = createSignal(0);
+  const [permActualH, setPermActualH] = createSignal(0);
+  const permW = () => permActualW() > 0 ? permActualW() : (permExpanded() ? PERM_W_EXPANDED : PERM_W_NORMAL);
+  const permH = () => permActualH() > 0 ? permActualH() : (permExpanded() ? PERM_H_EXPANDED : PERM_H_NORMAL);
 
   // Queue: show only the first uncollapsed permission
   const currentPermission = () =>
@@ -894,6 +897,24 @@ function MascotOverlay() {
       <Show when={currentPermission()}>
         {(perm) => {
           const l = () => bubbleLayout(permW(), permH());
+          let promptRef: HTMLDivElement | undefined;
+          // Reset measurements whenever permission changes (different content size)
+          setPermActualW(0);
+          setPermActualH(0);
+          onMount(() => {
+            if (!promptRef) return;
+            const ro = new ResizeObserver((entries) => {
+              for (const entry of entries) {
+                const rect = entry.contentRect;
+                if (rect.width > 0 && rect.height > 0) {
+                  setPermActualW(Math.ceil(rect.width));
+                  setPermActualH(Math.ceil(rect.height));
+                }
+              }
+            });
+            ro.observe(promptRef);
+            onCleanup(() => ro.disconnect());
+          });
           return (
             <div class="absolute flex"
               classList={{ "flex-col justify-end": l().tail === "down" }}
@@ -904,12 +925,14 @@ function MascotOverlay() {
                 ...(l().tail === "down" ? { height: `${overlayPositionStore.y - l().y}px` } : {}),
               }}
             >
+              <div ref={(el) => { promptRef = el; }}>
               <PermissionPrompt
                 permission={perm()}
                 tailDir={l().tail}
                 expanded={permExpanded()}
                 onToggleExpand={togglePermExpanded}
               />
+              </div>
 
               <Show when={queueCount() > 1}>
                 <div class="absolute top-1 right-3 bg-orange-primary text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">

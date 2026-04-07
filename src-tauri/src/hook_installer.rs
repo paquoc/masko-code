@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const SCRIPT_VERSION: &str = "# version: 18";
+const SCRIPT_VERSION: &str = "# version: 19";
 
 /// All Claude Code event types to subscribe to
 const HOOK_EVENTS: &[&str] = &[
@@ -57,7 +57,7 @@ fn generate_script(port: u16) -> String {
 # Log ALL hook invocations before any other logic
 INPUT=$(cat 2>/dev/null || echo '{{}}')
 EVENT_NAME=$(echo "$INPUT" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
-# echo "[$(date '+%Y-%m-%d %H:%M:%S')] event=$EVENT_NAME input=$INPUT" >> /dev/null
+// echo "[$(date '+%Y-%m-%d %H:%M:%S')] event=$EVENT_NAME input=$INPUT" >> /tmp/masko-hook.txt
 
 DROPDIR="$HOME/.masko-desktop/hook-drops"
 

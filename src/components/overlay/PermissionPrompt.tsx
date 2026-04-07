@@ -55,9 +55,11 @@ function parseQuestions(event: PendingPermission["event"]): Array<{
 export default function PermissionPrompt(props: { permission: PendingPermission; tailDir?: TailDir; expanded?: boolean; onToggleExpand?: () => void; appearance?: BubbleAppearance }) {
   const [selectedSuggestion, setSelectedSuggestion] = createSignal<PermissionSuggestion | null>(null);
   const [answer, setAnswer] = createSignal("");
-  const [selectedOptions, setSelectedOptions] = createSignal<Set<string>>(new Set());
-  const [otherActive, setOtherActive] = createSignal(false);
-  const [otherText, setOtherText] = createSignal("");
+  // Per-question state — indexed by question position
+  const [currentQuestionIndex, setCurrentQuestionIndex] = createSignal(0);
+  const [questionSelections, setQuestionSelections] = createSignal<Set<string>[]>([]);
+  const [questionOtherActive, setQuestionOtherActive] = createSignal<boolean[]>([]);
+  const [questionOtherText, setQuestionOtherText] = createSignal<string[]>([]);
   const [feedback, setFeedback] = createSignal("");
   let progressBarRef: HTMLDivElement | undefined;
 
@@ -101,6 +103,13 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     clearCountdownInterval();
     setAnimKey((k) => k + 1);
 
+    // Reset per-question state when permission changes
+    const qs = questions();
+    setCurrentQuestionIndex(0);
+    setQuestionSelections(qs.map(() => new Set<string>()));
+    setQuestionOtherActive(qs.map(() => false));
+    setQuestionOtherText(qs.map(() => ""));
+
     if (!shouldCountdown()) {
       setCountdown(null);
       log("[countdown] skip for", permId);
@@ -141,21 +150,33 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     }
   });
 
+  /** Build the answer string for a single question from its per-question state */
+  const buildQuestionAnswer = (idx: number): string => {
+    const sels = [...(questionSelections()[idx] || new Set<string>())];
+    if (questionOtherActive()[idx] && questionOtherText()[idx]?.trim()) {
+      sels.push(questionOtherText()[idx].trim());
+    }
+    return sels.join(", ");
+  };
+
   const handleApprove = () => {
     log("handleApprove called, id:", props.permission.id);
     const suggestion = selectedSuggestion();
     if (isQ()) {
-      // Send answer
+      const qs = questions();
+      // Multi-question: advance to next question instead of submitting
+      if (qs.length > 1 && currentQuestionIndex() < qs.length - 1) {
+        setCurrentQuestionIndex(currentQuestionIndex() + 1);
+        return;
+      }
+      // Last (or only) question — submit all answers
       const answerText = answer().trim();
-      if (questions().length > 0 && questions()[0].options.length > 0) {
-        // Option-based answer — include "Other" text if active
-        const selected = [...selectedOptions()];
-        if (otherActive() && otherText().trim()) {
-          selected.push(otherText().trim());
-        }
+      if (qs.length > 0 && qs[0].options.length > 0) {
+        // Option-based: send one entry per question (in question order)
+        const answers = qs.map((_, i) => buildQuestionAnswer(i)).filter((a) => a.length > 0);
         permissionStore.resolve(props.permission.id, "allow", {
           type: "updatedInput",
-          answers: selected,
+          answers,
         });
       } else if (answerText) {
         permissionStore.resolve(props.permission.id, "allow", {
@@ -180,9 +201,33 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     permissionStore.collapse(props.permission.id);
   };
 
-  const toggleOption = (label: string, multiSelect: boolean) => {
+  const updateQuestionSelection = (idx: number, updater: (prev: Set<string>) => Set<string>) => {
+    setQuestionSelections((prev) => {
+      const next = prev.slice();
+      next[idx] = updater(next[idx] || new Set<string>());
+      return next;
+    });
+  };
+
+  const setQuestionOtherActiveAt = (idx: number, value: boolean) => {
+    setQuestionOtherActive((prev) => {
+      const next = prev.slice();
+      next[idx] = value;
+      return next;
+    });
+  };
+
+  const setQuestionOtherTextAt = (idx: number, value: string) => {
+    setQuestionOtherText((prev) => {
+      const next = prev.slice();
+      next[idx] = value;
+      return next;
+    });
+  };
+
+  const toggleOption = (idx: number, label: string, multiSelect: boolean) => {
     if (multiSelect) {
-      setSelectedOptions((prev) => {
+      updateQuestionSelection(idx, (prev) => {
         const next = new Set(prev);
         if (next.has(label)) next.delete(label);
         else next.add(label);
@@ -190,11 +235,11 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
       });
     } else {
       // Single select: replace selection
-      setSelectedOptions((prev) => prev.has(label) ? new Set<string>() : new Set<string>([label]));
+      updateQuestionSelection(idx, (prev) => (prev.has(label) ? new Set<string>() : new Set<string>([label])));
     }
     // Deactivate "Other" when selecting a predefined option
-    setOtherActive(false);
-    setOtherText("");
+    setQuestionOtherActiveAt(idx, false);
+    setQuestionOtherTextAt(idx, "");
   };
 
   const a = () => props.appearance || workingBubbleStore.settings.appearance;
@@ -261,26 +306,37 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
         {/* Content */}
         <div class="px-3 pb-2">
           <Show when={isQ()}>
-            {/* Question mode */}
-            <For each={questions()}>
-              {(q) => (
+            {/* Question mode — show only current question. Use reactive accessors so JSX updates when index changes. */}
+            <Show when={questions()[currentQuestionIndex()]}>
+              {(() => {
+                const q = () => questions()[currentQuestionIndex()];
+                const idx = () => currentQuestionIndex();
+                const sel = () => questionSelections()[idx()] || new Set<string>();
+                const otherOn = () => questionOtherActive()[idx()] || false;
+                const otherTxt = () => questionOtherText()[idx()] || "";
+                return (
                 <div class="mb-2">
-                  <p class="leading-snug mb-1.5" style={{ "font-size": `${fsSm()}px`, color: a().textColor }}>{q.question}</p>
-                  <Show when={q.options.length > 0}>
+                  <Show when={questions().length > 1}>
+                    <p class="mb-1" style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>
+                      Question {idx() + 1} / {questions().length}
+                    </p>
+                  </Show>
+                  <p class="leading-snug mb-1.5" style={{ "font-size": `${fsSm()}px`, color: a().textColor }}>{q().question}</p>
+                  <Show when={q().options.length > 0}>
                     <div class="space-y-1">
-                      <For each={q.options}>
+                      <For each={q().options}>
                         {(opt) => (
                           <button
                             class="w-full text-left px-2 py-1 rounded-lg border transition-colors"
                             style={{
                               "font-size": `${fsSm()}px`,
-                              background: selectedOptions().has(opt.label) ? `${a().accentColor}0d` : a().bgColor,
-                              "border-color": selectedOptions().has(opt.label) ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
-                              color: selectedOptions().has(opt.label) ? a().textColor : a().mutedColor,
+                              background: sel().has(opt.label) ? `${a().accentColor}0d` : a().bgColor,
+                              "border-color": sel().has(opt.label) ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
+                              color: sel().has(opt.label) ? a().textColor : a().mutedColor,
                             }}
-                            onClick={() => toggleOption(opt.label, q.multiSelect)}
+                            onClick={() => toggleOption(idx(), opt.label, q().multiSelect)}
                           >
-                            {q.multiSelect ? (selectedOptions().has(opt.label) ? "☑ " : "☐ ") : (selectedOptions().has(opt.label) ? "● " : "○ ")}
+                            {q().multiSelect ? (sel().has(opt.label) ? "☑ " : "☐ ") : (sel().has(opt.label) ? "● " : "○ ")}
                             {opt.label}
                             <Show when={opt.description}>
                               <span class="block ml-4" style={{ "font-size": `${fsXs()}px`, color: a().mutedColor }}>{opt.description}</span>
@@ -293,20 +349,21 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                         class="w-full text-left px-2 py-1 rounded-lg border transition-colors"
                         style={{
                           "font-size": `${fsSm()}px`,
-                          background: otherActive() ? `${a().accentColor}0d` : a().bgColor,
-                          "border-color": otherActive() ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
-                          color: otherActive() ? a().textColor : a().mutedColor,
+                          background: otherOn() ? `${a().accentColor}0d` : a().bgColor,
+                          "border-color": otherOn() ? `${a().accentColor}40` : "rgba(35,17,60,0.12)",
+                          color: otherOn() ? a().textColor : a().mutedColor,
                         }}
                         onClick={() => {
-                          if (!q.multiSelect) setSelectedOptions(new Set<string>());
-                          setOtherActive((v) => !v);
-                          if (otherActive()) setOtherText("");
+                          if (!q().multiSelect) updateQuestionSelection(idx(), () => new Set<string>());
+                          const wasOn = otherOn();
+                          setQuestionOtherActiveAt(idx(), !wasOn);
+                          if (wasOn) setQuestionOtherTextAt(idx(), "");
                         }}
                       >
-                        {q.multiSelect ? (otherActive() ? "☑ " : "☐ ") : (otherActive() ? "● " : "○ ")}
+                        {q().multiSelect ? (otherOn() ? "☑ " : "☐ ") : (otherOn() ? "● " : "○ ")}
                         Other
                       </button>
-                      <Show when={otherActive()}>
+                      <Show when={otherOn()}>
                         <input
                           type="text"
                           class="w-full px-2 py-1 rounded-lg border focus:outline-none"
@@ -317,8 +374,8 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                             color: a().textColor,
                           }}
                           placeholder="Type your answer..."
-                          value={otherText()}
-                          onInput={(e) => setOtherText(e.currentTarget.value)}
+                          value={otherTxt()}
+                          onInput={(e) => setQuestionOtherTextAt(idx(), e.currentTarget.value)}
                           onFocus={() => invoke("focus_overlay").catch(() => {})}
                           onBlur={() => invoke("unfocus_overlay").catch(() => {})}
                           onKeyDown={(e) => {
@@ -329,7 +386,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                       </Show>
                     </div>
                   </Show>
-                  <Show when={q.options.length === 0}>
+                  <Show when={q().options.length === 0}>
                     <input
                       type="text"
                       class="w-full px-2 py-1 rounded-lg border focus:outline-none"
@@ -350,8 +407,9 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
                     />
                   </Show>
                 </div>
-              )}
-            </For>
+                );
+              })()}
+            </Show>
           </Show>
 
           <Show when={!isQ()}>
@@ -482,7 +540,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             </Show>
             <span class="relative">
               {isQ()
-                ? "Submit"
+                ? (questions().length > 1 && currentQuestionIndex() < questions().length - 1 ? "Next" : "Submit")
                 : selectedSuggestion()
                   ? "Allow Rule"
                   : countdown() !== null && countdown()! > 0
