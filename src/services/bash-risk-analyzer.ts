@@ -1,5 +1,6 @@
 import parse from "bash-parser";
 import { autoApproveStore, type AutoApproveRule, type RiskLevel } from "../stores/auto-approve-store";
+import { log } from "./log";
 
 /** Walk bash AST and extract all command strings (command + args) */
 function walkAST(node: any, results: string[] = []): string[] {
@@ -152,6 +153,8 @@ export function analyzeBashCommand(commandStr: string): AnalysisResult {
 
   result.overallRisk = highestRisk;
   result.shouldAutoApprove = anyMatched && allAutoApprove;
+
+  log("[bash-risk] analyze:", commandStr, "→ commands:", commands, "anyMatched:", anyMatched, "allAutoApprove:", allAutoApprove, "shouldAutoApprove:", result.shouldAutoApprove, "matchedRule:", result.matchedRule);
 
   return result;
 }

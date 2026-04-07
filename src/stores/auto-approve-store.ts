@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store";
 import { createSignal } from "solid-js";
+import { emit, listen } from "@tauri-apps/api/event";
 
 export type RiskLevel = "safe" | "medium" | "high";
 
@@ -77,8 +78,21 @@ const [settings, setSettings] = createStore<AutoApproveSettings>(loadSettings())
 /** Set of session IDs that have session-wide auto-approve enabled */
 const [sessionAutoApproveSessions, setSessionAutoApproveSessions] = createSignal<Set<string>>(new Set());
 
+const SYNC_EVENT = "auto-approve-settings-changed";
+let isApplyingRemote = false;
+
+// Listen for updates from other windows
+listen<AutoApproveSettings>(SYNC_EVENT, (e) => {
+  isApplyingRemote = true;
+  setSettings(e.payload);
+  isApplyingRemote = false;
+}).catch(() => {});
+
 function persist(): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  if (!isApplyingRemote) {
+    emit(SYNC_EVENT, { ...settings, rules: [...settings.rules] }).catch(() => {});
+  }
 }
 
 function addRule(): void {
