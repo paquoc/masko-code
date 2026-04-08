@@ -111,7 +111,7 @@ function ContextMenu(props: {
           left: `${menuX()}px`,
           top: `${menuY()}px`,
           width: `${MENU_W}px`,
-          background: "rgba(24, 24, 28, 0.92)",
+          background: "rgba(24, 24, 28, 1)",
           "backdrop-filter": "blur(16px)",
         }}
         onMouseDown={(e) => e.stopPropagation()}
@@ -204,7 +204,7 @@ function MenuRow(props: {
       }}
       onClick={props.onClick}
     >
-      <span class="w-4 text-center text-xs opacity-60">{props.icon}</span>
+      <span class="w-4 text-center text-xs opacity-90">{props.icon}</span>
       <span class="flex-1 font-medium" style={{ "font-size": "13px", "font-family": "system-ui, sans-serif" }}>
         {props.label}
       </span>
