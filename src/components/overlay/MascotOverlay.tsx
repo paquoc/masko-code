@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { OverlayStateMachine } from "../../services/state-machine";
 import { parseMascotConfig } from "../../models/mascot-config";
@@ -52,14 +52,14 @@ function ContextMenu(props: {
     const s = telegramStore.status;
     if (s.error) return "Telegram: Error";
     if (!s.configured) return "Telegram: Not configured";
-    return s.enabled ? "Telegram: On" : "Telegram: Off";
+    return s.enabled ? "Telegram: Enabled" : "Telegram: Disabled";
   };
 
   const telegramRowIcon = () => {
     const s = telegramStore.status;
     if (s.error) return "⚠️";
     if (!s.configured) return "○";
-    return s.enabled ? "●" : "○";
+    return s.enabled ? "✅" : "○";
   };
 
   async function handleTelegramClick() {
@@ -70,6 +70,7 @@ function ContextMenu(props: {
         const win = await WebviewWindow.getByLabel("main");
         await win?.show();
         await win?.setFocus();
+        await emit("navigate", "telegram");
       } catch { /* ignore */ }
       return;
     }

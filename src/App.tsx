@@ -7,15 +7,17 @@ import NotificationCenter from "./components/dashboard/NotificationCenter";
 import MascotGallery from "./components/dashboard/MascotGallery";
 import ActivityFeed from "./components/dashboard/ActivityFeed";
 import SettingsPanel from "./components/dashboard/SettingsPanel";
+import TelegramPanel from "./components/dashboard/TelegramPanel";
 import { initTelegramStore } from "./stores/telegram-store";
 
-type Tab = "sessions" | "notifications" | "mascots" | "activity" | "settings";
+type Tab = "sessions" | "notifications" | "mascots" | "activity" | "telegram" | "settings";
 
 const TAB_META: Record<Tab, { label: string; icon: string }> = {
   sessions: { label: "Sessions", icon: "⚡" },
   notifications: { label: "Notifications", icon: "🔔" },
   mascots: { label: "Mascots", icon: "🎭" },
   activity: { label: "Activity", icon: "📋" },
+  telegram: { label: "Telegram", icon: "✈️" },
   settings: { label: "Settings", icon: "⚙️" },
 };
 
@@ -32,6 +34,7 @@ function App() {
     // Listen for tray navigation events
     unlisten = await listen<string>("navigate", (e) => {
       if (e.payload === "settings") setActiveTab("settings");
+      else if (e.payload === "telegram") setActiveTab("telegram");
     });
   });
 
@@ -42,6 +45,7 @@ function App() {
     notifications: () => <NotificationCenter />,
     mascots: () => <MascotGallery />,
     activity: () => <ActivityFeed />,
+    telegram: () => <TelegramPanel />,
     settings: () => <SettingsPanel />,
   };
 
