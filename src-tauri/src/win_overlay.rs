@@ -105,6 +105,8 @@ unsafe extern "system" fn overlay_wndproc(
                 vx, vy, vw, vh,
                 SWP_NOACTIVATE | SWP_FRAMECHANGED,
             ).ok();
+            // Re-assert not-fullscreen after the resize.
+            mark_not_fullscreen(hwnd.0);
         }
         _ => {}
     }
@@ -222,6 +224,41 @@ pub unsafe fn resize_to_monitor(hwnd_raw: *mut std::ffi::c_void, x: i32, y: i32,
         x, y, w, h,
         SWP_NOACTIVATE | SWP_FRAMECHANGED,
     ).ok();
+    // Tell the shell explicitly that this window is NOT fullscreen, so the
+    // taskbar's rudely-fullscreen detection doesn't demote the tray below
+    // other app windows.
+    mark_not_fullscreen(hwnd_raw);
+}
+
+/// Tell the Windows shell that `hwnd` is NOT in fullscreen mode. This
+/// prevents the taskbar from auto-hiding / being pushed below other app
+/// windows because the shell misidentifies our transparent TOPMOST overlay
+/// as a fullscreen application.
+///
+/// Safe to call multiple times. COM is lazily initialized on the current
+/// thread if needed; failures are logged and swallowed.
+pub fn mark_not_fullscreen(hwnd_raw: *mut std::ffi::c_void) {
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{ITaskbarList2, TaskbarList};
+
+    unsafe {
+        // CoInitializeEx may return S_FALSE if COM is already initialized on
+        // this thread — that's fine, we still proceed.
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+
+        let taskbar: Result<ITaskbarList2, _> =
+            CoCreateInstance(&TaskbarList, None, CLSCTX_INPROC_SERVER);
+        let Ok(taskbar) = taskbar else {
+            return;
+        };
+        if taskbar.HrInit().is_err() {
+            return;
+        }
+        let hwnd = HWND(hwnd_raw);
+        let _ = taskbar.MarkFullscreenWindow(hwnd, false);
+    }
 }
 
 /// Check if the OS cursor is currently over the mascot or popup areas.

@@ -101,6 +101,11 @@ pub fn run() {
                                             | windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE,
                                     ).ok();
                                 }
+                                // Re-assert not-fullscreen so the taskbar stays
+                                // above regular app windows.
+                                crate::win_overlay::mark_not_fullscreen(
+                                    hwnd_raw as *mut std::ffi::c_void,
+                                );
                             }
 
                             let interactive =
