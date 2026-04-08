@@ -102,6 +102,7 @@ Path: `<app_data_dir>/telegram.json`
 
 - `chat_id` is a **string** so it can hold negative group chat ids like `-1001234567890`.
 - Missing file → default `{ enabled: false, bot_token: "", chat_id: "" }`.
+- **Atomic writes**: every save writes to `telegram.json.tmp` then renames over `telegram.json`. Prevents corrupted config on crash mid-save.
 - Token is persisted in plaintext. Accepted trade-off for Phase 1; migration to OS keyring is a future task.
 - The token is returned raw to the frontend; the Settings UI hides it behind a password field with an eye-toggle to reveal.
 
@@ -127,8 +128,16 @@ async fn telegram_get_config() -> Result<TelegramConfigDto, String>;
 
 #[tauri::command]
 async fn telegram_save_config(token: String, chat_id: String) -> Result<(), String>;
-// Persists config. If poller is running and config changed, restart it
-// (drops any in-flight Telegram state, see lifecycle section).
+// Persists config. Side effects:
+//   - Always clears status.error (saving is treated as user acknowledging the error).
+//   - If the stored enabled flag is still true and the new config is `configured`,
+//     (re)starts the poller. This covers the "fatal error → fix token → Save" case:
+//     the fatal error sets status.error but the poller task is down; Save restarts it.
+//     NOTE: the fatal-error branch does NOT persist enabled=false; it only sets the
+//     in-memory status.error and stops the running task. The persisted enabled flag
+//     is preserved so Save can resume polling. (This reverses the earlier note — see
+//     "Error classification" below.)
+//   - If poller is running and config changed, restart it (drops in-flight Telegram state).
 
 #[tauri::command]
 async fn telegram_test(
@@ -171,6 +180,13 @@ Payload:
 
 The frontend telegram-store listens and calls `permissionStore.resolve(id, decision, s)`. When `feedback_text` is set, it is wrapped as `{ type: "feedback", reason: feedback_text }` so the existing pipeline in [permission-store.ts:140-170](../../../src/stores/permission-store.ts#L140-L170) maps it to `hookDecision.message`.
 
+**Contract invariant:** `suggestion` and `feedback_text` are **mutually exclusive**. The Rust side emits exactly one or neither:
+- Callback button `allow_suggestion` → `suggestion` set, `feedback_text` absent.
+- Callback buttons `approve` / `deny` → both absent.
+- Free-text message → `feedback_text` set, `suggestion` absent, `decision = "deny"`.
+
+The frontend may assume this and does not handle the "both set" case.
+
 ## Data flow — four permission cases
 
 ### Case 1: New permission arrives while Telegram is idle
@@ -195,7 +211,13 @@ The frontend telegram-store listens and calls `permissionStore.resolve(id, decis
    - `"approve"` → decision `allow`, suggestion `None`.
    - `"allow_suggestion"` → decision `allow`, suggestion `state.active.suggestion.clone()`.
    - `"deny"` → decision `deny`, suggestion `None`.
-4. `answerCallbackQuery(id, "✓ Approved")` (or "Denied", etc.) for the Telegram toast.
+4. Call `answerCallbackQuery(id, toast_text)` for the Telegram toast. Mapping:
+
+   | `callback_data`    | `toast_text`                |
+   | ------------------ | --------------------------- |
+   | `approve`          | `"✓ Approved"`              |
+   | `allow_suggestion` | `"⚡ Applied suggestion"`   |
+   | `deny`             | `"✗ Denied"`                |
 5. `client.edit_message_reply_markup(chat_id, message_id, None)` to clear the inline keyboard on the original message.
 6. Emit `telegram://permission-response { request_id: active.request_id, decision, suggestion }`.
 7. Clear `state.active`. If `queue.pop_front()` returns a queued permission, call `send_now` for it.
@@ -239,7 +261,7 @@ This covers all existing dismiss paths (`dismissByRequestId`, `dismissForAgent`,
 // One or more suggestions — use suggestions[0]
 [
   [{ text: "✅ Approve",                          callback_data: "approve"          }],
-  [{ text: format!("⚡ {}", suggestions[0].display_label), callback_data: "allow_suggestion" }],
+  [{ text: format!("⚡ {}", display_label_for(&suggestions[0])), callback_data: "allow_suggestion" }],
   [{ text: "❌ Deny",                             callback_data: "deny"             }],
 ]
 ```
@@ -247,6 +269,7 @@ This covers all existing dismiss paths (`dismissByRequestId`, `dismissForAgent`,
 - Each button is its own row ("mỗi nút 1 dòng").
 - `callback_data` is a fixed short string; the `request_id` is not embedded because only one permission is active at a time and the state lookup keeps it under the 64-byte API limit.
 - `state.active.suggestion` caches `suggestions[0]` at `send_now` time so the callback handler can emit it back to the frontend.
+- **`display_label_for(&suggestion)`** is a Rust port of the label-building logic in [permission.ts:21-59](../../../src/models/permission.ts#L21-L59). The Rust side receives raw `permission_suggestions` from the Claude hook event (camelCase fields: `type`, `rules`, `mode`, `destination`, `behavior`, `ruleContent`, `toolName`) and builds the display label itself. When forwarding the suggestion back to the frontend via `telegram://permission-response`, Rust emits the **raw** suggestion object (not the computed label) so the frontend's existing `parsePermissionSuggestions` path can consume it unchanged.
 
 ## Message format
 
@@ -296,7 +319,8 @@ HTML-sensitive characters (`<`, `>`, `&`) in user-supplied strings must be escap
    │    ┌────────┐  emit status-changed { error } + desktop notification
    │    │ Error  │
    │    └────┬───┘
-   │         │ persist enabled = false
+   │         │ task stops; persisted `enabled` flag is preserved
+   │         │ so a later save_config can resume polling
    │         ▼
    │    ┌──────────┐
    └─── │ Stopped  │
@@ -308,7 +332,7 @@ HTML-sensitive characters (`<`, `>`, `&`) in user-supplied strings must be escap
 | Error from `getUpdates`        | Handling                                                                                                       |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | Network / timeout / 5xx        | Enter Reconnecting, backoff 1s → 2s → 5s → 10s (capped). Status emitted on transition. No user action needed.  |
-| 401 Unauthorized               | Fatal. Stop poller, set `status.error = "Invalid bot token"`, persist `enabled=false`, fire desktop notification. |
+| 401 Unauthorized               | Fatal. Stop poller task, set `status.error = "Invalid bot token"`, fire desktop notification. **Do not persist `enabled=false`** — the persisted flag stays `true` so that `save_config` with a fixed token can transparently resume polling. |
 | 409 Conflict                   | Log warning, sleep 5s, retry. Usually clears itself when the conflicting instance stops.                       |
 | 429 Too Many Requests          | Sleep for `retry_after` seconds from the response body, then retry. Stay in Running state.                     |
 
