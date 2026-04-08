@@ -1,5 +1,4 @@
 // src-tauri/src/telegram/formatter.rs
-#![allow(dead_code)]
 
 use serde_json::Value;
 

@@ -1,5 +1,4 @@
 // src-tauri/src/telegram/config.rs
-#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 

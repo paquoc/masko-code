@@ -1,5 +1,4 @@
 // src-tauri/src/telegram/poller.rs
-#![allow(dead_code)]
 
 use std::sync::Arc;
 use std::time::Duration;

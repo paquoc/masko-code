@@ -1,5 +1,4 @@
 // src-tauri/src/telegram/mod.rs
-#![allow(dead_code)]
 
 pub mod client;
 pub mod config;

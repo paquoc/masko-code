@@ -1,5 +1,4 @@
 // src-tauri/src/telegram/client.rs
-#![allow(dead_code)]
 
 use reqwest::StatusCode;
 use serde::Serialize;

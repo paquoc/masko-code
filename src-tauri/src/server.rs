@@ -8,7 +8,7 @@ use axum::{
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{oneshot, Mutex};
 
 use crate::models::{AgentEvent, InputEvent};
@@ -104,6 +104,19 @@ async fn handle_hook(
         state.app_handle.emit("hook-event", &payload).ok();
         // Also forward as regular event for tracking
         state.app_handle.emit("permission-request", &payload).ok();
+
+        // Push to Telegram manager (fire-and-forget; no-op if disabled).
+        if let Some(manager) = state
+            .app_handle
+            .try_state::<std::sync::Arc<crate::telegram::TelegramManager>>()
+        {
+            let m = manager.inner().clone();
+            let ev = event.clone();
+            let rid = request_id.clone();
+            tokio::spawn(async move {
+                m.push_permission(ev, rid).await;
+            });
+        }
 
         // Wait for user decision (no timeout — waits until user responds or channel drops)
         match rx.await {

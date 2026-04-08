@@ -35,6 +35,13 @@ pub fn run() {
         .setup(move |app| {
             tray::create_tray(app.handle())?;
 
+            // Initialize Telegram manager synchronously so the State is ready
+            // before commands are invoked.
+            let manager = tauri::async_runtime::block_on(
+                telegram::TelegramManager::init(app.handle().clone())
+            );
+            app.manage(manager);
+
             let handle = app.handle().clone();
             let pp = pp_for_server.clone();
             tauri::async_runtime::spawn(async move {
@@ -141,6 +148,11 @@ pub fn run() {
             commands::unfocus_overlay,
             commands::get_autostart,
             commands::set_autostart,
+            commands::telegram_get_config,
+            commands::telegram_save_config,
+            commands::telegram_test,
+            commands::telegram_set_enabled,
+            commands::telegram_get_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");
