@@ -406,6 +406,25 @@ pub(crate) mod dispatch {
                 .await;
         }
 
+        // Send a follow-up message confirming the choice (in addition to the
+        // brief toast from answerCallbackQuery, which is easy to miss).
+        let followup = match data.as_str() {
+            "approve" => Some("✓ Approved".to_string()),
+            "deny" => Some("✗ Denied".to_string()),
+            "allow_suggestion" => {
+                let label = active
+                    .suggestion
+                    .as_ref()
+                    .map(formatter::display_label_for)
+                    .unwrap_or_else(|| "suggestion".to_string());
+                Some(format!("⚡ Applied: {label}"))
+            }
+            _ => None,
+        };
+        if let Some(text) = followup {
+            let _ = client.send_message(&config.chat_id, &text, None).await;
+        }
+
         let (decision, suggestion) = match data.as_str() {
             "approve" => ("allow", None),
             "deny" => ("deny", None),
