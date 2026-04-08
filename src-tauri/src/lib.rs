@@ -5,6 +5,7 @@ mod hook_installer;
 mod models;
 mod server;
 mod tray;
+mod telegram;
 
 #[cfg(target_os = "windows")]
 mod autostart;
