@@ -10,6 +10,7 @@ import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
 import { overlayPositionStore } from "../../stores/overlay-position-store";
+import { telegramStore } from "../../stores/telegram-store";
 import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
@@ -45,6 +46,38 @@ function ContextMenu(props: {
   function quitApp() {
     props.onClose();
     invoke("quit_app").catch(() => { });
+  }
+
+  const telegramRowLabel = () => {
+    const s = telegramStore.status;
+    if (s.error) return "Telegram: Error";
+    if (!s.configured) return "Telegram: Not configured";
+    return s.enabled ? "Telegram: On" : "Telegram: Off";
+  };
+
+  const telegramRowIcon = () => {
+    const s = telegramStore.status;
+    if (s.error) return "⚠️";
+    if (!s.configured) return "○";
+    return s.enabled ? "●" : "○";
+  };
+
+  async function handleTelegramClick() {
+    props.onClose();
+    const s = telegramStore.status;
+    if (!s.configured || s.error) {
+      try {
+        const win = await WebviewWindow.getByLabel("main");
+        await win?.show();
+        await win?.setFocus();
+      } catch { /* ignore */ }
+      return;
+    }
+    try {
+      await telegramStore.setEnabled(!s.enabled);
+    } catch {
+      // Status remains unchanged; user can open Dashboard for detail.
+    }
   }
 
   // Menu position: flip left/up if near screen edge
@@ -126,6 +159,13 @@ function ContextMenu(props: {
           label="Flip"
           icon="↔"
           onClick={() => { overlayPositionStore.toggleFlipX(); props.onClose(); }}
+        />
+
+        {/* Telegram quick toggle */}
+        <MenuRow
+          label={telegramRowLabel()}
+          icon={telegramRowIcon()}
+          onClick={handleTelegramClick}
         />
 
         <div class="h-px bg-white/10 mx-2" />
