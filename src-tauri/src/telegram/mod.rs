@@ -504,6 +504,44 @@ pub(crate) mod dispatch {
         }
 
         // Regular permission callbacks.
+        // Check active FIRST so we can show an accurate toast — a stale
+        // button (from a message whose permission was already resolved or
+        // dropped) must not fire a misleading "✓ Approved" toast.
+        let tapped_msg_id = cb.message.as_ref().map(|m| m.message_id);
+        let (active, next) = {
+            let mut s = state.lock().await;
+            // Only consume the active permission if the tapped button belongs
+            // to the current active message. Otherwise treat as stale.
+            let is_current = match (s.active.as_ref(), tapped_msg_id) {
+                (Some(a), Some(mid)) => a.message_id == mid,
+                (Some(_), None) => true, // no message on callback — assume current
+                _ => false,
+            };
+            if is_current {
+                let active = s.active.clone();
+                let next = s.resolve_active();
+                (active, next)
+            } else {
+                (None, None)
+            }
+        };
+
+        let Some(active) = active else {
+            // Stale button — either no active permission or the tapped
+            // message is from a previous resolved/cleared permission.
+            let _ = client
+                .answer_callback_query(&cb.id, "⌛ Expired — request no longer pending")
+                .await;
+            // Also clear the orphaned keyboard so the user can't re-tap.
+            if let Some(mid) = tapped_msg_id {
+                let _ = client
+                    .edit_message_reply_markup(&config.chat_id, mid, None)
+                    .await;
+            }
+            return;
+        };
+
+        // Active matched — fire the real toast now.
         let toast = match data.as_str() {
             "approve" => "✓ Approved",
             "allow_suggestion" => "⚡ Applied suggestion",
@@ -511,18 +549,6 @@ pub(crate) mod dispatch {
             _ => "?",
         };
         let _ = client.answer_callback_query(&cb.id, toast).await;
-
-        // Snapshot active, then clear it atomically and pop next.
-        let (active, next) = {
-            let mut s = state.lock().await;
-            let active = s.active.clone();
-            let next = s.resolve_active();
-            (active, next)
-        };
-
-        let Some(active) = active else {
-            return;
-        };
 
         // Edit keyboard away on the original message.
         if let Some(msg) = &cb.message {
