@@ -13,11 +13,30 @@ pub async fn get_server_status() -> Result<serde_json::Value, String> {
 #[tauri::command(rename_all = "camelCase")]
 pub async fn resolve_permission(
     pending: State<'_, PendingPermissions>,
+    manager: State<'_, std::sync::Arc<crate::telegram::TelegramManager>>,
     request_id: String,
     decision: serde_json::Value,
 ) -> Result<(), String> {
     mlog!("resolve_permission called: id={}", request_id);
-    crate::server::resolve(&pending, request_id, decision).await
+
+    // Extract decision label for the Telegram follow-up message BEFORE moving decision.
+    let decision_label = decision
+        .pointer("/hookSpecificOutput/decision/behavior")
+        .and_then(|v| v.as_str())
+        .unwrap_or("allow")
+        .to_string();
+
+    // Forward to the hook HTTP response.
+    crate::server::resolve(&pending, request_id.clone(), decision).await?;
+
+    // Notify Telegram — fire-and-forget style (spawn) so IPC returns quickly.
+    let manager_clone: std::sync::Arc<crate::telegram::TelegramManager> = manager.inner().clone();
+    let req_id = request_id.clone();
+    tauri::async_runtime::spawn(async move {
+        manager_clone.on_local_resolved(&req_id, &decision_label).await;
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -226,4 +245,51 @@ pub fn move_overlay_to_monitor(app: AppHandle, x: i32, y: i32) -> Result<(i32, i
         let _ = (app, x, y);
         Ok((0, 0, 1920, 1080))
     }
+}
+
+// ===== Telegram commands =====
+
+use std::sync::Arc;
+
+use crate::telegram::types::{TelegramConfigDto, TelegramStatus, TelegramTestResult};
+use crate::telegram::TelegramManager;
+
+#[tauri::command]
+pub async fn telegram_get_config(
+    manager: tauri::State<'_, Arc<TelegramManager>>,
+) -> Result<TelegramConfigDto, String> {
+    Ok(manager.get_config_dto().await)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn telegram_save_config(
+    manager: tauri::State<'_, Arc<TelegramManager>>,
+    token: String,
+    chat_id: String,
+) -> Result<(), String> {
+    manager.save_config(token, chat_id).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn telegram_test(
+    manager: tauri::State<'_, Arc<TelegramManager>>,
+    token: String,
+    chat_id: Option<String>,
+) -> Result<TelegramTestResult, String> {
+    manager.test(token, chat_id).await
+}
+
+#[tauri::command]
+pub async fn telegram_set_enabled(
+    manager: tauri::State<'_, Arc<TelegramManager>>,
+    enabled: bool,
+) -> Result<(), String> {
+    manager.set_enabled(enabled).await
+}
+
+#[tauri::command]
+pub async fn telegram_get_status(
+    manager: tauri::State<'_, Arc<TelegramManager>>,
+) -> Result<TelegramStatus, String> {
+    Ok(manager.get_status().await)
 }
