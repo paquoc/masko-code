@@ -7,6 +7,7 @@ import NotificationCenter from "./components/dashboard/NotificationCenter";
 import MascotGallery from "./components/dashboard/MascotGallery";
 import ActivityFeed from "./components/dashboard/ActivityFeed";
 import SettingsPanel from "./components/dashboard/SettingsPanel";
+import { initTelegramStore } from "./stores/telegram-store";
 
 type Tab = "sessions" | "notifications" | "mascots" | "activity" | "settings";
 
@@ -24,6 +25,7 @@ function App() {
   let unlisten: UnlistenFn | undefined;
 
   onMount(async () => {
+    await initTelegramStore();
     appStore.start();
     // Auto-update on launch — check, download, and install silently
     updateStore.checkForUpdates({ autoInstall: true });
