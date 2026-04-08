@@ -100,9 +100,16 @@ impl TelegramClient {
         message_id: i64,
         markup: Option<&InlineKeyboardMarkup>,
     ) -> Result<(), TelegramError> {
+        // NOTE: to clear an inline keyboard we must send an explicit
+        // `reply_markup: { inline_keyboard: [] }` — omitting the field is a
+        // no-op on the Telegram Bot API.
         let body = match markup {
             Some(m) => json!({ "chat_id": chat_id, "message_id": message_id, "reply_markup": m }),
-            None => json!({ "chat_id": chat_id, "message_id": message_id }),
+            None => json!({
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reply_markup": { "inline_keyboard": [] }
+            }),
         };
         let resp = self
             .http

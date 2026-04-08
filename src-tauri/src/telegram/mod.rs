@@ -290,6 +290,7 @@ impl TelegramManager {
 
 fn pretty_decision(decision: &str) -> &str {
     match decision {
+        "" => "Resolved",
         "allow" => "Approved",
         "deny" => "Denied",
         other => other,

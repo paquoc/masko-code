@@ -20,10 +20,12 @@ pub async fn resolve_permission(
     mlog!("resolve_permission called: id={}", request_id);
 
     // Extract decision label for the Telegram follow-up message BEFORE moving decision.
+    // Fall back to empty string — pretty_decision renders that as "Resolved" rather
+    // than misleadingly showing "Approved" on a malformed or missing payload.
     let decision_label = decision
         .pointer("/hookSpecificOutput/decision/behavior")
         .and_then(|v| v.as_str())
-        .unwrap_or("allow")
+        .unwrap_or("")
         .to_string();
 
     // Forward to the hook HTTP response.
