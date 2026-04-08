@@ -20,6 +20,14 @@
 
 ---
 
+## Demo
+
+<p align="center">
+  <video src="https://github.com/paquoc/masko-code/raw/main/demos/demo.mp4" controls width="720"></video>
+</p>
+
+> If the video doesn't play inline, [watch it here](demos/demo.mp4).
+
 ## Features
 
 | | Feature | Description |
