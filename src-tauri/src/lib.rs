@@ -5,6 +5,7 @@ mod hook_installer;
 mod models;
 mod server;
 mod tray;
+mod telegram;
 
 #[cfg(target_os = "windows")]
 mod autostart;
@@ -33,6 +34,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             tray::create_tray(app.handle())?;
+
+            // Initialize Telegram manager synchronously so the State is ready
+            // before commands are invoked.
+            let manager = tauri::async_runtime::block_on(
+                telegram::TelegramManager::init(app.handle().clone())
+            );
+            app.manage(manager);
 
             let handle = app.handle().clone();
             let pp = pp_for_server.clone();
@@ -93,6 +101,11 @@ pub fn run() {
                                             | windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE,
                                     ).ok();
                                 }
+                                // Re-assert not-fullscreen so the taskbar stays
+                                // above regular app windows.
+                                crate::win_overlay::mark_not_fullscreen(
+                                    hwnd_raw as *mut std::ffi::c_void,
+                                );
                             }
 
                             let interactive =
@@ -140,6 +153,11 @@ pub fn run() {
             commands::unfocus_overlay,
             commands::get_autostart,
             commands::set_autostart,
+            commands::telegram_get_config,
+            commands::telegram_save_config,
+            commands::telegram_test,
+            commands::telegram_set_enabled,
+            commands::telegram_get_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");

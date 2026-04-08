@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { OverlayStateMachine } from "../../services/state-machine";
 import { parseMascotConfig } from "../../models/mascot-config";
@@ -10,6 +10,7 @@ import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
 import { overlayPositionStore } from "../../stores/overlay-position-store";
+import { telegramStore } from "../../stores/telegram-store";
 import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
@@ -47,6 +48,39 @@ function ContextMenu(props: {
     invoke("quit_app").catch(() => { });
   }
 
+  const telegramRowLabel = () => {
+    const s = telegramStore.status;
+    if (s.error) return "Telegram: Error";
+    if (!s.configured) return "Telegram: Not configured";
+    return s.enabled ? "Telegram: Enabled" : "Telegram: Disabled";
+  };
+
+  const telegramRowIcon = () => {
+    const s = telegramStore.status;
+    if (s.error) return "⚠️";
+    if (!s.configured) return "○";
+    return s.enabled ? "✅" : "○";
+  };
+
+  async function handleTelegramClick() {
+    props.onClose();
+    const s = telegramStore.status;
+    if (!s.configured || s.error) {
+      try {
+        const win = await WebviewWindow.getByLabel("main");
+        await win?.show();
+        await win?.setFocus();
+        await emit("navigate", "telegram");
+      } catch { /* ignore */ }
+      return;
+    }
+    try {
+      await telegramStore.setEnabled(!s.enabled);
+    } catch {
+      // Status remains unchanged; user can open Dashboard for detail.
+    }
+  }
+
   // Menu position: flip left/up if near screen edge
   const MENU_W = 200;
   const menuX = () => {
@@ -77,7 +111,7 @@ function ContextMenu(props: {
           left: `${menuX()}px`,
           top: `${menuY()}px`,
           width: `${MENU_W}px`,
-          background: "rgba(24, 24, 28, 0.92)",
+          background: "rgba(24, 24, 28, 1)",
           "backdrop-filter": "blur(16px)",
         }}
         onMouseDown={(e) => e.stopPropagation()}
@@ -128,6 +162,13 @@ function ContextMenu(props: {
           onClick={() => { overlayPositionStore.toggleFlipX(); props.onClose(); }}
         />
 
+        {/* Telegram quick toggle */}
+        <MenuRow
+          label={telegramRowLabel()}
+          icon={telegramRowIcon()}
+          onClick={handleTelegramClick}
+        />
+
         <div class="h-px bg-white/10 mx-2" />
 
         {/* Open dashboard */}
@@ -163,7 +204,7 @@ function MenuRow(props: {
       }}
       onClick={props.onClick}
     >
-      <span class="w-4 text-center text-xs opacity-60">{props.icon}</span>
+      <span class="w-4 text-center text-xs opacity-90">{props.icon}</span>
       <span class="flex-1 font-medium" style={{ "font-size": "13px", "font-family": "system-ui, sans-serif" }}>
         {props.label}
       </span>
