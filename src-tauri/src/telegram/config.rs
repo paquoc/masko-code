@@ -8,11 +8,13 @@ use crate::telegram::types::TelegramConfig;
 /// Load config from the given path. Returns default config if the file
 /// is missing. Returns Err on IO or parse failure.
 pub fn load_from(path: &Path) -> Result<TelegramConfig, String> {
-    if !path.exists() {
-        return Ok(TelegramConfig::default());
+    match std::fs::read_to_string(path) {
+        Ok(raw) => serde_json::from_str(&raw).map_err(|e| format!("parse: {e}")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(TelegramConfig::default())
+        }
+        Err(e) => Err(format!("read: {e}")),
     }
-    let raw = std::fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
-    serde_json::from_str(&raw).map_err(|e| format!("parse: {e}"))
 }
 
 /// Save atomically: write to `<path>.tmp` then rename over `<path>`.
@@ -40,7 +42,6 @@ pub fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telegram::types::TelegramConfig;
 
     #[test]
     fn load_missing_file_returns_default() {
