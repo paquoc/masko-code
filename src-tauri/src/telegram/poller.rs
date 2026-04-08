@@ -87,9 +87,6 @@ pub async fn run_poller(
                         tokio::time::sleep(backoff).await;
                         backoff = (backoff * 2).min(MAX_BACKOFF);
                     }
-                    Err(TelegramError::NotConfigured) => {
-                        break;
-                    }
                 }
             }
         }

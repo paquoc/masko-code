@@ -3,7 +3,6 @@
 //! These are intentionally minimal — only the fields we actually read are
 //! deserialized. Extra fields from the Bot API are ignored via serde default.
 
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 
@@ -64,8 +63,6 @@ pub struct Update {
 pub struct Message {
     pub message_id: i64,
     pub chat: Chat,
-    #[serde(default)]
-    pub from: Option<User>,
     #[serde(default)]
     pub text: Option<String>,
 }
@@ -134,8 +131,6 @@ pub enum TelegramError {
     Server(String),
     #[error("network error: {0}")]
     Network(String),
-    #[error("not configured")]
-    NotConfigured,
     #[error("bot api error: {0}")]
     Api(String),
 }

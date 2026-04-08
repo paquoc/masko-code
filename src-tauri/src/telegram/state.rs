@@ -1,5 +1,4 @@
 // src-tauri/src/telegram/state.rs
-#![allow(dead_code)]
 
 use std::collections::VecDeque;
 
