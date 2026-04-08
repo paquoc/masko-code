@@ -3,6 +3,104 @@
 use serde_json::Value;
 
 use crate::models::AgentEvent;
+use crate::telegram::state::{ParsedOption, ParsedQuestion};
+
+/// True if the event is an AskUserQuestion (multi-choice prompt).
+pub fn is_question(event: &AgentEvent) -> bool {
+    event.tool_name.as_deref() == Some("AskUserQuestion")
+}
+
+/// Parse AskUserQuestion.tool_input.questions into ParsedQuestion structs.
+/// Returns empty Vec if not a question or shape is invalid.
+pub fn parse_questions(event: &AgentEvent) -> Vec<ParsedQuestion> {
+    let input = match event.tool_input.as_ref() {
+        Some(v) => v,
+        None => return Vec::new(),
+    };
+    let raw = match input.get("questions").and_then(|v| v.as_array()) {
+        Some(arr) => arr,
+        None => return Vec::new(),
+    };
+    raw.iter()
+        .map(|q| ParsedQuestion {
+            question: q
+                .get("question")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            options: q
+                .get("options")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .map(|o| {
+                            if let Some(s) = o.as_str() {
+                                ParsedOption {
+                                    label: s.to_string(),
+                                    description: None,
+                                }
+                            } else {
+                                ParsedOption {
+                                    label: o
+                                        .get("label")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string(),
+                                    description: o
+                                        .get("description")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string()),
+                                }
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            multi_select: q
+                .get("multiSelect")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+        })
+        .collect()
+}
+
+/// Build the HTML body for an AskUserQuestion message, showing the current
+/// question and its numbered options. `total` is the total number of
+/// questions in the batch; `index` is the 0-based index of the current one.
+pub fn build_question_html(
+    event: &AgentEvent,
+    q: &ParsedQuestion,
+    index: usize,
+    total: usize,
+) -> String {
+    let folder = project_folder(event);
+    let header_num = if total > 1 {
+        format!(" ({}/{})", index + 1, total)
+    } else {
+        String::new()
+    };
+    let mut body = format!(
+        "📁 <b>{folder}</b>\n❓ <b>Question{hn}</b>\n\n<i>{question}</i>",
+        folder = html_escape(&folder),
+        hn = header_num,
+        question = html_escape(&q.question),
+    );
+    if !q.options.is_empty() {
+        body.push_str("\n");
+        for (i, opt) in q.options.iter().enumerate() {
+            body.push_str(&format!(
+                "\n<b>{n}.</b> {label}",
+                n = i + 1,
+                label = html_escape(&opt.label),
+            ));
+            if let Some(desc) = opt.description.as_ref().filter(|d| !d.is_empty()) {
+                body.push_str(&format!(" — <i>{}</i>", html_escape(desc)));
+            }
+        }
+    }
+    body.push_str("\n\n<i>💬 Bấm số hoặc chat để trả lời tự do</i>");
+    body
+}
 
 /// Build the HTML body for a Telegram permission message.
 pub fn build_html(event: &AgentEvent) -> String {

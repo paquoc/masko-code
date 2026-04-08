@@ -15,7 +15,9 @@ use tokio::sync::{watch, Mutex, RwLock};
 
 use crate::models::AgentEvent;
 use crate::telegram::client::TelegramClient;
-use crate::telegram::state::{ActivePermission, PushOutcome, QueueState, RemoveOutcome};
+use crate::telegram::state::{
+    ActivePermission, PushOutcome, QueueState, QuestionState, RemoveOutcome,
+};
 use crate::telegram::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, PollerCmd, TelegramConfig, TelegramConfigDto,
     TelegramError, TelegramStatus, TelegramTestResult,
@@ -254,6 +256,13 @@ impl TelegramManager {
         if !cfg.is_configured() {
             return;
         }
+
+        // Branch on AskUserQuestion vs regular permission.
+        if formatter::is_question(&event) {
+            self.send_question_now(event, request_id, &cfg).await;
+            return;
+        }
+
         let html = formatter::build_html(&event);
         let suggestions = event
             .permission_suggestions
@@ -273,10 +282,72 @@ impl TelegramManager {
                     request_id,
                     message_id: sent.message_id,
                     suggestion: first,
+                    question: None,
                 });
             }
             Err(e) => {
                 mlog_err!("Telegram sendMessage failed: {e}");
+                self.app
+                    .emit(
+                        "telegram://send-failed",
+                        json!({ "request_id": request_id, "error": e.to_string() }),
+                    )
+                    .ok();
+            }
+        }
+    }
+
+    /// Send the first question of an AskUserQuestion. Subsequent questions
+    /// are sent by `send_next_question` after each answer.
+    async fn send_question_now(
+        self: &Arc<Self>,
+        event: AgentEvent,
+        request_id: String,
+        cfg: &TelegramConfig,
+    ) {
+        let questions = formatter::parse_questions(&event);
+        if questions.is_empty() {
+            // Fall back to regular render if the payload is malformed.
+            let html = formatter::build_html(&event);
+            let markup = build_keyboard(None);
+            let client = TelegramClient::new(cfg.bot_token.clone());
+            if let Ok(sent) = retry_send(&client, &cfg.chat_id, &html, Some(&markup)).await {
+                let mut s = self.state.lock().await;
+                s.set_active(ActivePermission {
+                    request_id,
+                    message_id: sent.message_id,
+                    suggestion: None,
+                    question: None,
+                });
+            }
+            return;
+        }
+
+        let total = questions.len();
+        let first_q = &questions[0];
+        let html = formatter::build_question_html(&event, first_q, 0, total);
+        let markup = build_question_keyboard(first_q.options.len());
+        let client = TelegramClient::new(cfg.bot_token.clone());
+        let cwd = event.cwd.clone();
+
+        let send_res = retry_send(&client, &cfg.chat_id, &html, markup.as_ref()).await;
+        match send_res {
+            Ok(sent) => {
+                let mut s = self.state.lock().await;
+                s.set_active(ActivePermission {
+                    request_id,
+                    message_id: sent.message_id,
+                    suggestion: None,
+                    question: Some(QuestionState {
+                        questions,
+                        current_index: 0,
+                        collected: Vec::new(),
+                        cwd,
+                    }),
+                });
+            }
+            Err(e) => {
+                mlog_err!("Telegram sendMessage failed (question): {e}");
                 self.app
                     .emit(
                         "telegram://send-failed",
@@ -314,6 +385,31 @@ fn build_keyboard(suggestion: Option<&Value>) -> InlineKeyboardMarkup {
         callback_data: "deny".into(),
     }]);
     InlineKeyboardMarkup { inline_keyboard: rows }
+}
+
+/// Build an inline keyboard for an AskUserQuestion with numbered buttons
+/// "1", "2", ..., wrapping to a new row every 8 buttons. No "Other" button —
+/// the user types free text to provide a custom answer.
+fn build_question_keyboard(num_options: usize) -> Option<InlineKeyboardMarkup> {
+    if num_options == 0 {
+        return None;
+    }
+    const PER_ROW: usize = 8;
+    let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    let mut row: Vec<InlineKeyboardButton> = Vec::with_capacity(PER_ROW);
+    for i in 0..num_options {
+        row.push(InlineKeyboardButton {
+            text: format!("{}", i + 1),
+            callback_data: format!("q:{}", i + 1),
+        });
+        if row.len() == PER_ROW {
+            rows.push(std::mem::take(&mut row));
+        }
+    }
+    if !row.is_empty() {
+        rows.push(row);
+    }
+    Some(InlineKeyboardMarkup { inline_keyboard: rows })
 }
 
 async fn retry_send(
@@ -375,6 +471,39 @@ pub(crate) mod dispatch {
         }
 
         let data = cb.data.clone().unwrap_or_default();
+
+        // Question answer callback: "q:N" (1-based).
+        if let Some(n_str) = data.strip_prefix("q:") {
+            let n: usize = match n_str.parse() {
+                Ok(n) if n >= 1 => n,
+                _ => {
+                    let _ = client.answer_callback_query(&cb.id, "Invalid").await;
+                    return;
+                }
+            };
+            // Resolve the answer label under lock so we can ack the callback
+            // with useful text even if state advances.
+            let answer_text = {
+                let s = state.lock().await;
+                s.active
+                    .as_ref()
+                    .and_then(|a| a.question.as_ref())
+                    .and_then(|q| q.questions.get(q.current_index))
+                    .and_then(|cur| cur.options.get(n - 1))
+                    .map(|o| o.label.clone())
+            };
+            let Some(answer_text) = answer_text else {
+                let _ = client.answer_callback_query(&cb.id, "No active question").await;
+                return;
+            };
+            let _ = client
+                .answer_callback_query(&cb.id, &format!("✓ {answer_text}"))
+                .await;
+            process_question_answer(answer_text, state, client, config, app).await;
+            return;
+        }
+
+        // Regular permission callbacks.
         let toast = match data.as_str() {
             "approve" => "✓ Approved",
             "allow_suggestion" => "⚡ Applied suggestion",
@@ -462,20 +591,35 @@ pub(crate) mod dispatch {
             return; // ignore stickers, photos, etc.
         };
 
+        // Check what the active permission is (or lack thereof) under lock.
+        let is_question = {
+            let s = state.lock().await;
+            match s.active.as_ref() {
+                None => None,
+                Some(a) => Some(a.question.is_some()),
+            }
+        };
+
+        let Some(is_question) = is_question else {
+            let _ = client
+                .send_message(&config.chat_id, "Hiện không có request nào đang chờ", None)
+                .await;
+            return;
+        };
+
+        if is_question {
+            // Free-text answer to the current question.
+            process_question_answer(text, state, client, config, app).await;
+            return;
+        }
+
+        // Regular permission free-text → deny with feedback.
         let (active, next) = {
             let mut s = state.lock().await;
-            if s.active.is_none() {
-                drop(s);
-                let _ = client
-                    .send_message(&config.chat_id, "Hiện không có request nào đang chờ", None)
-                    .await;
-                return;
-            }
             let active = s.active.clone();
             let next = s.resolve_active();
             (active, next)
         };
-
         let Some(active) = active else { return };
 
         let _ = client
@@ -492,6 +636,172 @@ pub(crate) mod dispatch {
         if let Some(next) = next {
             let manager = app.state::<Arc<TelegramManager>>().inner().clone();
             manager.send_now(next.event, next.request_id).await;
+        }
+    }
+
+    /// Process an answer (either from a "q:N" callback or free text) for the
+    /// currently active question. Advances to the next question in the batch
+    /// or finalizes with all collected answers and emits the response.
+    async fn process_question_answer(
+        answer: String,
+        state: &Arc<Mutex<QueueState>>,
+        client: &TelegramClient,
+        config: &TelegramConfig,
+        app: &AppHandle,
+    ) {
+        enum Step {
+            Advance {
+                old_msg_id: i64,
+                next_q: crate::telegram::state::ParsedQuestion,
+                next_index: usize,
+                total: usize,
+                event: AgentEvent,
+            },
+            Finalize {
+                old_msg_id: i64,
+                answers: Vec<String>,
+                request_id: String,
+                next: Option<crate::telegram::state::Queued>,
+            },
+        }
+
+        let step = {
+            let mut s = state.lock().await;
+            let Some(active) = s.active.as_mut() else {
+                return;
+            };
+            let Some(qstate) = active.question.as_mut() else {
+                return;
+            };
+            qstate.collected.push(answer);
+            let next_index = qstate.current_index + 1;
+            if next_index < qstate.questions.len() {
+                let old_msg_id = active.message_id;
+                let next_q = qstate.questions[next_index].clone();
+                let total = qstate.questions.len();
+                // Rebuild a minimal event with just the cached cwd so the
+                // follow-up question keeps the same project folder header.
+                let event = placeholder_event_for_question(qstate.cwd.clone());
+                Step::Advance {
+                    old_msg_id,
+                    next_q,
+                    next_index,
+                    total,
+                    event,
+                }
+            } else {
+                let old_msg_id = active.message_id;
+                let answers = qstate.collected.clone();
+                let request_id = active.request_id.clone();
+                let next = s.resolve_active();
+                Step::Finalize {
+                    old_msg_id,
+                    answers,
+                    request_id,
+                    next,
+                }
+            }
+        };
+
+        match step {
+            Step::Advance {
+                old_msg_id,
+                next_q,
+                next_index,
+                total,
+                event,
+            } => {
+                // Clear keyboard on the previous message.
+                let _ = client
+                    .edit_message_reply_markup(&config.chat_id, old_msg_id, None)
+                    .await;
+                // Send the next question.
+                let html = formatter::build_question_html(&event, &next_q, next_index, total);
+                let markup = build_question_keyboard(next_q.options.len());
+                if let Ok(sent) = client
+                    .send_message(&config.chat_id, &html, markup.as_ref())
+                    .await
+                {
+                    // Update the active permission with the new message_id
+                    // and advance the current_index.
+                    let mut s = state.lock().await;
+                    if let Some(active) = s.active.as_mut() {
+                        if let Some(q) = active.question.as_mut() {
+                            active.message_id = sent.message_id;
+                            q.current_index = next_index;
+                        }
+                    }
+                }
+            }
+            Step::Finalize {
+                old_msg_id,
+                answers,
+                request_id,
+                next,
+            } => {
+                // Clear keyboard and post a confirmation.
+                let _ = client
+                    .edit_message_reply_markup(&config.chat_id, old_msg_id, None)
+                    .await;
+                let summary = answers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| format!("{}. {}", i + 1, a))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let text = if answers.len() == 1 {
+                    format!("✓ Answered: {}", answers[0])
+                } else {
+                    format!("✓ Answered:\n{summary}")
+                };
+                let _ = client.send_message(&config.chat_id, &text, None).await;
+
+                // Emit permission-response with updatedInput.answers.
+                let payload = json!({
+                    "request_id": request_id,
+                    "decision": "allow",
+                    "suggestion": {
+                        "type": "updatedInput",
+                        "answers": answers,
+                    },
+                });
+                app.emit("telegram://permission-response", payload).ok();
+
+                if let Some(next) = next {
+                    let manager = app.state::<Arc<TelegramManager>>().inner().clone();
+                    manager.send_now(next.event, next.request_id).await;
+                }
+            }
+        }
+    }
+
+    /// Minimal placeholder AgentEvent used when re-rendering a follow-up
+    /// question whose original event we no longer retain. Only `cwd` is
+    /// carried through because `build_question_html` only reads that field.
+    fn placeholder_event_for_question(cwd: Option<String>) -> AgentEvent {
+        AgentEvent {
+            hook_event_name: "PermissionRequest".into(),
+            session_id: None,
+            cwd,
+            permission_mode: None,
+            transcript_path: None,
+            tool_name: Some("AskUserQuestion".into()),
+            tool_input: None,
+            tool_response: None,
+            tool_use_id: None,
+            message: None,
+            title: None,
+            notification_type: None,
+            source: None,
+            reason: None,
+            model: None,
+            stop_hook_active: None,
+            last_assistant_message: None,
+            agent_id: None,
+            agent_type: None,
+            task_id: None,
+            task_subject: None,
+            permission_suggestions: None,
         }
     }
 }

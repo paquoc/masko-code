@@ -6,6 +6,36 @@ use serde_json::Value;
 
 use crate::models::AgentEvent;
 
+/// A single option on an AskUserQuestion question.
+#[derive(Debug, Clone)]
+pub struct ParsedOption {
+    pub label: String,
+    #[allow(dead_code)]
+    pub description: Option<String>,
+}
+
+/// A parsed question from AskUserQuestion.tool_input.questions.
+#[derive(Debug, Clone)]
+pub struct ParsedQuestion {
+    pub question: String,
+    pub options: Vec<ParsedOption>,
+    #[allow(dead_code)]
+    pub multi_select: bool,
+}
+
+/// State tracked for an active AskUserQuestion permission.
+#[derive(Debug, Clone)]
+pub struct QuestionState {
+    pub questions: Vec<ParsedQuestion>,
+    /// Index of the question currently being shown to the user.
+    pub current_index: usize,
+    /// Answers collected so far, one per question already answered.
+    pub collected: Vec<String>,
+    /// Original event.cwd, cached so follow-up question messages can keep
+    /// the same project folder header.
+    pub cwd: Option<String>,
+}
+
 /// Permission that is currently shown in Telegram and awaiting a response.
 #[derive(Debug, Clone)]
 pub struct ActivePermission {
@@ -16,6 +46,9 @@ pub struct ActivePermission {
     /// The raw suggestion that was used as the middle button (if any).
     /// Preserved here so the callback handler can emit it back to the frontend.
     pub suggestion: Option<Value>,
+    /// Set when the active permission is an AskUserQuestion. Holds the
+    /// parsed questions, current index, and collected answers.
+    pub question: Option<QuestionState>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +160,12 @@ mod tests {
     }
 
     fn active(id: &str) -> ActivePermission {
-        ActivePermission { request_id: id.into(), message_id: 1, suggestion: None }
+        ActivePermission {
+            request_id: id.into(),
+            message_id: 1,
+            suggestion: None,
+            question: None,
+        }
     }
 
     #[test]
