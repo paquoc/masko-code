@@ -1572,13 +1572,10 @@ impl TelegramManager {
                     let _ = client.send_message(&chat_id, &text, None).await;
 
                     if let Some(queued) = next {
-                        // Re-enter push_permission-like flow through send_now
-                        let mut s = self_arc_state.lock().await;
-                        let _ = s; // drop lock before calling manager
-                        drop(s);
                         manager.send_now(queued.event, queued.request_id).await;
                     }
 
+                    let _ = self_arc_state; // not used directly; kept for lifetime clarity
                     let _ = app; // keep variable live
                 });
             }
