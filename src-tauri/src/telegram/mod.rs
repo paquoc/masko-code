@@ -513,11 +513,13 @@ pub(crate) mod dispatch {
             cb.id
         );
 
-        // Auth check.
-        if cb.from.id.to_string() != config.chat_id {
+        // Auth check: verify the callback originates from the configured chat.
+        // If chat_id is a group, anyone in that group can interact.
+        let cb_chat_id = cb.message.as_ref().map(|m| m.chat.id);
+        if cb_chat_id.map_or(true, |cid| cid.to_string() != config.chat_id) {
             mlog_err!(
-                "[telegram] callback UNAUTHORIZED — from.id={} != chat_id={}",
-                cb.from.id,
+                "[telegram] callback UNAUTHORIZED — chat.id={:?} != chat_id={}",
+                cb_chat_id,
                 config.chat_id
             );
             let _ = client.answer_callback_query(&cb.id, "Unauthorized").await;
