@@ -96,7 +96,7 @@ export default function TelegramPanel() {
       appendNotification(
         createNotification(
           "Telegram",
-          `Không thể ${next ? "bật" : "tắt"} polling: ${String(e)}`,
+          `Không thể ${next ? "bật" : "tắt"} Bot Active: ${String(e)}`,
           "toolFailed",
           "high",
         ),
@@ -112,7 +112,7 @@ export default function TelegramPanel() {
       appendNotification(
         createNotification(
           "Telegram",
-          `Không thể ${next ? "bật" : "tắt"} sending: ${String(e)}`,
+          `Không thể ${next ? "bật" : "tắt"} Notifications: ${String(e)}`,
           "toolFailed",
           "high",
         ),
@@ -130,10 +130,10 @@ export default function TelegramPanel() {
           {/* Polling toggle */}
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-body text-text-primary">Polling</p>
+              <p class="text-sm font-body text-text-primary">Bot Active</p>
               <p class="text-xs text-text-muted mt-0.5">
                 {canTogglePolling()
-                  ? "Bật/tắt polling từ Telegram bot"
+                  ? "Kết nối Telegram, nhận lệnh và phản hồi"
                   : hasUnsavedChanges()
                     ? "Lưu config trước khi bật"
                     : "Điền token và chat ID trước"}
@@ -162,12 +162,12 @@ export default function TelegramPanel() {
           {/* Sending toggle */}
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-body text-text-primary">Sending</p>
+              <p class="text-sm font-body text-text-primary">Notifications</p>
               <p class="text-xs text-text-muted mt-0.5">
                 {canToggleSending()
-                  ? "Gửi noti qua Telegram · /start /stop để điều khiển từ bot"
+                  ? "Gửi yêu cầu Approve/Deny qua bot · dùng /on /off để bật tắt từ Telegram"
                   : !telegramStore.status.polling_enabled
-                    ? "Bật Polling trước"
+                    ? "Bật Bot Active trước"
                     : hasUnsavedChanges()
                       ? "Lưu config trước"
                       : "Điền token và chat ID trước"}

@@ -132,6 +132,14 @@ impl TelegramManager {
                 .map_err(|e| e.to_string())?;
             chat_tested = true;
         }
+        // Test OK — clear any lingering error (e.g. "Invalid bot token" from
+        // a previously revoked token).
+        {
+            let mut s = self.status.write().await;
+            s.error = None;
+        }
+        self.emit_status().await;
+
         Ok(TelegramTestResult {
             bot_username: bot.username,
             bot_first_name: bot.first_name,
@@ -152,12 +160,23 @@ impl TelegramManager {
         }
         if enabled {
             self.start_poller().await?;
+            // Restore sending state from config (it was suppressed while
+            // polling was off but the config preference is preserved).
+            let cfg_sending = self.config.read().await.sending_enabled;
+            {
+                let mut s = self.status.write().await;
+                s.sending_enabled = cfg_sending;
+            }
+            self.emit_status().await;
         } else {
             self.stop_poller().await;
             self.state.lock().await.clear();
+            // Suppress sending in runtime status (config keeps the preference
+            // so it can be restored when polling is re-enabled).
             {
                 let mut s = self.status.write().await;
                 s.polling_enabled = false;
+                s.sending_enabled = false;
                 s.error = None;
             }
             self.emit_status().await;
@@ -179,10 +198,9 @@ impl TelegramManager {
             let mut s = self.status.write().await;
             s.sending_enabled = enabled;
         }
-        // Notify the poller so it can switch poll timeout immediately.
-        if let Some(tx) = self.tx.lock().await.as_ref() {
-            let _ = tx.send(PollerCmd::SendingChanged);
-        }
+        // No need to notify poller — poll timeout is fixed at 30s regardless
+        // of sending state. Notifying would cancel the in-flight getUpdates
+        // and cause a 409 conflict with Telegram.
         if !enabled {
             self.state.lock().await.clear();
         }
@@ -702,10 +720,10 @@ pub(crate) mod dispatch {
             return; // ignore stickers, photos, etc.
         };
 
-        // Handle /start and /stop commands to toggle sending.
+        // Handle /on and /off commands to toggle sending.
         let trimmed = text.trim();
-        if trimmed == "/start" || trimmed == "/stop" {
-            let enable = trimmed == "/start";
+        if trimmed == "/on" || trimmed == "/off" {
+            let enable = trimmed == "/on";
             let manager = app.state::<Arc<super::TelegramManager>>().inner().clone();
             match manager.set_sending_enabled(enable).await {
                 Ok(()) => {

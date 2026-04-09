@@ -18,7 +18,7 @@ import { TAIL_SIZE, type TailDir } from "./BubbleTail";
 
 // ─── Context Menu ─────────────────────────────────────────────────────────────
 
-type SliderType = "size" | "opacity";
+type SliderType = "size" | "opacity" | "telegram";
 
 function ContextMenu(props: {
   x: number;
@@ -48,48 +48,31 @@ function ContextMenu(props: {
     invoke("quit_app").catch(() => { });
   }
 
-  const telegramRowLabel = () => {
+  const telegramConfigured = () => {
     const s = telegramStore.status;
-    if (s.error) return "Telegram: Error";
-    if (!s.configured) return "Telegram: Not configured";
-    if (!s.polling_enabled) return "Telegram: Polling Off";
-    return s.sending_enabled ? "Sending: On" : "Sending: Off";
+    return s.configured && !s.error;
   };
 
-  const telegramRowIcon = () => {
-    const s = telegramStore.status;
-    if (s.error) return "⚠️";
-    if (!s.configured) return "○";
-    if (!s.polling_enabled) return "⏹";
-    return s.sending_enabled ? "✅" : "⏸";
-  };
-
-  async function handleTelegramClick() {
+  async function openTelegramSettings() {
     props.onClose();
-    const s = telegramStore.status;
-    if (!s.configured || s.error) {
-      try {
-        const win = await WebviewWindow.getByLabel("main");
-        await win?.show();
-        await win?.setFocus();
-        await emit("navigate", "telegram");
-      } catch { /* ignore */ }
-      return;
-    }
-    if (!s.polling_enabled) {
-      try {
-        const win = await WebviewWindow.getByLabel("main");
-        await win?.show();
-        await win?.setFocus();
-        await emit("navigate", "telegram");
-      } catch { /* ignore */ }
-      return;
-    }
     try {
-      await telegramStore.setSendingEnabled(!s.sending_enabled);
-    } catch {
-      // Status remains unchanged; user can open Dashboard for detail.
-    }
+      const win = await WebviewWindow.getByLabel("main");
+      await win?.show();
+      await win?.setFocus();
+      await emit("navigate", "telegram");
+    } catch { /* ignore */ }
+  }
+
+  async function togglePolling() {
+    try {
+      await telegramStore.setPollingEnabled(!telegramStore.status.polling_enabled);
+    } catch { /* ignore */ }
+  }
+
+  async function toggleSending() {
+    try {
+      await telegramStore.setSendingEnabled(!telegramStore.status.sending_enabled);
+    } catch { /* ignore */ }
   }
 
   // Menu position: flip left/up if near screen edge
@@ -173,12 +156,46 @@ function ContextMenu(props: {
           onClick={() => { overlayPositionStore.toggleFlipX(); props.onClose(); }}
         />
 
-        {/* Telegram quick toggle */}
-        <MenuRow
-          label={telegramRowLabel()}
-          icon={telegramRowIcon()}
-          onClick={handleTelegramClick}
-        />
+        {/* Telegram */}
+        <Show
+          when={telegramConfigured()}
+          fallback={
+            <MenuRow
+              label="Telegram: Disabled"
+              icon="○"
+              onClick={openTelegramSettings}
+            />
+          }
+        >
+          <MenuRow
+            label="Telegram"
+            icon="✈"
+            hasArrow
+            active={expanded() === "telegram"}
+            onClick={() => toggleSlider("telegram")}
+          />
+          <Show when={expanded() === "telegram"}>
+            <CheckboxRow
+              label="Bot Active"
+              checked={telegramStore.status.polling_enabled}
+              onChange={togglePolling}
+            />
+            <CheckboxRow
+              label="Notifications"
+              checked={telegramStore.status.sending_enabled}
+              disabled={!telegramStore.status.polling_enabled}
+              onChange={toggleSending}
+            />
+            <button
+              class="w-full flex items-center gap-2.5 py-2 text-sm transition-colors text-left hover:bg-white/10 bg-white/5"
+              style={{ "padding-left": "22px", "padding-right": "12px" }}
+              onClick={openTelegramSettings}
+            >
+              <span class="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>⚙</span>
+              <span style={{ "font-size": "13px", "font-family": "system-ui, sans-serif", color: "rgba(255,255,255,0.55)" }}>Config</span>
+            </button>
+          </Show>
+        </Show>
 
         <div class="h-px bg-white/10 mx-2" />
 
@@ -253,6 +270,42 @@ function SliderRow(props: {
         {props.label}
       </span>
     </div>
+  );
+}
+
+function CheckboxRow(props: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      class="w-full flex items-center gap-2.5 py-2 text-sm transition-colors text-left bg-white/5"
+      style={{ "padding-left": "25px", "padding-right": "12px" }}
+      classList={{
+        "opacity-40 cursor-not-allowed": !!props.disabled,
+        "hover:bg-white/10": !props.disabled,
+      }}
+      onClick={() => { if (!props.disabled) props.onChange(); }}
+    >
+      <span
+        class="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0"
+        style={{
+          border: props.checked ? "none" : "1.5px solid rgba(255,255,255,0.35)",
+          background: props.checked ? "#fb923c" : "transparent",
+        }}
+      >
+        <Show when={props.checked}>
+          <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+            <path d="M1 3.5L3.5 6L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </Show>
+      </span>
+      <span style={{ "font-size": "13px", "font-family": "system-ui, sans-serif", "color": "rgba(255,255,255,0.8)" }}>
+        {props.label}
+      </span>
+    </button>
   );
 }
 
