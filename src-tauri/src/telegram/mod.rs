@@ -41,7 +41,8 @@ impl TelegramManager {
         };
         let status = TelegramStatus {
             configured: cfg.is_configured(),
-            enabled: false,
+            polling_enabled: false,
+            sending_enabled: cfg.sending_enabled,
             error: None,
             bot_username: None,
         };
@@ -53,8 +54,8 @@ impl TelegramManager {
             app: app.clone(),
         });
 
-        // Auto-start poller if `enabled && configured`
-        if cfg.enabled && cfg.is_configured() {
+        // Auto-start poller if `polling_enabled && configured`
+        if cfg.polling_enabled && cfg.is_configured() {
             let m = manager.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = m.start_poller().await {
@@ -99,15 +100,14 @@ impl TelegramManager {
         }
         self.emit_status().await;
 
-        // If config changed and the persisted `enabled` flag is true, ensure
-        // a fresh poller is running with the new config. Also drop queue state
-        // because message_ids belong to the old bot/chat.
-        if (token_changed || chat_changed) && snapshot.enabled && snapshot.is_configured() {
+        // If config changed and the persisted `polling_enabled` flag is true,
+        // ensure a fresh poller is running with the new config. Also drop queue
+        // state because message_ids belong to the old bot/chat.
+        if (token_changed || chat_changed) && snapshot.polling_enabled && snapshot.is_configured() {
             self.stop_poller().await;
             self.state.lock().await.clear();
             self.start_poller().await?;
-        } else if snapshot.enabled && snapshot.is_configured() {
-            // Not running yet (e.g. after fatal error) — try to start.
+        } else if snapshot.polling_enabled && snapshot.is_configured() {
             let running = self.tx.lock().await.is_some();
             if !running {
                 self.start_poller().await?;
@@ -139,12 +139,12 @@ impl TelegramManager {
         })
     }
 
-    pub async fn set_enabled(self: &Arc<Self>, enabled: bool) -> Result<(), String> {
+    pub async fn set_polling_enabled(self: &Arc<Self>, enabled: bool) -> Result<(), String> {
         let mut c = self.config.write().await;
         if enabled && !c.is_configured() {
             return Err("Not configured".into());
         }
-        c.enabled = enabled;
+        c.polling_enabled = enabled;
         let snapshot = c.clone();
         drop(c);
         if let Ok(path) = config::config_path(&self.app) {
@@ -157,11 +157,36 @@ impl TelegramManager {
             self.state.lock().await.clear();
             {
                 let mut s = self.status.write().await;
-                s.enabled = false;
+                s.polling_enabled = false;
                 s.error = None;
             }
             self.emit_status().await;
         }
+        Ok(())
+    }
+
+    pub async fn set_sending_enabled(self: &Arc<Self>, enabled: bool) -> Result<(), String> {
+        {
+            let mut c = self.config.write().await;
+            c.sending_enabled = enabled;
+            let snapshot = c.clone();
+            drop(c);
+            if let Ok(path) = config::config_path(&self.app) {
+                config::save_to(&path, &snapshot)?;
+            }
+        }
+        {
+            let mut s = self.status.write().await;
+            s.sending_enabled = enabled;
+        }
+        // Notify the poller so it can switch poll timeout immediately.
+        if let Some(tx) = self.tx.lock().await.as_ref() {
+            let _ = tx.send(PollerCmd::SendingChanged);
+        }
+        if !enabled {
+            self.state.lock().await.clear();
+        }
+        self.emit_status().await;
         Ok(())
     }
 
@@ -205,8 +230,8 @@ impl TelegramManager {
 
     /// Called by server.rs when a permission request arrives from the hook.
     pub async fn push_permission(self: &Arc<Self>, event: AgentEvent, request_id: String) {
-        let enabled = self.status.read().await.enabled;
-        if !enabled {
+        let sending = self.status.read().await.sending_enabled;
+        if !sending {
             return;
         }
         let outcome = {
@@ -674,6 +699,29 @@ pub(crate) mod dispatch {
         let Some(text) = msg.text.clone() else {
             return; // ignore stickers, photos, etc.
         };
+
+        // Handle /start and /stop commands to toggle sending.
+        let trimmed = text.trim();
+        if trimmed == "/start" || trimmed == "/stop" {
+            let enable = trimmed == "/start";
+            let manager = app.state::<Arc<super::TelegramManager>>().inner().clone();
+            match manager.set_sending_enabled(enable).await {
+                Ok(()) => {
+                    let reply = if enable {
+                        "✅ Sending enabled — permission notifications will be sent here"
+                    } else {
+                        "⏸ Sending disabled — polling continues but no notifications"
+                    };
+                    let _ = client.send_message(&config.chat_id, reply, None).await;
+                }
+                Err(e) => {
+                    let _ = client
+                        .send_message(&config.chat_id, &format!("⚠️ Error: {e}"), None)
+                        .await;
+                }
+            }
+            return;
+        }
 
         // Check what the active permission is (or lack thereof) under lock.
         let is_question = {

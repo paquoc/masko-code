@@ -31,8 +31,13 @@ export default function TelegramPanel() {
   const hasUnsavedChanges = () =>
     token() !== savedToken() || chatId() !== savedChatId();
 
-  const canEnable = () =>
+  const canTogglePolling = () =>
     telegramStore.status.configured && !hasUnsavedChanges();
+
+  const canToggleSending = () =>
+    telegramStore.status.configured &&
+    !hasUnsavedChanges() &&
+    telegramStore.status.polling_enabled;
 
   async function handleTest() {
     setTesting(true);
@@ -83,15 +88,31 @@ export default function TelegramPanel() {
     }
   }
 
-  async function handleToggleEnabled() {
-    const next = !telegramStore.status.enabled;
+  async function handleTogglePolling() {
+    const next = !telegramStore.status.polling_enabled;
     try {
-      await telegramStore.setEnabled(next);
+      await telegramStore.setPollingEnabled(next);
     } catch (e: any) {
       appendNotification(
         createNotification(
           "Telegram",
-          `Không thể ${next ? "bật" : "tắt"}: ${String(e)}`,
+          `Không thể ${next ? "bật" : "tắt"} polling: ${String(e)}`,
+          "toolFailed",
+          "high",
+        ),
+      );
+    }
+  }
+
+  async function handleToggleSending() {
+    const next = !telegramStore.status.sending_enabled;
+    try {
+      await telegramStore.setSendingEnabled(next);
+    } catch (e: any) {
+      appendNotification(
+        createNotification(
+          "Telegram",
+          `Không thể ${next ? "bật" : "tắt"} sending: ${String(e)}`,
           "toolFailed",
           "high",
         ),
@@ -106,13 +127,13 @@ export default function TelegramPanel() {
           Bot Configuration
         </h3>
         <div class="space-y-3">
-          {/* Enable toggle */}
+          {/* Polling toggle */}
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-body text-text-primary">Enabled</p>
+              <p class="text-sm font-body text-text-primary">Polling</p>
               <p class="text-xs text-text-muted mt-0.5">
-                {canEnable()
-                  ? "Bấm để bật/tắt polling"
+                {canTogglePolling()
+                  ? "Bật/tắt polling từ Telegram bot"
                   : hasUnsavedChanges()
                     ? "Lưu config trước khi bật"
                     : "Điền token và chat ID trước"}
@@ -121,16 +142,50 @@ export default function TelegramPanel() {
             <button
               class="relative w-10 h-6 rounded-full transition-colors disabled:opacity-40"
               classList={{
-                "bg-orange-primary": telegramStore.status.enabled,
-                "bg-border": !telegramStore.status.enabled,
+                "bg-orange-primary": telegramStore.status.polling_enabled,
+                "bg-border": !telegramStore.status.polling_enabled,
               }}
-              disabled={!canEnable() && !telegramStore.status.enabled}
-              onClick={handleToggleEnabled}
+              disabled={!canTogglePolling() && !telegramStore.status.polling_enabled}
+              onClick={handleTogglePolling}
             >
               <div
                 class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
                 style={{
-                  transform: telegramStore.status.enabled
+                  transform: telegramStore.status.polling_enabled
+                    ? "translateX(16px)"
+                    : "translateX(0)",
+                }}
+              />
+            </button>
+          </div>
+
+          {/* Sending toggle */}
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-body text-text-primary">Sending</p>
+              <p class="text-xs text-text-muted mt-0.5">
+                {canToggleSending()
+                  ? "Gửi noti qua Telegram · /start /stop để điều khiển từ bot"
+                  : !telegramStore.status.polling_enabled
+                    ? "Bật Polling trước"
+                    : hasUnsavedChanges()
+                      ? "Lưu config trước"
+                      : "Điền token và chat ID trước"}
+              </p>
+            </div>
+            <button
+              class="relative w-10 h-6 rounded-full transition-colors disabled:opacity-40"
+              classList={{
+                "bg-orange-primary": telegramStore.status.sending_enabled,
+                "bg-border": !telegramStore.status.sending_enabled,
+              }}
+              disabled={!canToggleSending() && !telegramStore.status.sending_enabled}
+              onClick={handleToggleSending}
+            >
+              <div
+                class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+                style={{
+                  transform: telegramStore.status.sending_enabled
                     ? "translateX(16px)"
                     : "translateX(0)",
                 }}

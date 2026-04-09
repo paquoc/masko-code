@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TelegramConfig {
     #[serde(default)]
-    pub enabled: bool,
+    pub polling_enabled: bool,
+    #[serde(default)]
+    pub sending_enabled: bool,
     #[serde(default)]
     pub bot_token: String,
     #[serde(default)]
@@ -28,7 +30,8 @@ impl TelegramConfig {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct TelegramStatus {
     pub configured: bool,
-    pub enabled: bool,
+    pub polling_enabled: bool,
+    pub sending_enabled: bool,
     pub error: Option<String>,
     pub bot_username: Option<String>,
 }
@@ -117,6 +120,7 @@ pub struct InlineKeyboardButton {
 pub enum PollerCmd {
     Stop,
     ConfigChanged,
+    SendingChanged,
 }
 
 #[derive(Debug, thiserror::Error)]

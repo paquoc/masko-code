@@ -52,14 +52,16 @@ function ContextMenu(props: {
     const s = telegramStore.status;
     if (s.error) return "Telegram: Error";
     if (!s.configured) return "Telegram: Not configured";
-    return s.enabled ? "Telegram: Enabled" : "Telegram: Disabled";
+    if (!s.polling_enabled) return "Telegram: Polling Off";
+    return s.sending_enabled ? "Sending: On" : "Sending: Off";
   };
 
   const telegramRowIcon = () => {
     const s = telegramStore.status;
     if (s.error) return "⚠️";
     if (!s.configured) return "○";
-    return s.enabled ? "✅" : "○";
+    if (!s.polling_enabled) return "⏹";
+    return s.sending_enabled ? "✅" : "⏸";
   };
 
   async function handleTelegramClick() {
@@ -74,8 +76,17 @@ function ContextMenu(props: {
       } catch { /* ignore */ }
       return;
     }
+    if (!s.polling_enabled) {
+      try {
+        const win = await WebviewWindow.getByLabel("main");
+        await win?.show();
+        await win?.setFocus();
+        await emit("navigate", "telegram");
+      } catch { /* ignore */ }
+      return;
+    }
     try {
-      await telegramStore.setEnabled(!s.enabled);
+      await telegramStore.setSendingEnabled(!s.sending_enabled);
     } catch {
       // Status remains unchanged; user can open Dashboard for detail.
     }

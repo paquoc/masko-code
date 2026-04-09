@@ -6,9 +6,25 @@ use crate::telegram::types::TelegramConfig;
 
 /// Load config from the given path. Returns default config if the file
 /// is missing. Returns Err on IO or parse failure.
+/// Migrates legacy single `enabled` field → `polling_enabled` + `sending_enabled`.
 pub fn load_from(path: &Path) -> Result<TelegramConfig, String> {
     match std::fs::read_to_string(path) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|e| format!("parse: {e}")),
+        Ok(raw) => {
+            let mut v: serde_json::Value =
+                serde_json::from_str(&raw).map_err(|e| format!("parse: {e}"))?;
+            if let Some(obj) = v.as_object_mut() {
+                if obj.contains_key("enabled") && !obj.contains_key("polling_enabled") {
+                    let was_enabled = obj
+                        .get("enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    obj.insert("polling_enabled".into(), serde_json::Value::Bool(was_enabled));
+                    obj.insert("sending_enabled".into(), serde_json::Value::Bool(was_enabled));
+                    obj.remove("enabled");
+                }
+            }
+            serde_json::from_value(v).map_err(|e| format!("parse: {e}"))
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             Ok(TelegramConfig::default())
         }
@@ -47,7 +63,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("telegram.json");
         let cfg = load_from(&p).expect("should succeed on missing");
-        assert!(!cfg.enabled);
+        assert!(!cfg.polling_enabled);
+        assert!(!cfg.sending_enabled);
         assert!(cfg.bot_token.is_empty());
         assert!(cfg.chat_id.is_empty());
     }
@@ -57,15 +74,32 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("telegram.json");
         let original = TelegramConfig {
-            enabled: true,
+            polling_enabled: true,
+            sending_enabled: true,
             bot_token: "123:abc".into(),
             chat_id: "9876".into(),
         };
         save_to(&p, &original).unwrap();
         let loaded = load_from(&p).unwrap();
-        assert!(loaded.enabled);
+        assert!(loaded.polling_enabled);
+        assert!(loaded.sending_enabled);
         assert_eq!(loaded.bot_token, "123:abc");
         assert_eq!(loaded.chat_id, "9876");
+    }
+
+    #[test]
+    fn migrate_legacy_enabled_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("telegram.json");
+        std::fs::write(
+            &p,
+            r#"{"enabled":true,"bot_token":"tok","chat_id":"cid"}"#,
+        )
+        .unwrap();
+        let loaded = load_from(&p).unwrap();
+        assert!(loaded.polling_enabled);
+        assert!(loaded.sending_enabled);
+        assert_eq!(loaded.bot_token, "tok");
     }
 
     #[test]
@@ -89,5 +123,19 @@ mod tests {
         assert!(c.is_configured());
         c.chat_id = "   ".into();
         assert!(!c.is_configured(), "whitespace should not count");
+    }
+
+    #[test]
+    fn no_migration_when_new_fields_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("telegram.json");
+        std::fs::write(
+            &p,
+            r#"{"polling_enabled":true,"sending_enabled":false,"bot_token":"t","chat_id":"c"}"#,
+        )
+        .unwrap();
+        let loaded = load_from(&p).unwrap();
+        assert!(loaded.polling_enabled);
+        assert!(!loaded.sending_enabled);
     }
 }

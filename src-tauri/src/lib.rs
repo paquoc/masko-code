@@ -156,7 +156,8 @@ pub fn run() {
             commands::telegram_get_config,
             commands::telegram_save_config,
             commands::telegram_test,
-            commands::telegram_set_enabled,
+            commands::telegram_set_polling_enabled,
+            commands::telegram_set_sending_enabled,
             commands::telegram_get_status,
         ])
         .run(tauri::generate_context!())
