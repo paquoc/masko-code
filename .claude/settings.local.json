@@ -7,7 +7,8 @@
       "Bash(cargo check:*)",
       "Bash(cargo clean:*)",
       "Bash(npm test:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(cargo test:*)"
     ]
   }
 }

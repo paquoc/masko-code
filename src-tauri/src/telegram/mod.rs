@@ -220,10 +220,24 @@ impl TelegramManager {
 
     /// Called by commands.rs after the HTTP response is sent to the hook.
     pub async fn on_local_resolved(self: &Arc<Self>, request_id: &str, decision: &str) {
+        mlog!(
+            "[telegram] on_local_resolved rid={} decision={}",
+            request_id,
+            decision
+        );
         let outcome = {
             let mut s = self.state.lock().await;
             s.remove_by_request_id(request_id)
         };
+        mlog!(
+            "[telegram] on_local_resolved outcome rid={} -> {}",
+            request_id,
+            match &outcome {
+                RemoveOutcome::WasActive { .. } => "WasActive",
+                RemoveOutcome::RemovedFromQueue => "RemovedFromQueue",
+                RemoveOutcome::NotFound => "NotFound",
+            }
+        );
         match outcome {
             RemoveOutcome::WasActive { previous, next } => {
                 let cfg = self.config.read().await.clone();
@@ -464,8 +478,23 @@ pub(crate) mod dispatch {
         config: &TelegramConfig,
         app: &AppHandle,
     ) {
+        let tapped_mid_dbg = cb.message.as_ref().map(|m| m.message_id);
+        mlog!(
+            "[telegram] callback from={} chat_id_cfg={} data={:?} msg_id={:?} cb_id={}",
+            cb.from.id,
+            config.chat_id,
+            cb.data,
+            tapped_mid_dbg,
+            cb.id
+        );
+
         // Auth check.
         if cb.from.id.to_string() != config.chat_id {
+            mlog_err!(
+                "[telegram] callback UNAUTHORIZED — from.id={} != chat_id={}",
+                cb.from.id,
+                config.chat_id
+            );
             let _ = client.answer_callback_query(&cb.id, "Unauthorized").await;
             return;
         }
@@ -510,6 +539,8 @@ pub(crate) mod dispatch {
         let tapped_msg_id = cb.message.as_ref().map(|m| m.message_id);
         let (active, next) = {
             let mut s = state.lock().await;
+            let active_mid_dbg = s.active.as_ref().map(|a| a.message_id);
+            let active_rid_dbg = s.active.as_ref().map(|a| a.request_id.clone());
             // Only consume the active permission if the tapped button belongs
             // to the current active message. Otherwise treat as stale.
             let is_current = match (s.active.as_ref(), tapped_msg_id) {
@@ -517,6 +548,13 @@ pub(crate) mod dispatch {
                 (Some(_), None) => true, // no message on callback — assume current
                 _ => false,
             };
+            mlog!(
+                "[telegram] callback match check — active_mid={:?} tapped_mid={:?} active_rid={:?} is_current={}",
+                active_mid_dbg,
+                tapped_msg_id,
+                active_rid_dbg,
+                is_current
+            );
             if is_current {
                 let active = s.active.clone();
                 let next = s.resolve_active();
@@ -529,6 +567,11 @@ pub(crate) mod dispatch {
         let Some(active) = active else {
             // Stale button — either no active permission or the tapped
             // message is from a previous resolved/cleared permission.
+            mlog!(
+                "[telegram] callback STALE — tapped_mid={:?} data={}",
+                tapped_msg_id,
+                data
+            );
             let _ = client
                 .answer_callback_query(&cb.id, "⌛ Expired — request no longer pending")
                 .await;
@@ -548,7 +591,15 @@ pub(crate) mod dispatch {
             "deny" => "✗ Denied",
             _ => "?",
         };
-        let _ = client.answer_callback_query(&cb.id, toast).await;
+        mlog!(
+            "[telegram] callback RESOLVED — rid={} data={} toast={}",
+            active.request_id,
+            data,
+            toast
+        );
+        if let Err(e) = client.answer_callback_query(&cb.id, toast).await {
+            mlog_err!("[telegram] answer_callback_query failed: {:?}", e);
+        }
 
         // Edit keyboard away on the original message.
         if let Some(msg) = &cb.message {
@@ -594,7 +645,14 @@ pub(crate) mod dispatch {
         if let Some(s) = suggestion {
             payload["suggestion"] = s;
         }
-        app.emit("telegram://permission-response", payload).ok();
+        mlog!(
+            "[telegram] emit permission-response rid={} decision={}",
+            active.request_id,
+            decision
+        );
+        if let Err(e) = app.emit("telegram://permission-response", payload.clone()) {
+            mlog_err!("[telegram] emit permission-response failed: {:?}", e);
+        }
 
         // Pop next queued permission (if any) and send it.
         if let Some(next) = next {

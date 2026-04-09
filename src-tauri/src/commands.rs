@@ -28,8 +28,19 @@ pub async fn resolve_permission(
         .unwrap_or("")
         .to_string();
 
-    // Forward to the hook HTTP response.
-    crate::server::resolve(&pending, request_id.clone(), decision).await?;
+    // Forward to the hook HTTP response. Capture the error but DON'T early
+    // return — the Telegram state still needs to be synced even if the hook
+    // is already gone (CC timed out, user answered directly in the CLI, etc).
+    // Otherwise `state.active` holds a phantom permission forever and the
+    // next permission gets queued behind it (no new Telegram message sent).
+    let hook_result = crate::server::resolve(&pending, request_id.clone(), decision).await;
+    if let Err(ref e) = hook_result {
+        mlog_err!(
+            "resolve_permission: server::resolve failed (id={}): {} — syncing Telegram anyway",
+            request_id,
+            e
+        );
+    }
 
     // Notify Telegram — fire-and-forget style (spawn) so IPC returns quickly.
     let manager_clone: std::sync::Arc<crate::telegram::TelegramManager> = manager.inner().clone();
@@ -38,7 +49,8 @@ pub async fn resolve_permission(
         manager_clone.on_local_resolved(&req_id, &decision_label).await;
     });
 
-    Ok(())
+    // Surface the hook error to the frontend only after the sync is queued.
+    hook_result
 }
 
 #[tauri::command]

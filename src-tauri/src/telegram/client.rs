@@ -27,6 +27,33 @@ impl TelegramClient {
         format!("https://api.telegram.org/bot{}/{}", self.token, method)
     }
 
+    /// POST /deleteWebhook — ensure the bot is in polling mode. If a webhook
+    /// is set (via a previous test/integration), getUpdates will return empty
+    /// and callback_queries never reach us. `drop_pending_updates=false` so we
+    /// don't lose anything legitimately queued.
+    pub async fn delete_webhook(&self) -> Result<(), TelegramError> {
+        let resp = self
+            .http
+            .post(self.url("deleteWebhook"))
+            .json(&json!({ "drop_pending_updates": false }))
+            .send()
+            .await
+            .map_err(|e| TelegramError::Network(e.to_string()))?;
+        let _ = classify_and_parse::<Value>(resp).await?;
+        Ok(())
+    }
+
+    /// GET /getWebhookInfo — diagnostic.
+    pub async fn get_webhook_info(&self) -> Result<Value, TelegramError> {
+        let resp = self
+            .http
+            .get(self.url("getWebhookInfo"))
+            .send()
+            .await
+            .map_err(|e| TelegramError::Network(e.to_string()))?;
+        classify_and_parse::<Value>(resp).await
+    }
+
     /// GET /getMe
     pub async fn get_me(&self) -> Result<BotUser, TelegramError> {
         let resp = self

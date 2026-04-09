@@ -29,6 +29,40 @@ pub async fn run_poller(
     const MAX_BACKOFF: Duration = Duration::from_secs(10);
     const LONG_POLL_SECS: u64 = 30;
 
+    mlog!(
+        "[telegram] poller starting — chat_id={} token_len={}",
+        config.chat_id,
+        config.bot_token.len()
+    );
+
+    // Diagnose + unconditionally clear any lingering webhook. Webhook mode
+    // (and sometimes stale webhook entries even after URL is cleared) causes
+    // getUpdates to return 409 Conflict. deleteWebhook is idempotent.
+    match client.get_webhook_info().await {
+        Ok(info) => {
+            let url = info
+                .get("result")
+                .and_then(|r| r.get("url"))
+                .and_then(|u| u.as_str())
+                .unwrap_or("");
+            let pending = info
+                .get("result")
+                .and_then(|r| r.get("pending_update_count"))
+                .and_then(|p| p.as_i64())
+                .unwrap_or(-1);
+            mlog!(
+                "[telegram] getWebhookInfo url={:?} pending={}",
+                url,
+                pending
+            );
+        }
+        Err(e) => mlog_err!("[telegram] getWebhookInfo failed: {:?}", e),
+    }
+    mlog!("[telegram] calling deleteWebhook (unconditional)");
+    if let Err(e) = client.delete_webhook().await {
+        mlog_err!("[telegram] deleteWebhook failed: {:?}", e);
+    }
+
     // Set status = Running, clear error.
     {
         let mut s = status.write().await;
@@ -41,6 +75,7 @@ pub async fn run_poller(
         tokio::select! {
             _ = rx.changed() => {
                 let cmd = rx.borrow().clone();
+                mlog!("[telegram] poller received cmd={:?}", cmd);
                 match cmd {
                     PollerCmd::Stop | PollerCmd::ConfigChanged => break,
                 }
@@ -49,8 +84,19 @@ pub async fn run_poller(
                 match result {
                     Ok(updates) => {
                         backoff = Duration::from_secs(1);
+                        mlog!(
+                            "[telegram] getUpdates ok — offset={} count={}",
+                            offset,
+                            updates.len()
+                        );
                         for u in updates {
                             offset = u.update_id + 1;
+                            mlog!(
+                                "[telegram] update_id={} has_msg={} has_callback={}",
+                                u.update_id,
+                                u.message.is_some(),
+                                u.callback_query.is_some()
+                            );
                             super::dispatch::handle_update(
                                 u,
                                 &client,
@@ -75,7 +121,13 @@ pub async fn run_poller(
                         tokio::time::sleep(Duration::from_secs(retry_after)).await;
                     }
                     Err(TelegramError::Conflict) => {
-                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        mlog_err!(
+                            "[telegram] getUpdates CONFLICT — webhook or another poller is active; calling deleteWebhook and retrying"
+                        );
+                        if let Err(e) = client.delete_webhook().await {
+                            mlog_err!("[telegram] deleteWebhook (on conflict) failed: {:?}", e);
+                        }
+                        tokio::time::sleep(Duration::from_secs(2)).await;
                     }
                     Err(TelegramError::Server(msg)) | Err(TelegramError::Network(msg)) => {
                         mlog_err!("Telegram poll error: {msg}");
