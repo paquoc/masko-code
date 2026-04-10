@@ -17,7 +17,7 @@ const TAB_META: Record<Tab, { label: string; icon: string }> = {
   notifications: { label: "Notifications", icon: "🔔" },
   mascots: { label: "Mascots", icon: "🎭" },
   activity: { label: "Activity", icon: "📋" },
-  telegram: { label: "Telegram", icon: "✈️" },
+  telegram: { label: "Telegram", icon: "💬" },
   settings: { label: "Settings", icon: "⚙️" },
 };
 

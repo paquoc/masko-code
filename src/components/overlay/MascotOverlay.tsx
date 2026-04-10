@@ -169,7 +169,7 @@ function ContextMenu(props: {
         >
           <MenuRow
             label="Telegram"
-            icon="✈"
+            icon="💬"
             hasArrow
             active={expanded() === "telegram"}
             onClick={() => toggleSlider("telegram")}
