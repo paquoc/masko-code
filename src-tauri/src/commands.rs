@@ -294,11 +294,19 @@ pub async fn telegram_test(
 }
 
 #[tauri::command]
-pub async fn telegram_set_enabled(
+pub async fn telegram_set_polling_enabled(
     manager: tauri::State<'_, Arc<TelegramManager>>,
     enabled: bool,
 ) -> Result<(), String> {
-    manager.set_enabled(enabled).await
+    manager.set_polling_enabled(enabled).await
+}
+
+#[tauri::command]
+pub async fn telegram_set_sending_enabled(
+    manager: tauri::State<'_, Arc<TelegramManager>>,
+    enabled: bool,
+) -> Result<(), String> {
+    manager.set_sending_enabled(enabled).await
 }
 
 #[tauri::command]

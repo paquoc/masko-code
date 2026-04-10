@@ -198,6 +198,11 @@ async fn classify_and_parse<T: for<'de> serde::Deserialize<'de>>(
         return Err(TelegramError::Unauthorized);
     }
     if status == StatusCode::CONFLICT {
+        let desc = envelope
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(no description)");
+        mlog_err!("[telegram] 409 Conflict: {}", desc);
         return Err(TelegramError::Conflict);
     }
     if status == StatusCode::TOO_MANY_REQUESTS {

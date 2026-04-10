@@ -7,7 +7,8 @@ import { log, error } from "../services/log";
 
 export interface TelegramStatus {
   configured: boolean;
-  enabled: boolean;
+  polling_enabled: boolean;
+  sending_enabled: boolean;
   error: string | null;
   bot_username: string | null;
 }
@@ -25,7 +26,8 @@ export interface TelegramConfigDto {
 
 const [status, setStatus] = createStore<TelegramStatus>({
   configured: false,
-  enabled: false,
+  polling_enabled: false,
+  sending_enabled: false,
   error: null,
   bot_username: null,
 });
@@ -87,8 +89,14 @@ export const telegramStore = {
     return invoke<TelegramTestResult>("telegram_test", { token, chatId });
   },
 
-  async setEnabled(enabled: boolean): Promise<void> {
-    await invoke("telegram_set_enabled", { enabled });
+  async setPollingEnabled(enabled: boolean): Promise<void> {
+    await invoke("telegram_set_polling_enabled", { enabled });
+    const s = await invoke<TelegramStatus>("telegram_get_status");
+    setStatus(s);
+  },
+
+  async setSendingEnabled(enabled: boolean): Promise<void> {
+    await invoke("telegram_set_sending_enabled", { enabled });
     const s = await invoke<TelegramStatus>("telegram_get_status");
     setStatus(s);
   },

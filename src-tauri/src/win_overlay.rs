@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicI32;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Dwm::*;
 use windows::Win32::Graphics::Gdi::*;
-use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, GetDpiForWindow, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
@@ -291,12 +291,18 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             return false;
         }
 
-        // Get DPI for the monitor where the cursor actually is (not the overlay window's DPI)
-        let hmon = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
-        let mut dpi_x: u32 = 96;
-        let mut dpi_y: u32 = 96;
-        let _ = GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
-        let scale = if dpi_x > 0 { dpi_x as f64 / 96.0 } else { 1.0 };
+        // IMPORTANT: use the overlay window's own DPI, NOT the cursor's monitor DPI.
+        // The WebView renders with a single DPI context tied to the overlay window
+        // (typically the primary monitor's DPI). Using the cursor's monitor DPI would
+        // produce wrong scaling when the cursor is on a secondary monitor with different DPI.
+        let window_dpi = GetDpiForWindow(hwnd);
+        let scale = if window_dpi > 0 { window_dpi as f64 / 96.0 } else { 1.0 };
+
+        // For diagnostics: also capture cursor's monitor DPI to log the difference
+        let hmon_cursor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+        let mut cursor_dpi_x: u32 = 96;
+        let mut cursor_dpi_y: u32 = 96;
+        let _ = GetDpiForMonitor(hmon_cursor, MDT_EFFECTIVE_DPI, &mut cursor_dpi_x, &mut cursor_dpi_y);
 
         let client_x = cursor.x - rect.left;
         let client_y = cursor.y - rect.top;

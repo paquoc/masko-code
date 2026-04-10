@@ -1,7 +1,7 @@
 // src-tauri/src/telegram/poller.rs
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{watch, Mutex, RwLock};
@@ -14,8 +14,9 @@ use crate::telegram::types::{
 
 /// The poller owns a tokio task that long-polls `getUpdates` and dispatches
 /// updates to the manager. It stops when it receives `PollerCmd::Stop` or
-/// `PollerCmd::ConfigChanged` — in both cases the caller is responsible for
-/// respawning if desired.
+/// `PollerCmd::ConfigChanged`. When `sending_enabled` is true the poller uses
+/// long-poll (30s); when false it uses short-poll (5s) to stay responsive to
+/// /on and /off commands without burning resources.
 pub async fn run_poller(
     config: TelegramConfig,
     state: Arc<Mutex<QueueState>>,
@@ -26,8 +27,12 @@ pub async fn run_poller(
     let client = TelegramClient::new(config.bot_token.clone());
     let mut offset: i64 = 0;
     let mut backoff = Duration::from_secs(1);
+    let mut first_success_at: Option<Instant> = None;
+    let mut consecutive_conflicts: u32 = 0;
     const MAX_BACKOFF: Duration = Duration::from_secs(10);
-    const LONG_POLL_SECS: u64 = 30;
+    const MAX_CONSECUTIVE_CONFLICTS: u32 = 3;
+    const MIN_ESTABLISHED_SECS: u64 = 60;
+    const POLL_SECS: u64 = 30;
 
     mlog!(
         "[telegram] poller starting — chat_id={} token_len={}",
@@ -63,10 +68,10 @@ pub async fn run_poller(
         mlog_err!("[telegram] deleteWebhook failed: {:?}", e);
     }
 
-    // Set status = Running, clear error.
+    // Set status = polling running, clear error.
     {
         let mut s = status.write().await;
-        s.enabled = true;
+        s.polling_enabled = true;
         s.error = None;
     }
     emit_status(&app, &status).await;
@@ -78,16 +83,22 @@ pub async fn run_poller(
                 mlog!("[telegram] poller received cmd={:?}", cmd);
                 match cmd {
                     PollerCmd::Stop | PollerCmd::ConfigChanged => break,
+                    PollerCmd::SendingChanged => {} // no-op: poll timeout is fixed
                 }
             }
-            result = client.get_updates(offset, LONG_POLL_SECS) => {
+            result = client.get_updates(offset, POLL_SECS) => {
                 match result {
                     Ok(updates) => {
                         backoff = Duration::from_secs(1);
+                        consecutive_conflicts = 0;
+                        if first_success_at.is_none() {
+                            first_success_at = Some(Instant::now());
+                        }
                         mlog!(
-                            "[telegram] getUpdates ok — offset={} count={}",
+                            "[telegram] getUpdates ok — offset={} count={} timeout={}",
                             offset,
-                            updates.len()
+                            updates.len(),
+                            POLL_SECS,
                         );
                         for u in updates {
                             offset = u.update_id + 1;
@@ -110,7 +121,7 @@ pub async fn run_poller(
                     }
                     Err(TelegramError::Unauthorized) => {
                         let mut s = status.write().await;
-                        s.enabled = false;
+                        s.polling_enabled = false;
                         s.error = Some("Invalid bot token".into());
                         drop(s);
                         emit_status(&app, &status).await;
@@ -121,13 +132,32 @@ pub async fn run_poller(
                         tokio::time::sleep(Duration::from_secs(retry_after)).await;
                     }
                     Err(TelegramError::Conflict) => {
+                        consecutive_conflicts += 1;
+                        let is_established = first_success_at
+                            .map(|t| t.elapsed().as_secs() >= MIN_ESTABLISHED_SECS)
+                            .unwrap_or(false);
                         mlog_err!(
-                            "[telegram] getUpdates CONFLICT — webhook or another poller is active; calling deleteWebhook and retrying"
+                            "[telegram] getUpdates CONFLICT — consecutive={} established={}",
+                            consecutive_conflicts,
+                            is_established,
                         );
+                        if is_established && consecutive_conflicts >= MAX_CONSECUTIVE_CONFLICTS {
+                            mlog_err!("[telegram] yielding to newer instance — stopping poller");
+                            let mut s = status.write().await;
+                            s.polling_enabled = false;
+                            s.error = Some("Phát hiện instance khác đang chạy".into());
+                            drop(s);
+                            emit_status(&app, &status).await;
+                            notify_fatal(&app, "Phát hiện instance khác đang chạy");
+                            return;
+                        }
                         if let Err(e) = client.delete_webhook().await {
                             mlog_err!("[telegram] deleteWebhook (on conflict) failed: {:?}", e);
                         }
-                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        // Not yet established = stale connection from previous session.
+                        // Wait longer so Telegram has time to release it.
+                        let wait = if is_established { 2 } else { 5 };
+                        tokio::time::sleep(Duration::from_secs(wait)).await;
                     }
                     Err(TelegramError::Server(msg)) | Err(TelegramError::Network(msg)) => {
                         mlog_err!("Telegram poll error: {msg}");
@@ -144,12 +174,10 @@ pub async fn run_poller(
         }
     }
 
-    // Task exit — set enabled=false unless an error has been recorded with a
-    // distinct "reason to resume" semantic. We only clear enabled here to
-    // reflect that the task is no longer running.
+    // Task exit — clear polling_enabled to reflect that the task is no longer running.
     {
         let mut s = status.write().await;
-        s.enabled = false;
+        s.polling_enabled = false;
     }
     emit_status(&app, &status).await;
 }
