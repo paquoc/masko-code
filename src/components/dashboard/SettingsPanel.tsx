@@ -2,8 +2,15 @@ import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid
 import { createStore, unwrap } from "solid-js/store";
 import { emit } from "@tauri-apps/api/event";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus, getAutostart, setAutostart } from "../../services/ipc";
-import type { WorkingBubbleSettings, BubbleAppearance } from "../../stores/working-bubble-store";
-import { defaultTokenPanel } from "../../stores/working-bubble-store";
+import type {
+  WorkingBubbleSettings,
+  BubbleAppearance,
+  TokenPanelSettings,
+  TokenMetricKey,
+} from "../../stores/working-bubble-store";
+import { defaultTokenPanel, ALL_TOKEN_METRICS } from "../../stores/working-bubble-store";
+import TokenPanel from "../overlay/TokenPanel";
+import type { SessionTokenUsage } from "../../stores/token-usage-store";
 import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
 import type { PendingPermission } from "../../models/permission";
@@ -33,7 +40,11 @@ function loadBubbleSettings(): WorkingBubbleSettings {
     showSessionStart: true,
     showSessionEnd: true,
     appearance: { ...defaultAppearance },
-    tokenPanel: { ...defaultTokenPanel, order: [...defaultTokenPanel.order], visible: { ...defaultTokenPanel.visible } },
+    tokenPanel: {
+      ...defaultTokenPanel,
+      order: [...defaultTokenPanel.order],
+      visible: { ...defaultTokenPanel.visible },
+    },
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -43,10 +54,40 @@ function loadBubbleSettings(): WorkingBubbleSettings {
         ...defaults,
         ...parsed,
         appearance: { ...defaults.appearance, ...parsed.appearance },
+        tokenPanel: mergeParsedTokenPanel(defaults.tokenPanel, parsed.tokenPanel),
       };
     }
   } catch { /* ignore */ }
   return defaults;
+}
+
+function mergeParsedTokenPanel(base: TokenPanelSettings, parsed: any): TokenPanelSettings {
+  if (!parsed || typeof parsed !== "object") return base;
+  const result: TokenPanelSettings = {
+    enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : base.enabled,
+    order: [...base.order],
+    visible: { ...base.visible },
+  };
+  if (Array.isArray(parsed.order)) {
+    const seen = new Set<TokenMetricKey>();
+    const filtered: TokenMetricKey[] = [];
+    for (const k of parsed.order) {
+      if ((ALL_TOKEN_METRICS as string[]).includes(k) && !seen.has(k as TokenMetricKey)) {
+        filtered.push(k as TokenMetricKey);
+        seen.add(k as TokenMetricKey);
+      }
+    }
+    for (const k of ALL_TOKEN_METRICS) {
+      if (!seen.has(k)) filtered.push(k);
+    }
+    result.order = filtered;
+  }
+  if (parsed.visible && typeof parsed.visible === "object") {
+    for (const k of ALL_TOKEN_METRICS) {
+      if (typeof parsed.visible[k] === "boolean") result.visible[k] = parsed.visible[k];
+    }
+  }
+  return result;
 }
 
 const previewPermission: PendingPermission = {
@@ -64,6 +105,25 @@ const previewPermission: PendingPermission = {
   receivedAt: new Date(),
   collapsed: false,
 };
+
+const previewTokenSessions: SessionTokenUsage[] = [
+  {
+    sessionId: "preview-a",
+    projectName: "demo-project",
+    input: 12_345,
+    output: 3_210,
+    cacheRead: 45_678,
+    cacheCreation: 987,
+  },
+  {
+    sessionId: "preview-b",
+    projectName: "other-repo",
+    input: 2_100,
+    output: 450,
+    cacheRead: 8_900,
+    cacheCreation: 120,
+  },
+];
 
 export default function SettingsPanel() {
   const [hooksInstalled, setHooksInstalled] = createSignal(false);
@@ -112,6 +172,26 @@ export default function SettingsPanel() {
 
   function resetAppearance() {
     setBubbleSettings("appearance", { ...defaultAppearance });
+    persistAndEmit();
+  }
+
+  function setTokenPanelEnabled(enabled: boolean) {
+    setBubbleSettings("tokenPanel", "enabled", enabled);
+    persistAndEmit();
+  }
+
+  function setMetricVisible(metric: TokenMetricKey, visible: boolean) {
+    setBubbleSettings("tokenPanel", "visible", metric, visible);
+    persistAndEmit();
+  }
+
+  function moveMetric(metric: TokenMetricKey, delta: -1 | 1) {
+    const order = [...bubbleSettings.tokenPanel.order];
+    const idx = order.indexOf(metric);
+    const target = idx + delta;
+    if (idx === -1 || target < 0 || target >= order.length) return;
+    [order[idx], order[target]] = [order[target], order[idx]];
+    setBubbleSettings("tokenPanel", "order", order);
     persistAndEmit();
   }
 
@@ -327,7 +407,7 @@ export default function SettingsPanel() {
       <Section title="Bubble Appearance">
         <div class="space-y-3">
           {/* Previews */}
-          <div class="flex items-end justify-center gap-3 py-2">
+          <div class="flex items-end justify-center gap-3 py-2 flex-wrap">
             <WorkingBubble
               appearance={bubbleSettings.appearance}
               previewState={{
@@ -345,6 +425,13 @@ export default function SettingsPanel() {
                 permission={previewPermission}
               />
             </div>
+            <Show when={bubbleSettings.tokenPanel.enabled}>
+              <TokenPanel
+                appearance={bubbleSettings.appearance}
+                tokenSettings={bubbleSettings.tokenPanel}
+                previewSessions={previewTokenSessions}
+              />
+            </Show>
           </div>
 
           {/* Font size */}
@@ -379,6 +466,36 @@ export default function SettingsPanel() {
           >
             Reset to defaults
           </button>
+        </div>
+      </Section>
+
+      {/* Token Panel */}
+      <Section title="Token Panel">
+        <div class="space-y-3">
+          <ToggleRow
+            label="Show token panel"
+            description="Cumulative token counts next to the mascot"
+            checked={bubbleSettings.tokenPanel.enabled}
+            onChange={() => setTokenPanelEnabled(!bubbleSettings.tokenPanel.enabled)}
+          />
+          <Show when={bubbleSettings.tokenPanel.enabled}>
+            <div class="space-y-1.5">
+              <p class="text-xs text-text-muted">Metrics — use arrows to reorder. Checkbox toggles visibility.</p>
+              <For each={bubbleSettings.tokenPanel.order}>
+                {(metricKey, idx) => (
+                  <TokenMetricRow
+                    metric={metricKey}
+                    index={idx()}
+                    total={bubbleSettings.tokenPanel.order.length}
+                    visible={bubbleSettings.tokenPanel.visible[metricKey]}
+                    onToggle={() => setMetricVisible(metricKey, !bubbleSettings.tokenPanel.visible[metricKey])}
+                    onUp={() => moveMetric(metricKey, -1)}
+                    onDown={() => moveMetric(metricKey, 1)}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
         </div>
       </Section>
 
@@ -661,6 +778,62 @@ function HotkeyRow(props: { label: string; action: keyof HotkeySettings }) {
           {bindingToLabel(binding())}
         </button>
       </Show>
+    </div>
+  );
+}
+
+const METRIC_LABEL: Record<TokenMetricKey, { title: string; hint: string }> = {
+  read: { title: "Read", hint: "input + cache read" },
+  write: { title: "Write", hint: "output + cache create" },
+  total: { title: "Total", hint: "all combined" },
+  input: { title: "Input", hint: "raw input tokens" },
+  output: { title: "Output", hint: "raw output tokens" },
+  cache_read: { title: "Cache read", hint: "raw cache read input" },
+  cache_creation: { title: "Cache create", hint: "raw cache creation input" },
+};
+
+function TokenMetricRow(props: {
+  metric: TokenMetricKey;
+  index: number;
+  total: number;
+  visible: boolean;
+  onToggle: () => void;
+  onUp: () => void;
+  onDown: () => void;
+}) {
+  const meta = () => METRIC_LABEL[props.metric];
+  const isFirst = () => props.index === 0;
+  const isLast = () => props.index === props.total - 1;
+  return (
+    <div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-white/5">
+      <div class="flex flex-col">
+        <button
+          class="text-[10px] leading-none px-1 disabled:opacity-20"
+          disabled={isFirst()}
+          onClick={props.onUp}
+          title="Move up"
+        >
+          ▲
+        </button>
+        <button
+          class="text-[10px] leading-none px-1 disabled:opacity-20"
+          disabled={isLast()}
+          onClick={props.onDown}
+          title="Move down"
+        >
+          ▼
+        </button>
+      </div>
+      <label class="flex items-center gap-2 flex-1 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={props.visible}
+          onChange={props.onToggle}
+          class="accent-orange-primary"
+        />
+        <span class="text-sm text-text-primary">{meta().title}</span>
+        <span class="text-xs text-text-muted">{meta().hint}</span>
+      </label>
     </div>
   );
 }
