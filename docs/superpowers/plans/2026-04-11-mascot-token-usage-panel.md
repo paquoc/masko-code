@@ -151,7 +151,7 @@ fn parse_usage_into(line: &str, totals: &mut RawUsage) {
 }
 ```
 
-- [ ] **Step 2:** Add `pub mod token_usage;` declaration
+- [ ] **Step 2:** Add `mod token_usage;` declaration (private, matching the existing `mod telegram;` style)
 
 Edit `src-tauri/src/lib.rs` line ~8 (after `mod telegram;`):
 
@@ -845,14 +845,6 @@ async function refreshSession(
       transcriptPath: path,
     });
 
-    setState(
-      "bySession",
-      sessionId,
-      produce<SessionTokenUsage | undefined>((existing) => {
-        // produce on undefined creates the entry
-      }),
-    );
-    // `produce` with undefined is brittle — explicit assignment is clearer
     const prev = state.bySession[sessionId];
     setState("bySession", sessionId, {
       sessionId,
@@ -935,45 +927,6 @@ export const tokenUsageStore = {
   hasAnyUsage,
 };
 ```
-
-Clean up the dead `produce` call that was left in the draft — replace the entire `refreshSession` body with this cleaner version:
-
-```ts
-async function refreshSession(
-  sessionId: string,
-  transcriptPath?: string,
-  projectName?: string,
-): Promise<void> {
-  if (!sessionId) return;
-  const path = transcriptPath || state.pathCache[sessionId];
-  if (!path) return;
-
-  if (transcriptPath) {
-    setState("pathCache", sessionId, transcriptPath);
-  }
-
-  try {
-    const raw = await invoke<RustRawUsage>("get_session_token_usage", {
-      sessionId,
-      transcriptPath: path,
-    });
-
-    const prev = state.bySession[sessionId];
-    setState("bySession", sessionId, {
-      sessionId,
-      projectName: projectName ?? prev?.projectName ?? "",
-      input: raw.input ?? 0,
-      output: raw.output ?? 0,
-      cacheRead: raw.cacheRead ?? 0,
-      cacheCreation: raw.cacheCreation ?? 0,
-    });
-  } catch (e) {
-    error("tokenUsageStore.refreshSession failed:", e);
-  }
-}
-```
-
-(Only the cleaner version goes into the file — delete the draft with the dead `produce` call.)
 
 - [ ] **Step 2:** Run TypeScript check
 
@@ -1258,8 +1211,11 @@ After the `bubbleLayout` closure, add:
 
 ```ts
   // Token panel layout: place opposite to working bubble, fall back gracefully.
+  // Note: TOKEN_PANEL_H is a coarse approximation — the real panel height grows
+  // with the number of enabled metrics. This value is only used to pick a side
+  // and to clamp to the screen, so exact pixels don't matter. Do not "fix" it.
   const TOKEN_PANEL_W = 96;
-  const TOKEN_PANEL_H = 90; // approximation; panel grows with content but this is enough for layout math
+  const TOKEN_PANEL_H = 90;
   const tokenPanelLayout = (): { x: number; y: number } => {
     const mx = overlayPositionStore.x;
     const my = overlayPositionStore.y;
@@ -1449,7 +1405,23 @@ git commit -m "feat(token-panel): add Tokens quick toggle in mascot context menu
 **Files:**
 - Modify: `src/components/dashboard/SettingsPanel.tsx`
 
-- [ ] **Step 1:** Update `loadBubbleSettings` to include the `tokenPanel` deep-merge
+- [ ] **Step 1:** Update imports first (types are used by steps below)
+
+Modify the import line at the top (~line 5):
+
+```ts
+import type {
+  WorkingBubbleSettings,
+  BubbleAppearance,
+  TokenPanelSettings,
+  TokenMetricKey,
+} from "../../stores/working-bubble-store";
+import { defaultTokenPanel, ALL_TOKEN_METRICS } from "../../stores/working-bubble-store";
+import TokenPanel from "../overlay/TokenPanel";
+import type { SessionTokenUsage } from "../../stores/token-usage-store";
+```
+
+- [ ] **Step 2:** Update `loadBubbleSettings` to include the `tokenPanel` deep-merge
 
 Replace the defaults object and the `loadBubbleSettings` body (~line 29) with:
 
@@ -1509,22 +1481,6 @@ function mergeParsedTokenPanel(base: TokenPanelSettings, parsed: any): TokenPane
   }
   return result;
 }
-```
-
-- [ ] **Step 2:** Update imports to pull the new types
-
-Modify the import line at the top (~line 5):
-
-```ts
-import type {
-  WorkingBubbleSettings,
-  BubbleAppearance,
-  TokenPanelSettings,
-  TokenMetricKey,
-} from "../../stores/working-bubble-store";
-import { defaultTokenPanel, ALL_TOKEN_METRICS } from "../../stores/working-bubble-store";
-import TokenPanel from "../overlay/TokenPanel";
-import type { SessionTokenUsage } from "../../stores/token-usage-store";
 ```
 
 - [ ] **Step 3:** Add a stable preview dataset near the existing `previewPermission` (~line 50)
