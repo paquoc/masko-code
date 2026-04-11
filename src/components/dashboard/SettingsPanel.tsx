@@ -3,6 +3,7 @@ import { createStore, unwrap } from "solid-js/store";
 import { emit } from "@tauri-apps/api/event";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus, getAutostart, setAutostart } from "../../services/ipc";
 import type { WorkingBubbleSettings, BubbleAppearance } from "../../stores/working-bubble-store";
+import { defaultTokenPanel } from "../../stores/working-bubble-store";
 import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
 import type { PendingPermission } from "../../models/permission";
@@ -32,6 +33,7 @@ function loadBubbleSettings(): WorkingBubbleSettings {
     showSessionStart: true,
     showSessionEnd: true,
     appearance: { ...defaultAppearance },
+    tokenPanel: { ...defaultTokenPanel, order: [...defaultTokenPanel.order], visible: { ...defaultTokenPanel.visible } },
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);

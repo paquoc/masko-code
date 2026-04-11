@@ -21,11 +21,37 @@ export interface BubbleAppearance {
   hoverColor: string;      // mascot hover highlight color
 }
 
+export type TokenMetricKey =
+  | "read"
+  | "write"
+  | "total"
+  | "input"
+  | "output"
+  | "cache_read"
+  | "cache_creation";
+
+export const ALL_TOKEN_METRICS: TokenMetricKey[] = [
+  "read",
+  "write",
+  "total",
+  "input",
+  "output",
+  "cache_read",
+  "cache_creation",
+];
+
+export interface TokenPanelSettings {
+  enabled: boolean;
+  order: TokenMetricKey[];
+  visible: Record<TokenMetricKey, boolean>;
+}
+
 export interface WorkingBubbleSettings {
   showToolBubble: boolean;
   showSessionStart: boolean;
   showSessionEnd: boolean;
   appearance: BubbleAppearance;
+  tokenPanel: TokenPanelSettings;
 }
 
 const SETTINGS_KEY = "masko_working_bubble_settings";
@@ -33,9 +59,56 @@ const SETTINGS_KEY = "masko_working_bubble_settings";
 function loadSettings(): WorkingBubbleSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...defaultSettings, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<WorkingBubbleSettings>;
+      return {
+        ...defaultSettings,
+        ...parsed,
+        appearance: { ...defaultSettings.appearance, ...(parsed.appearance ?? {}) },
+        tokenPanel: mergeTokenPanel(parsed.tokenPanel),
+      };
+    }
   } catch { /* ignore */ }
-  return { ...defaultSettings };
+  return {
+    ...defaultSettings,
+    appearance: { ...defaultSettings.appearance },
+    tokenPanel: {
+      ...defaultTokenPanel,
+      order: [...defaultTokenPanel.order],
+      visible: { ...defaultTokenPanel.visible },
+    },
+  };
+}
+
+function mergeTokenPanel(stored: Partial<TokenPanelSettings> | undefined): TokenPanelSettings {
+  const base: TokenPanelSettings = {
+    ...defaultTokenPanel,
+    order: [...defaultTokenPanel.order],
+    visible: { ...defaultTokenPanel.visible },
+  };
+  if (!stored) return base;
+  if (typeof stored.enabled === "boolean") base.enabled = stored.enabled;
+  if (Array.isArray(stored.order)) {
+    const seen = new Set<TokenMetricKey>();
+    const filtered: TokenMetricKey[] = [];
+    for (const k of stored.order) {
+      if (ALL_TOKEN_METRICS.includes(k as TokenMetricKey) && !seen.has(k as TokenMetricKey)) {
+        filtered.push(k as TokenMetricKey);
+        seen.add(k as TokenMetricKey);
+      }
+    }
+    for (const k of ALL_TOKEN_METRICS) {
+      if (!seen.has(k)) filtered.push(k);
+    }
+    base.order = filtered;
+  }
+  if (stored.visible && typeof stored.visible === "object") {
+    for (const k of ALL_TOKEN_METRICS) {
+      const v = (stored.visible as Record<string, unknown>)[k];
+      if (typeof v === "boolean") base.visible[k] = v;
+    }
+  }
+  return base;
 }
 
 const defaultAppearance: BubbleAppearance = {
@@ -48,11 +121,30 @@ const defaultAppearance: BubbleAppearance = {
   hoverColor: "rgba(255,176,72,0.45)",
 };
 
+export const defaultTokenPanel: TokenPanelSettings = {
+  enabled: true,
+  order: ["read", "write", "total", "input", "output", "cache_read", "cache_creation"],
+  visible: {
+    read: true,
+    write: true,
+    total: true,
+    input: false,
+    output: false,
+    cache_read: false,
+    cache_creation: false,
+  },
+};
+
 const defaultSettings: WorkingBubbleSettings = {
   showToolBubble: true,
   showSessionStart: true,
   showSessionEnd: true,
   appearance: { ...defaultAppearance },
+  tokenPanel: {
+    ...defaultTokenPanel,
+    order: [...defaultTokenPanel.order],
+    visible: { ...defaultTokenPanel.visible },
+  },
 };
 
 const [state, setState] = createStore<WorkingBubbleState>({
