@@ -151,6 +151,8 @@ pub fn run() {
             commands::open_devtools,
             commands::update_working_bubble_zone,
             commands::update_permission_zone,
+            commands::set_overlay_token_panel_visible,
+            commands::update_token_panel_zone,
             commands::focus_overlay,
             commands::unfocus_overlay,
             commands::get_autostart,

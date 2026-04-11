@@ -22,7 +22,8 @@
         "center": true,
         "resizable": true,
         "decorations": true,
-        "visible": false
+        "visible": false,
+        "dragDropEnabled": false
       },
       {
         "label": "overlay",

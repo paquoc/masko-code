@@ -1002,6 +1002,63 @@ function MascotOverlay() {
   // panel's actual width — translateX(-50%) centers any width.
   const TOKEN_PANEL_GAP = 6;
 
+  // Token panel element ref (for hit-test zone registration so the panel
+  // receives mouse events through the overlay's click-through layer).
+  const [tokenPanelEl, setTokenPanelEl] = createSignal<HTMLDivElement | null>(null);
+
+  createEffect(() => {
+    const el = tokenPanelEl();
+    if (!el) {
+      invoke("set_overlay_token_panel_visible", { visible: false }).catch(() => { });
+      invoke("update_token_panel_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
+      return;
+    }
+    const push = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        invoke("set_overlay_token_panel_visible", { visible: false }).catch(() => { });
+        invoke("update_token_panel_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
+        return;
+      }
+      invoke("set_overlay_token_panel_visible", { visible: true }).catch(() => { });
+      invoke("update_token_panel_zone", {
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      }).catch(() => { });
+    };
+    push();
+    const ro = new ResizeObserver(push);
+    ro.observe(el);
+    onCleanup(() => {
+      ro.disconnect();
+      invoke("set_overlay_token_panel_visible", { visible: false }).catch(() => { });
+      invoke("update_token_panel_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
+    });
+  });
+
+  // Re-push token panel zone when mascot moves (wrapper position changes
+  // but its own size hasn't, so ResizeObserver won't fire).
+  createEffect(() => {
+    const _x = overlayPositionStore.x;
+    const _y = overlayPositionStore.y;
+    const _s = effectiveSize();
+    const el = tokenPanelEl();
+    if (!el) return;
+    // Defer to next frame so the CSS transform/left/top have been applied
+    requestAnimationFrame(() => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      invoke("update_token_panel_zone", {
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      }).catch(() => { });
+    });
+  });
+
   // Permission expand/collapse state
   const [permExpanded, setPermExpanded] = createSignal(false);
   const togglePermExpanded = () => setPermExpanded((prev) => !prev);
@@ -1058,6 +1115,7 @@ function MascotOverlay() {
       <Show when={workingBubbleStore.settings.tokenPanel.enabled}>
         <div
           class="absolute"
+          ref={(el) => setTokenPanelEl(el)}
           style={{
             "z-index": 14,
             left: `${overlayPositionStore.x + effectiveSize() / 2}px`,

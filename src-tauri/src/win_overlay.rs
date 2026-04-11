@@ -20,6 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 pub static PERMISSION_HIT_VISIBLE: AtomicBool = AtomicBool::new(false);
 pub static WORKING_BUBBLE_VISIBLE: AtomicBool = AtomicBool::new(false);
+pub static TOKEN_PANEL_VISIBLE: AtomicBool = AtomicBool::new(false);
 /// When true, cursor polling always reports interactive (suppresses click-through during drag)
 pub static DRAGGING: AtomicBool = AtomicBool::new(false);
 /// When true, WM_STYLECHANGING will NOT force WS_EX_NOACTIVATE (allows keyboard focus)
@@ -45,6 +46,10 @@ static PERM_X: AtomicI32 = AtomicI32::new(-1);
 static PERM_Y: AtomicI32 = AtomicI32::new(-1);
 static PERM_W: AtomicI32 = AtomicI32::new(0);
 static PERM_H: AtomicI32 = AtomicI32::new(0);
+static TOKEN_PANEL_X: AtomicI32 = AtomicI32::new(-1);
+static TOKEN_PANEL_Y: AtomicI32 = AtomicI32::new(-1);
+static TOKEN_PANEL_W: AtomicI32 = AtomicI32::new(0);
+static TOKEN_PANEL_H: AtomicI32 = AtomicI32::new(0);
 
 // Style bits that would show a frame — strip these on every style change
 const BANNED_STYLE: u32 = WS_CAPTION.0
@@ -173,6 +178,14 @@ pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) {
     PERM_Y.store(y, Ordering::Relaxed);
     PERM_W.store(w, Ordering::Relaxed);
     PERM_H.store(h, Ordering::Relaxed);
+}
+
+/// Update token panel zone (logical CSS px). Pass x=-1 to disable.
+pub fn update_token_panel_zone(x: i32, y: i32, w: i32, h: i32) {
+    TOKEN_PANEL_X.store(x, Ordering::Relaxed);
+    TOKEN_PANEL_Y.store(y, Ordering::Relaxed);
+    TOKEN_PANEL_W.store(w, Ordering::Relaxed);
+    TOKEN_PANEL_H.store(h, Ordering::Relaxed);
 }
 
 /// Get monitor bounds (physical pixels) for the monitor containing the given point.
@@ -338,6 +351,17 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             client_x >= px && client_x < px + pw && client_y >= py && client_y < py + ph
         };
 
-        in_mascot || in_perm || in_bubble
+        // Token panel zone: exact position sent by frontend
+        let token_on = TOKEN_PANEL_VISIBLE.load(Ordering::Relaxed);
+        let tx = TOKEN_PANEL_X.load(Ordering::Relaxed);
+        let in_token = token_on && tx >= 0 && {
+            let tx = (tx as f64 * scale) as i32;
+            let ty = (TOKEN_PANEL_Y.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let tw = (TOKEN_PANEL_W.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let th = (TOKEN_PANEL_H.load(Ordering::Relaxed) as f64 * scale) as i32;
+            client_x >= tx && client_x < tx + tw && client_y >= ty && client_y < ty + th
+        };
+
+        in_mascot || in_perm || in_bubble || in_token
     }
 }

@@ -136,6 +136,27 @@ pub fn update_working_bubble_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn set_overlay_token_panel_visible(visible: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::win_overlay::TOKEN_PANEL_VISIBLE
+            .store(visible, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = visible;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_token_panel_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    crate::win_overlay::update_token_panel_zone(x, y, w, h);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (x, y, w, h);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     crate::win_overlay::update_permission_zone(x, y, w, h);
