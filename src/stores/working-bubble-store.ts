@@ -44,6 +44,8 @@ export interface TokenPanelSettings {
   enabled: boolean;
   order: TokenMetricKey[];
   visible: Record<TokenMetricKey, boolean>;
+  bgColor: string;
+  textColor: string;
 }
 
 export interface WorkingBubbleSettings {
@@ -108,6 +110,8 @@ function mergeTokenPanel(stored: Partial<TokenPanelSettings> | undefined): Token
       if (typeof v === "boolean") base.visible[k] = v;
     }
   }
+  if (typeof stored.bgColor === "string") base.bgColor = stored.bgColor;
+  if (typeof stored.textColor === "string") base.textColor = stored.textColor;
   return base;
 }
 
@@ -133,6 +137,8 @@ export const defaultTokenPanel: TokenPanelSettings = {
     cache_read: false,
     cache_creation: false,
   },
+  bgColor: "rgba(12,16,12,0.85)",
+  textColor: "rgba(74,222,128,1)",
 };
 
 const defaultSettings: WorkingBubbleSettings = {

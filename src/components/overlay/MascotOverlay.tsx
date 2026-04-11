@@ -673,9 +673,11 @@ function MascotOverlay() {
         case HookEventType.PreToolUse: {
           agentState.isWorking = true;
           agentState.isIdle = false;
+          agentState.isCompacting = false; // tool use and compacting are mutually exclusive
           sm.setAgentStateInputs([
             ["isWorking", conditionBool(true)],
             ["isIdle", conditionBool(false)],
+            ["isCompacting", conditionBool(false)],
           ]);
           sm.setAgentEventTrigger(eventType);
           // Show working bubble with tool detail
@@ -693,12 +695,14 @@ function MascotOverlay() {
         case HookEventType.PostToolUseFailure: {
           agentState.isWorking = true;
           agentState.isIdle = false;
+          agentState.isCompacting = false; // tool use and compacting are mutually exclusive
           // PostToolUse means tool executed — refresh isAlert from actual pending state
           const hasUncollapsed = permissionStore.pending.some((p) => !p.collapsed);
           if (!hasUncollapsed) agentState.isAlert = false;
           sm.setAgentStateInputs([
             ["isWorking", conditionBool(true)],
             ["isIdle", conditionBool(false)],
+            ["isCompacting", conditionBool(false)],
             ["isAlert", conditionBool(agentState.isAlert)],
           ]);
           sm.setAgentEventTrigger(eventType);
@@ -1000,7 +1004,7 @@ function MascotOverlay() {
   // Token panel is pinned directly below the mascot, horizontally centered.
   // The outer wrapper uses a CSS transform so we don't need to measure the
   // panel's actual width — translateX(-50%) centers any width.
-  const TOKEN_PANEL_GAP = 6;
+  const TOKEN_PANEL_GAP = -10;
 
   // Token panel element ref (for hit-test zone registration so the panel
   // receives mouse events through the overlay's click-through layer).

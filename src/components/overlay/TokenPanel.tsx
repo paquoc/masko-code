@@ -8,8 +8,8 @@ import { tokenUsageStore, type SessionTokenUsage } from "../../stores/token-usag
 type IconProps = { size?: number; color?: string; strokeWidth?: number };
 
 const METRIC_ICON: Record<TokenMetricKey, Component<IconProps>> = {
-  read: ArrowDown,
-  write: ArrowUp,
+  read: ArrowUp,
+  write: ArrowDown,
   total: Sigma,
   input: LogIn,
   output: LogOut,
@@ -27,12 +27,26 @@ const METRIC_LABEL: Record<TokenMetricKey, string> = {
   cache_creation: "cache c",
 };
 
-// Dark/green palette — fixed, independent of appearance so the panel has
-// its own identity and stays legible against any desktop background.
-const PANEL_BG = "rgba(12,16,12,0.85)";
-const PANEL_TEXT = "#4ade80";      // green-400
-const PANEL_MUTED = "rgba(74,222,128,0.55)";
-const PANEL_BORDER = "rgba(74,222,128,0.18)";
+// Derive muted/border variants from a base color by adjusting its alpha channel.
+function withAlpha(color: string, alpha: number): string {
+  const rgba = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgba) return `rgba(${rgba[1]},${rgba[2]},${rgba[3]},${alpha})`;
+  const hex6 = color.match(/^#([0-9a-f]{6})$/i);
+  if (hex6) {
+    const r = parseInt(hex6[1].slice(0, 2), 16);
+    const g = parseInt(hex6[1].slice(2, 4), 16);
+    const b = parseInt(hex6[1].slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  const hex3 = color.match(/^#([0-9a-f]{3})$/i);
+  if (hex3) {
+    const r = parseInt(hex3[1][0].repeat(2), 16);
+    const g = parseInt(hex3[1][1].repeat(2), 16);
+    const b = parseInt(hex3[1][2].repeat(2), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return color;
+}
 
 function formatShort(n: number): string {
   if (n < 1_000) return n.toString();
@@ -52,6 +66,11 @@ export interface TokenPanelProps {
 }
 
 export default function TokenPanel(props: TokenPanelProps) {
+  const panelBg   = () => props.tokenSettings.bgColor   ?? "rgba(12,16,12,0.85)";
+  const panelText = () => props.tokenSettings.textColor ?? "rgba(74,222,128,1)";
+  const panelMuted  = () => withAlpha(panelText(), 0.95);
+  const panelBorder = () => withAlpha(panelText(), 0.18);
+
   const metrics = createMemo(() =>
     props.tokenSettings.order.filter((k) => props.tokenSettings.visible[k]),
   );
@@ -107,13 +126,13 @@ export default function TokenPanel(props: TokenPanelProps) {
       <div
         class="relative select-none"
         style={{
-          background: PANEL_BG,
-          color: PANEL_TEXT,
-          border: `1px solid ${PANEL_BORDER}`,
+          background: panelBg(),
+          color: panelText(),
+          border: `0.5px solid ${panelBorder()}`,
           "border-radius": "999px",
-          "font-size": `${props.appearance.fontSize}px`,
+          "font-size": `${props.appearance.fontSize - 1}px`,
           "font-family": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-          padding: "5px 12px",
+          padding: "2px 5px",
           "pointer-events": "auto",
           "box-shadow": "0 2px 10px rgba(0,0,0,0.35)",
           "backdrop-filter": "blur(6px)",
@@ -123,17 +142,17 @@ export default function TokenPanel(props: TokenPanelProps) {
         onMouseLeave={() => setHovering(false)}
         onClick={(e) => { e.stopPropagation(); }}
       >
-        <div class="flex items-center gap-3 tabular-nums whitespace-nowrap">
+        <div class="flex items-center gap-0.5 tabular-nums whitespace-nowrap">
           <For each={metrics()}>
             {(k, i) => {
               const Icon = METRIC_ICON[k];
               return (
                 <>
                   <Show when={i() > 0}>
-                    <span style={{ color: PANEL_BORDER }}>·</span>
+                    <span style={{ color: panelBorder() }}>·</span>
                   </Show>
-                  <span class="flex items-center gap-1">
-                    <Icon size={iconPx()} color={PANEL_MUTED} strokeWidth={2.25} />
+                  <span class="flex items-center gap-0.5" style={{ color: panelText() }}>
+                    <Icon size={iconPx()} color={panelMuted()} strokeWidth={2.25} />
                     <span>{formatShort(computed(k))}</span>
                   </span>
                 </>
@@ -147,9 +166,9 @@ export default function TokenPanel(props: TokenPanelProps) {
             class="absolute"
             style={{
               "z-index": 60,
-              background: PANEL_BG,
-              color: PANEL_TEXT,
-              border: `1px solid ${PANEL_BORDER}`,
+              background: panelBg(),
+              color: panelText(),
+              border: `1px solid ${panelBorder()}`,
               "border-radius": "10px",
               "font-size": `${Math.max(10, props.appearance.fontSize - 1)}px`,
               "font-family": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
@@ -171,15 +190,15 @@ export default function TokenPanel(props: TokenPanelProps) {
               {(s, i) => (
                 <div>
                   <Show when={i() > 0}>
-                    <div style={{ height: "1px", background: PANEL_BORDER, margin: "6px 0" }} />
+                    <div style={{ height: "1px", background: panelBorder(), margin: "6px 0" }} />
                   </Show>
-                  <div style={{ "font-weight": "600", "margin-bottom": "3px", color: PANEL_TEXT }}>
+                  <div style={{ "font-weight": "600", "margin-bottom": "3px", color: panelText() }}>
                     {s.projectName || s.sessionId.slice(0, 8)}
                   </div>
-                  <TooltipRow label="input"        value={s.input} />
-                  <TooltipRow label="output"       value={s.output} />
-                  <TooltipRow label="cache read"   value={s.cacheRead} />
-                  <TooltipRow label="cache create" value={s.cacheCreation} />
+                  <TooltipRow label="input"        value={s.input}        muted={panelMuted()} />
+                  <TooltipRow label="output"       value={s.output}       muted={panelMuted()} />
+                  <TooltipRow label="cache read"   value={s.cacheRead}    muted={panelMuted()} />
+                  <TooltipRow label="cache create" value={s.cacheCreation} muted={panelMuted()} />
                 </div>
               )}
             </For>
@@ -190,10 +209,10 @@ export default function TokenPanel(props: TokenPanelProps) {
   );
 }
 
-function TooltipRow(props: { label: string; value: number }) {
+function TooltipRow(props: { label: string; value: number; muted: string }) {
   return (
     <div class="flex items-center justify-between gap-4 tabular-nums">
-      <span style={{ color: PANEL_MUTED }}>{props.label}</span>
+      <span style={{ color: props.muted }}>{props.label}</span>
       <span>{formatFull(props.value)}</span>
     </div>
   );

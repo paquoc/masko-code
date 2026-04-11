@@ -181,6 +181,11 @@ export default function SettingsPanel() {
     persistAndEmit();
   }
 
+  function setTokenPanelColor(key: "bgColor" | "textColor", value: string) {
+    setBubbleSettings("tokenPanel", key, value);
+    persistAndEmit();
+  }
+
   function setMetricVisible(metric: TokenMetricKey, visible: boolean) {
     setBubbleSettings("tokenPanel", "visible", metric, visible);
     persistAndEmit();
@@ -485,6 +490,10 @@ export default function SettingsPanel() {
             onChange={() => setTokenPanelEnabled(!bubbleSettings.tokenPanel.enabled)}
           />
           <Show when={bubbleSettings.tokenPanel.enabled}>
+            <div class="space-y-1">
+              <ColorRow label="Text color" value={bubbleSettings.tokenPanel.textColor ?? "rgba(74,222,128,1)"} onChange={(v) => setTokenPanelColor("textColor", v)} />
+              <ColorRow label="Background" value={bubbleSettings.tokenPanel.bgColor ?? "rgba(12,16,12,0.85)"} onChange={(v) => setTokenPanelColor("bgColor", v)} />
+            </div>
             <div class="space-y-1">
               <p class="text-xs text-text-muted">Drag the handle to reorder. Checkbox toggles visibility.</p>
               <For each={bubbleSettings.tokenPanel.order}>
