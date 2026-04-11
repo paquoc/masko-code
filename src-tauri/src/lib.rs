@@ -6,6 +6,7 @@ mod models;
 mod server;
 mod tray;
 mod telegram;
+mod token_usage;
 
 #[cfg(target_os = "windows")]
 mod autostart;
