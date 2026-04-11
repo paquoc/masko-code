@@ -153,10 +153,10 @@ One file is fine; this module is small (~200 lines).
    if meta is None: return RawUsage::default()  // file not written yet
 3. entry = state.entry(session_id).or_insert_with(|| fresh(transcript_path, meta))
 4. if entry.path != transcript_path
-      OR meta.modified() != entry.mtime (and file_len < entry.offset, i.e. truncated):
+      OR file_len < entry.offset:   // truncated or rotated
       reset entry (offset=0, totals=zero, mtime=meta.modified())
    else:
-      entry.mtime = meta.modified()  // bump even if same
+      entry.mtime = meta.modified()  // bump even if unchanged
 5. file = File::open(transcript_path)
    file.seek(SeekFrom::Start(entry.offset))
    reader = BufReader::new(file)
@@ -303,6 +303,8 @@ The component returns `null` if any of:
 - `tokenSettings.enabled === false`
 - All entries in `bySession` have every raw field equal to 0 (nothing meaningful to show yet)
 - `tokenSettings.order.filter(k => tokenSettings.visible[k]).length === 0` (no metric enabled)
+
+An enabled metric whose computed value is 0 while other metrics are non-zero is still rendered (e.g. `→ 0`). Zero rows are only suppressed by the "all-zero" panel-level visibility rule above.
 
 ### Metric row rendering
 
@@ -473,7 +475,7 @@ The preview `TokenPanel` receives the live `appearance` and `tokenPanel` setting
 
 ### New row in `MascotOverlay.tsx` ContextMenu
 
-After the "Telegram" row, before "Open Dashboard", add:
+Insert after the Telegram submenu block and before the "Open Dashboard" row (verify exact anchor during implementation — the context menu has been evolving in recent commits). The new row:
 
 ```tsx
 <MenuRow
@@ -528,7 +530,7 @@ Panel positioning uses the same boundary logic the existing bubble uses. Panel i
 
 ### Many active sessions (5+)
 
-The aggregate math is O(n) over sessions — trivial even at n=50. Tooltip scrolls vertically if its height exceeds 80% of viewport height; caps at 8 sessions visible with a "+N more" footer line.
+The aggregate math is O(n) over sessions — trivial even at n=50. The tooltip uses vertical scrolling as its primary overflow strategy, with `max-height: 80vh` and `overflow-y: auto`. No hard cap on visible sessions — scrolling alone handles the realistic upper bound. If the DOM ever holds enough session blocks to slow rendering, that's a future concern, not a current one.
 
 ### Very large transcript (>100 MB)
 
