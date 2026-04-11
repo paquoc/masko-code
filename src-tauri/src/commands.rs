@@ -315,3 +315,27 @@ pub async fn telegram_get_status(
 ) -> Result<TelegramStatus, String> {
     Ok(manager.get_status().await)
 }
+
+// ===== Token usage commands =====
+
+use crate::token_usage::{RawUsage, TokenUsageState};
+use std::path::PathBuf;
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn get_session_token_usage(
+    state: tauri::State<'_, TokenUsageState>,
+    session_id: String,
+    transcript_path: String,
+) -> Result<RawUsage, String> {
+    let path = PathBuf::from(&transcript_path);
+    Ok(state.read_session_usage(&session_id, &path))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn reset_session_token_usage(
+    state: tauri::State<'_, TokenUsageState>,
+    session_id: String,
+) -> Result<(), String> {
+    state.reset_session(&session_id);
+    Ok(())
+}

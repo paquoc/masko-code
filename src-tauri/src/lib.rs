@@ -28,6 +28,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(pending_permissions)
+        .manage(crate::token_usage::TokenUsageState::new())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -160,6 +161,8 @@ pub fn run() {
             commands::telegram_set_polling_enabled,
             commands::telegram_set_sending_enabled,
             commands::telegram_get_status,
+            commands::get_session_token_usage,
+            commands::reset_session_token_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Masko");
