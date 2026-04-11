@@ -27,6 +27,14 @@ const [state, setState] = createStore<TokenUsageStoreState>({
   pathCache: {},
 });
 
+// ISO 8601 timestamp recorded when the overlay window first mounts.
+// Only tokens from lines with timestamp >= this value are counted.
+let mascotOpenTime: string | undefined;
+
+function setMascotOpenTime(t: string): void {
+  mascotOpenTime = t;
+}
+
 interface RustRawUsage {
   input: number;
   output: number;
@@ -51,6 +59,7 @@ async function refreshSession(
     const raw = await invoke<RustRawUsage>("get_session_token_usage", {
       sessionId,
       transcriptPath: path,
+      sinceRfc3339: mascotOpenTime ?? null,
     });
 
     const prev = state.bySession[sessionId];
@@ -127,6 +136,7 @@ function hasAnyUsage(): boolean {
 
 export const tokenUsageStore = {
   get bySession() { return state.bySession; },
+  setMascotOpenTime,
   refreshSession,
   removeSession,
   aggregate,

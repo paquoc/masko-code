@@ -110,10 +110,7 @@ export default function TokenPanel(props: TokenPanelProps) {
   const shouldRender = createMemo(() => {
     if (!props.tokenSettings.enabled) return false;
     if (metrics().length === 0) return false;
-    if (props.previewSessions) {
-      return true;
-    }
-    return tokenUsageStore.hasAnyUsage();
+    return true; // Show immediately with 0 on mascot open; values increment as events arrive
   });
 
   const [hovering, setHovering] = createSignal(false);

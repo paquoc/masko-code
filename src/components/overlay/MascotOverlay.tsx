@@ -439,6 +439,9 @@ function MascotOverlay() {
 
   // Load persisted mascot on startup, fallback to clippy
   onMount(async () => {
+    // Record the time the overlay opened — token usage is only counted from this point forward
+    tokenUsageStore.setMascotOpenTime(new Date().toISOString());
+
     // Restore mascot position within the fullscreen overlay
     await overlayPositionStore.restorePosition();
 

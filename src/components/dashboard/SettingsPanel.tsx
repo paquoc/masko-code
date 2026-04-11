@@ -9,7 +9,7 @@ import type {
   TokenMetricKey,
 } from "../../stores/working-bubble-store";
 import { defaultTokenPanel, ALL_TOKEN_METRICS } from "../../stores/working-bubble-store";
-import TokenPanel from "../overlay/TokenPanel";
+import TokenPanel, { METRIC_ICON } from "../overlay/TokenPanel";
 import type { SessionTokenUsage } from "../../stores/token-usage-store";
 import { GripVertical } from "lucide-solid";
 import WorkingBubble from "../overlay/WorkingBubble";
@@ -867,6 +867,7 @@ function TokenMetricRow(props: {
           onChange={props.onToggle}
           class="accent-orange-primary"
         />
+        {(() => { const Icon = METRIC_ICON[props.metric]; return <Icon size={13} color="rgba(156,163,175,0.8)" strokeWidth={2} />; })()}
         <span class="text-sm text-text-primary">{meta().title}</span>
         <span class="text-xs text-text-muted">{meta().hint}</span>
       </label>

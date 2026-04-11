@@ -347,9 +347,10 @@ pub fn get_session_token_usage(
     state: tauri::State<'_, TokenUsageState>,
     session_id: String,
     transcript_path: String,
+    since_rfc3339: Option<String>,
 ) -> Result<RawUsage, String> {
     let path = PathBuf::from(&transcript_path);
-    Ok(state.read_session_usage(&session_id, &path))
+    Ok(state.read_session_usage(&session_id, &path, since_rfc3339.as_deref()))
 }
 
 #[tauri::command(rename_all = "camelCase")]
