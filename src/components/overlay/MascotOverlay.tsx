@@ -997,54 +997,10 @@ function MascotOverlay() {
     }
   };
 
-  // Token panel layout: place opposite to working bubble, fall back gracefully.
-  // Note: TOKEN_PANEL_H is a coarse approximation — the real panel height grows
-  // with the number of enabled metrics. This value is only used to pick a side
-  // and to clamp to the screen, so exact pixels don't matter. Do not "fix" it.
-  const TOKEN_PANEL_W = 96;
-  const TOKEN_PANEL_H = 90;
-  const tokenPanelLayout = (): { x: number; y: number } => {
-    const mx = overlayPositionStore.x;
-    const my = overlayPositionStore.y;
-    const MASCOT = effectiveSize();
-    const screenW = window.innerWidth;
-    const screenH = window.innerHeight;
-    const GAP_PX = 8;
-
-    const candidates: Array<{ x: number; y: number }> = [
-      { x: mx - TOKEN_PANEL_W - GAP_PX, y: my + MASCOT / 2 - TOKEN_PANEL_H / 2 },
-      { x: mx + MASCOT + GAP_PX,        y: my + MASCOT / 2 - TOKEN_PANEL_H / 2 },
-      { x: mx + MASCOT / 2 - TOKEN_PANEL_W / 2, y: my + MASCOT + GAP_PX },
-      { x: mx + MASCOT / 2 - TOKEN_PANEL_W / 2, y: my - TOKEN_PANEL_H - GAP_PX },
-    ];
-
-    const bubbleTail = workingBubbleStore.state.visible
-      ? bubbleLayout(176, 80).tail
-      : null;
-
-    const prefer = (c: { x: number; y: number }): boolean => {
-      if (!bubbleTail) return true;
-      if (bubbleTail === "left" && c.x > mx) return false;
-      if (bubbleTail === "right" && c.x < mx) return false;
-      if (bubbleTail === "down" && c.y < my) return false;
-      return true;
-    };
-
-    const fits = (c: { x: number; y: number }): boolean =>
-      c.x >= 4 && c.y >= 4 && c.x + TOKEN_PANEL_W <= screenW - 4 && c.y + TOKEN_PANEL_H <= screenH - 4;
-
-    for (const c of candidates) {
-      if (prefer(c) && fits(c)) return c;
-    }
-    for (const c of candidates) {
-      if (fits(c)) return c;
-    }
-    const c = candidates[0];
-    return {
-      x: Math.max(4, Math.min(c.x, screenW - TOKEN_PANEL_W - 4)),
-      y: Math.max(4, Math.min(c.y, screenH - TOKEN_PANEL_H - 4)),
-    };
-  };
+  // Token panel is pinned directly below the mascot, horizontally centered.
+  // The outer wrapper uses a CSS transform so we don't need to measure the
+  // panel's actual width — translateX(-50%) centers any width.
+  const TOKEN_PANEL_GAP = 6;
 
   // Permission expand/collapse state
   const [permExpanded, setPermExpanded] = createSignal(false);
@@ -1098,26 +1054,22 @@ function MascotOverlay() {
         })()}
       </Show>
 
-      {/* Token usage panel — positioned independently of working bubble */}
+      {/* Token usage panel — pinned directly below the mascot */}
       <Show when={workingBubbleStore.settings.tokenPanel.enabled}>
-        {(() => {
-          const l = () => tokenPanelLayout();
-          return (
-            <div
-              class="absolute"
-              style={{
-                "z-index": 14,
-                left: `${l().x}px`,
-                top: `${l().y}px`,
-              }}
-            >
-              <TokenPanel
-                appearance={workingBubbleStore.settings.appearance}
-                tokenSettings={workingBubbleStore.settings.tokenPanel}
-              />
-            </div>
-          );
-        })()}
+        <div
+          class="absolute"
+          style={{
+            "z-index": 14,
+            left: `${overlayPositionStore.x + effectiveSize() / 2}px`,
+            top: `${overlayPositionStore.y + effectiveSize() + TOKEN_PANEL_GAP}px`,
+            transform: "translateX(-50%)",
+          }}
+        >
+          <TokenPanel
+            appearance={workingBubbleStore.settings.appearance}
+            tokenSettings={workingBubbleStore.settings.tokenPanel}
+          />
+        </div>
       </Show>
 
       {/* Permission bubble — floats near mascot */}

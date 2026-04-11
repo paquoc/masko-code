@@ -11,6 +11,7 @@ import type {
 import { defaultTokenPanel, ALL_TOKEN_METRICS } from "../../stores/working-bubble-store";
 import TokenPanel from "../overlay/TokenPanel";
 import type { SessionTokenUsage } from "../../stores/token-usage-store";
+import { GripVertical } from "lucide-solid";
 import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
 import type { PendingPermission } from "../../models/permission";
@@ -185,15 +186,20 @@ export default function SettingsPanel() {
     persistAndEmit();
   }
 
-  function moveMetric(metric: TokenMetricKey, delta: -1 | 1) {
+  function reorderMetric(fromKey: TokenMetricKey, toKey: TokenMetricKey) {
+    if (fromKey === toKey) return;
     const order = [...bubbleSettings.tokenPanel.order];
-    const idx = order.indexOf(metric);
-    const target = idx + delta;
-    if (idx === -1 || target < 0 || target >= order.length) return;
-    [order[idx], order[target]] = [order[target], order[idx]];
+    const fromIdx = order.indexOf(fromKey);
+    const toIdx = order.indexOf(toKey);
+    if (fromIdx < 0 || toIdx < 0) return;
+    order.splice(fromIdx, 1);
+    order.splice(toIdx, 0, fromKey);
     setBubbleSettings("tokenPanel", "order", order);
     persistAndEmit();
   }
+
+  const [draggingMetric, setDraggingMetric] = createSignal<TokenMetricKey | null>(null);
+  const [dragOverMetric, setDragOverMetric] = createSignal<TokenMetricKey | null>(null);
 
   async function handleInstallHooks() {
     setLoading("install");
@@ -479,18 +485,25 @@ export default function SettingsPanel() {
             onChange={() => setTokenPanelEnabled(!bubbleSettings.tokenPanel.enabled)}
           />
           <Show when={bubbleSettings.tokenPanel.enabled}>
-            <div class="space-y-1.5">
-              <p class="text-xs text-text-muted">Metrics — use arrows to reorder. Checkbox toggles visibility.</p>
+            <div class="space-y-1">
+              <p class="text-xs text-text-muted">Drag the handle to reorder. Checkbox toggles visibility.</p>
               <For each={bubbleSettings.tokenPanel.order}>
-                {(metricKey, idx) => (
+                {(metricKey) => (
                   <TokenMetricRow
                     metric={metricKey}
-                    index={idx()}
-                    total={bubbleSettings.tokenPanel.order.length}
                     visible={bubbleSettings.tokenPanel.visible[metricKey]}
+                    dragging={draggingMetric() === metricKey}
+                    dragOver={dragOverMetric() === metricKey}
                     onToggle={() => setMetricVisible(metricKey, !bubbleSettings.tokenPanel.visible[metricKey])}
-                    onUp={() => moveMetric(metricKey, -1)}
-                    onDown={() => moveMetric(metricKey, 1)}
+                    onDragStart={() => setDraggingMetric(metricKey)}
+                    onDragEnd={() => { setDraggingMetric(null); setDragOverMetric(null); }}
+                    onDragEnter={() => setDragOverMetric(metricKey)}
+                    onDrop={() => {
+                      const from = draggingMetric();
+                      if (from) reorderMetric(from, metricKey);
+                      setDraggingMetric(null);
+                      setDragOverMetric(null);
+                    }}
                   />
                 )}
               </For>
@@ -794,36 +807,42 @@ const METRIC_LABEL: Record<TokenMetricKey, { title: string; hint: string }> = {
 
 function TokenMetricRow(props: {
   metric: TokenMetricKey;
-  index: number;
-  total: number;
   visible: boolean;
+  dragging: boolean;
+  dragOver: boolean;
   onToggle: () => void;
-  onUp: () => void;
-  onDown: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDragEnter: () => void;
+  onDrop: () => void;
 }) {
   const meta = () => METRIC_LABEL[props.metric];
-  const isFirst = () => props.index === 0;
-  const isLast = () => props.index === props.total - 1;
   return (
-    <div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-white/5">
-      <div class="flex flex-col">
-        <button
-          class="text-[10px] leading-none px-1 disabled:opacity-20"
-          disabled={isFirst()}
-          onClick={props.onUp}
-          title="Move up"
-        >
-          ▲
-        </button>
-        <button
-          class="text-[10px] leading-none px-1 disabled:opacity-20"
-          disabled={isLast()}
-          onClick={props.onDown}
-          title="Move down"
-        >
-          ▼
-        </button>
-      </div>
+    <div
+      class="flex items-center gap-2 py-1.5 px-2 rounded border transition-colors"
+      classList={{
+        "opacity-40": props.dragging,
+        "border-orange-primary/60 bg-orange-primary/10": props.dragOver && !props.dragging,
+        "border-transparent hover:bg-white/5": !props.dragOver && !props.dragging,
+        "border-white/10 bg-white/5": props.dragging,
+      }}
+      draggable={true}
+      onDragStart={(e) => {
+        props.onDragStart();
+        e.dataTransfer?.setData("text/plain", props.metric);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragEnd={props.onDragEnd}
+      onDragEnter={(e) => { e.preventDefault(); props.onDragEnter(); }}
+      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "move"; }}
+      onDrop={(e) => { e.preventDefault(); props.onDrop(); }}
+    >
+      <span
+        class="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-primary flex items-center justify-center"
+        title="Drag to reorder"
+      >
+        <GripVertical size={16} />
+      </span>
       <label class="flex items-center gap-2 flex-1 cursor-pointer">
         <input
           type="checkbox"
