@@ -817,8 +817,10 @@ function TokenMetricRow(props: {
   onDrop: () => void;
 }) {
   const meta = () => METRIC_LABEL[props.metric];
+  let rowRef: HTMLDivElement | undefined;
   return (
     <div
+      ref={(el) => { rowRef = el; }}
       class="flex items-center gap-2 py-1.5 px-2 rounded border transition-colors"
       classList={{
         "opacity-40": props.dragging,
@@ -826,20 +828,26 @@ function TokenMetricRow(props: {
         "border-transparent hover:bg-white/5": !props.dragOver && !props.dragging,
         "border-white/10 bg-white/5": props.dragging,
       }}
-      draggable={true}
-      onDragStart={(e) => {
-        props.onDragStart();
-        e.dataTransfer?.setData("text/plain", props.metric);
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-      }}
-      onDragEnd={props.onDragEnd}
       onDragEnter={(e) => { e.preventDefault(); props.onDragEnter(); }}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "move"; }}
       onDrop={(e) => { e.preventDefault(); props.onDrop(); }}
     >
       <span
-        class="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-primary flex items-center justify-center"
+        class="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-primary flex items-center justify-center px-1"
         title="Drag to reorder"
+        draggable={true}
+        onDragStart={(e) => {
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", props.metric);
+            if (rowRef) {
+              const rect = rowRef.getBoundingClientRect();
+              e.dataTransfer.setDragImage(rowRef, e.clientX - rect.left, e.clientY - rect.top);
+            }
+          }
+          props.onDragStart();
+        }}
+        onDragEnd={props.onDragEnd}
       >
         <GripVertical size={16} />
       </span>
