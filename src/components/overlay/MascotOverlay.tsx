@@ -9,6 +9,8 @@ import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent
 import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
+import { tokenUsageStore } from "../../stores/token-usage-store";
+import TokenPanel from "./TokenPanel";
 import { overlayPositionStore } from "../../stores/overlay-position-store";
 import { telegramStore } from "../../stores/telegram-store";
 import { log, error } from "../../services/log";
@@ -716,6 +718,28 @@ function MascotOverlay() {
           sm.setAgentEventTrigger(eventType);
           break;
       }
+
+      // Token usage refresh
+      if (event.session_id) {
+        const projectNameForToken = event.cwd
+          ? event.cwd.replace(/\\/g, "/").split("/").pop() || ""
+          : "";
+        switch (eventType) {
+          case HookEventType.SessionStart:
+          case HookEventType.PostToolUse:
+          case HookEventType.PostToolUseFailure:
+          case HookEventType.Stop:
+            tokenUsageStore.refreshSession(
+              event.session_id,
+              event.transcript_path ?? undefined,
+              projectNameForToken,
+            );
+            break;
+          case HookEventType.SessionEnd:
+            tokenUsageStore.removeSession(event.session_id);
+            break;
+        }
+      }
     });
     onCleanup(unlisten);
   });
@@ -946,6 +970,55 @@ function MascotOverlay() {
     }
   };
 
+  // Token panel layout: place opposite to working bubble, fall back gracefully.
+  // Note: TOKEN_PANEL_H is a coarse approximation — the real panel height grows
+  // with the number of enabled metrics. This value is only used to pick a side
+  // and to clamp to the screen, so exact pixels don't matter. Do not "fix" it.
+  const TOKEN_PANEL_W = 96;
+  const TOKEN_PANEL_H = 90;
+  const tokenPanelLayout = (): { x: number; y: number } => {
+    const mx = overlayPositionStore.x;
+    const my = overlayPositionStore.y;
+    const MASCOT = effectiveSize();
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const GAP_PX = 8;
+
+    const candidates: Array<{ x: number; y: number }> = [
+      { x: mx - TOKEN_PANEL_W - GAP_PX, y: my + MASCOT / 2 - TOKEN_PANEL_H / 2 },
+      { x: mx + MASCOT + GAP_PX,        y: my + MASCOT / 2 - TOKEN_PANEL_H / 2 },
+      { x: mx + MASCOT / 2 - TOKEN_PANEL_W / 2, y: my + MASCOT + GAP_PX },
+      { x: mx + MASCOT / 2 - TOKEN_PANEL_W / 2, y: my - TOKEN_PANEL_H - GAP_PX },
+    ];
+
+    const bubbleTail = workingBubbleStore.state.visible
+      ? bubbleLayout(176, 80).tail
+      : null;
+
+    const prefer = (c: { x: number; y: number }): boolean => {
+      if (!bubbleTail) return true;
+      if (bubbleTail === "left" && c.x > mx) return false;
+      if (bubbleTail === "right" && c.x < mx) return false;
+      if (bubbleTail === "down" && c.y < my) return false;
+      return true;
+    };
+
+    const fits = (c: { x: number; y: number }): boolean =>
+      c.x >= 4 && c.y >= 4 && c.x + TOKEN_PANEL_W <= screenW - 4 && c.y + TOKEN_PANEL_H <= screenH - 4;
+
+    for (const c of candidates) {
+      if (prefer(c) && fits(c)) return c;
+    }
+    for (const c of candidates) {
+      if (fits(c)) return c;
+    }
+    const c = candidates[0];
+    return {
+      x: Math.max(4, Math.min(c.x, screenW - TOKEN_PANEL_W - 4)),
+      y: Math.max(4, Math.min(c.y, screenH - TOKEN_PANEL_H - 4)),
+    };
+  };
+
   // Permission expand/collapse state
   const [permExpanded, setPermExpanded] = createSignal(false);
   const togglePermExpanded = () => setPermExpanded((prev) => !prev);
@@ -993,6 +1066,28 @@ function MascotOverlay() {
               }}
             >
               <WorkingBubble tailDir={l().tail} />
+            </div>
+          );
+        })()}
+      </Show>
+
+      {/* Token usage panel — positioned independently of working bubble */}
+      <Show when={workingBubbleStore.settings.tokenPanel.enabled}>
+        {(() => {
+          const l = () => tokenPanelLayout();
+          return (
+            <div
+              class="absolute"
+              style={{
+                "z-index": 14,
+                left: `${l().x}px`,
+                top: `${l().y}px`,
+              }}
+            >
+              <TokenPanel
+                appearance={workingBubbleStore.settings.appearance}
+                tokenSettings={workingBubbleStore.settings.tokenPanel}
+              />
             </div>
           );
         })()}
