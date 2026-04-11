@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus, getAutostart, setAutostart } from "../../services/ipc";
 import type {
   WorkingBubbleSettings,
@@ -143,6 +143,12 @@ export default function SettingsPanel() {
     } catch (e) {
       error("Settings load error:", e);
     }
+
+    const unlisten = await listen<string>("navigate-section", (e) => {
+      const el = document.getElementById(`section-${e.payload}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    onCleanup(unlisten);
   });
 
   async function toggleAutostart() {
@@ -481,7 +487,7 @@ export default function SettingsPanel() {
       </Section>
 
       {/* Token Panel */}
-      <Section title="Token Panel">
+      <Section title="Token Panel" id="section-token-panel">
         <div class="space-y-3">
           <ToggleRow
             label="Show token panel"
@@ -604,9 +610,9 @@ export default function SettingsPanel() {
   );
 }
 
-function Section(props: { title: string; children: any }) {
+function Section(props: { title: string; id?: string; children: any }) {
   return (
-    <div class="bg-surface rounded-card border border-border p-4">
+    <div id={props.id} class="bg-surface rounded-card border border-border p-4">
       <h3 class="font-heading font-semibold text-sm text-text-primary mb-3">{props.title}</h3>
       {props.children}
     </div>

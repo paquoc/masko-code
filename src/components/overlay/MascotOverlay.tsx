@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show, type JSX } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -17,10 +17,11 @@ import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
 import { TAIL_SIZE, type TailDir } from "./BubbleTail";
+import { Send, ChartNoAxesColumn } from "lucide-solid";
 
 // ─── Context Menu ─────────────────────────────────────────────────────────────
 
-type SliderType = "size" | "opacity" | "telegram";
+type SliderType = "size" | "opacity" | "telegram" | "token";
 
 function ContextMenu(props: {
   x: number;
@@ -67,6 +68,17 @@ function ContextMenu(props: {
       tokenPanel: { ...cur.tokenPanel, enabled: next },
     }).catch(() => {});
   };
+
+  async function openTokenPanelConfig() {
+    props.onClose();
+    try {
+      const win = await WebviewWindow.getByLabel("main");
+      await win?.show();
+      await win?.setFocus();
+      await emit("navigate", "settings");
+      setTimeout(() => emit("navigate-section", "token-panel").catch(() => {}), 120);
+    } catch { /* ignore */ }
+  }
 
   async function openTelegramSettings() {
     props.onClose();
@@ -184,7 +196,7 @@ function ContextMenu(props: {
         >
           <MenuRow
             label="Telegram"
-            icon="💬"
+            iconEl={<Send size={13} />}
             hasArrow
             active={expanded() === "telegram"}
             onClick={() => toggleSlider("telegram")}
@@ -212,13 +224,29 @@ function ContextMenu(props: {
           </Show>
         </Show>
 
-        {/* Tokens quick toggle */}
+        {/* Token panel */}
         <MenuRow
-          label="Tokens"
-          icon="#"
-          checked={tokenPanelEnabled()}
-          onClick={() => { toggleTokenPanel(); }}
+          label="Token"
+          iconEl={<ChartNoAxesColumn size={13} />}
+          hasArrow
+          active={expanded() === "token"}
+          onClick={() => toggleSlider("token")}
         />
+        <Show when={expanded() === "token"}>
+          <CheckboxRow
+            label="Show"
+            checked={tokenPanelEnabled()}
+            onChange={toggleTokenPanel}
+          />
+          <button
+            class="w-full flex items-center gap-2.5 py-2 text-sm transition-colors text-left hover:bg-white/10 bg-white/5"
+            style={{ "padding-left": "22px", "padding-right": "12px" }}
+            onClick={openTokenPanelConfig}
+          >
+            <span class="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>⚙</span>
+            <span style={{ "font-size": "13px", "font-family": "system-ui, sans-serif", color: "rgba(255,255,255,0.55)" }}>Config</span>
+          </button>
+        </Show>
 
         <div class="h-px bg-white/10 mx-2" />
 
@@ -239,7 +267,8 @@ function ContextMenu(props: {
 
 function MenuRow(props: {
   label: string;
-  icon: string;
+  icon?: string;
+  iconEl?: JSX.Element;
   danger?: boolean;
   hasArrow?: boolean;
   active?: boolean;
@@ -256,7 +285,9 @@ function MenuRow(props: {
       }}
       onClick={props.onClick}
     >
-      <span class="w-4 text-center text-xs opacity-90">{props.icon}</span>
+      <span class="w-4 flex items-center justify-center text-xs opacity-90">
+        {props.iconEl ?? props.icon}
+      </span>
       <span class="flex-1 font-medium" style={{ "font-size": "13px", "font-family": "system-ui, sans-serif" }}>
         {props.label}
       </span>
