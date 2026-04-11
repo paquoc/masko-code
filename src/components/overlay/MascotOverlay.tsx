@@ -55,6 +55,19 @@ function ContextMenu(props: {
     return s.configured && !s.error;
   };
 
+  const tokenPanelEnabled = () => workingBubbleStore.settings.tokenPanel.enabled;
+  const toggleTokenPanel = () => {
+    const cur = workingBubbleStore.settings;
+    const next = !cur.tokenPanel.enabled;
+    workingBubbleStore.updateSettings({
+      tokenPanel: { ...cur.tokenPanel, enabled: next },
+    });
+    emit("bubble-settings-changed", {
+      ...cur,
+      tokenPanel: { ...cur.tokenPanel, enabled: next },
+    }).catch(() => {});
+  };
+
   async function openTelegramSettings() {
     props.onClose();
     try {
@@ -199,6 +212,14 @@ function ContextMenu(props: {
           </Show>
         </Show>
 
+        {/* Tokens quick toggle */}
+        <MenuRow
+          label="Tokens"
+          icon="#"
+          checked={tokenPanelEnabled()}
+          onClick={() => { toggleTokenPanel(); }}
+        />
+
         <div class="h-px bg-white/10 mx-2" />
 
         {/* Open dashboard */}
@@ -222,6 +243,7 @@ function MenuRow(props: {
   danger?: boolean;
   hasArrow?: boolean;
   active?: boolean;
+  checked?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -240,6 +262,11 @@ function MenuRow(props: {
       </span>
       <Show when={props.hasArrow}>
         <span class="opacity-40 text-xs">{props.active ? "▲" : "▼"}</span>
+      </Show>
+      <Show when={props.checked !== undefined && !props.hasArrow}>
+        <span class="text-xs" style={{ color: props.checked ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
+          {props.checked ? "●" : "○"}
+        </span>
       </Show>
     </button>
   );
