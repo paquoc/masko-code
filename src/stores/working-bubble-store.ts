@@ -46,6 +46,7 @@ export interface TokenPanelSettings {
   visible: Record<TokenMetricKey, boolean>;
   bgColor: string;
   textColor: string;
+  icons: Record<TokenMetricKey, string>;
 }
 
 export interface WorkingBubbleSettings {
@@ -82,11 +83,15 @@ function loadSettings(): WorkingBubbleSettings {
   };
 }
 
+export const ALL_ICON_KEYS = ["ArrowUp", "ArrowDown", "Sigma", "LogIn", "LogOut", "DatabaseZap", "DatabaseBackup"] as const;
+export type IconKey = typeof ALL_ICON_KEYS[number];
+
 function mergeTokenPanel(stored: Partial<TokenPanelSettings> | undefined): TokenPanelSettings {
   const base: TokenPanelSettings = {
     ...defaultTokenPanel,
     order: [...defaultTokenPanel.order],
     visible: { ...defaultTokenPanel.visible },
+    icons: { ...defaultTokenPanel.icons },
   };
   if (!stored) return base;
   if (typeof stored.enabled === "boolean") base.enabled = stored.enabled;
@@ -112,6 +117,14 @@ function mergeTokenPanel(stored: Partial<TokenPanelSettings> | undefined): Token
   }
   if (typeof stored.bgColor === "string") base.bgColor = stored.bgColor;
   if (typeof stored.textColor === "string") base.textColor = stored.textColor;
+  if (stored.icons && typeof stored.icons === "object") {
+    for (const k of ALL_TOKEN_METRICS) {
+      const v = (stored.icons as Record<string, unknown>)[k];
+      if (typeof v === "string" && (ALL_ICON_KEYS as readonly string[]).includes(v)) {
+        base.icons[k] = v;
+      }
+    }
+  }
   return base;
 }
 
@@ -139,6 +152,15 @@ export const defaultTokenPanel: TokenPanelSettings = {
   },
   bgColor: "rgba(12,16,12,0.85)",
   textColor: "rgba(74,222,128,1)",
+  icons: {
+    read: "ArrowUp",
+    write: "ArrowDown",
+    total: "Sigma",
+    input: "LogIn",
+    output: "LogOut",
+    cache_read: "DatabaseZap",
+    cache_creation: "DatabaseBackup",
+  },
 };
 
 const defaultSettings: WorkingBubbleSettings = {

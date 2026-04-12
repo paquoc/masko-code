@@ -1,7 +1,7 @@
 // src/components/overlay/TokenPanel.tsx
 
 import { createMemo, For, Show, createSignal, type Component } from "solid-js";
-import { ArrowDown, ArrowUp, Sigma, LogIn, LogOut, DatabaseZap, DatabaseBackup } from "lucide-solid";
+import { ArrowDown, ArrowUp, Sigma, LogIn, LogOut, DatabaseZap, DatabaseBackup, PencilLine, Eye } from "lucide-solid";
 import type { BubbleAppearance, TokenMetricKey, TokenPanelSettings } from "../../stores/working-bubble-store";
 import { tokenUsageStore, type SessionTokenUsage } from "../../stores/token-usage-store";
 
@@ -16,6 +16,22 @@ const METRIC_ICON: Record<TokenMetricKey, Component<IconProps>> = {
   cache_read: DatabaseZap,
   cache_creation: DatabaseBackup,
 };
+
+export const ALL_ICON_OPTIONS: { key: string; component: Component<IconProps> }[] = [
+  { key: "ArrowUp",        component: ArrowUp },
+  { key: "ArrowDown",      component: ArrowDown },
+  { key: "Sigma",          component: Sigma },
+  { key: "LogIn",          component: LogIn },
+  { key: "LogOut",         component: LogOut },
+  { key: "DatabaseZap",    component: DatabaseZap },
+  { key: "DatabaseBackup", component: DatabaseBackup },
+  { key: "PencilLine",     component: PencilLine },
+  { key: "Eye",            component: Eye },
+];
+
+export const ICON_BY_KEY: Record<string, Component<IconProps>> = Object.fromEntries(
+  ALL_ICON_OPTIONS.map(({ key, component }) => [key, component]),
+);
 
 const METRIC_LABEL: Record<TokenMetricKey, string> = {
   read: "read",
@@ -132,8 +148,6 @@ export default function TokenPanel(props: TokenPanelProps) {
           padding: "2px 5px",
           "pointer-events": "auto",
           "box-shadow": "0 2px 10px rgba(0,0,0,0.35)",
-          "backdrop-filter": "blur(6px)",
-          "-webkit-backdrop-filter": "blur(6px)",
         }}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
@@ -141,20 +155,20 @@ export default function TokenPanel(props: TokenPanelProps) {
       >
         <div class="flex items-center gap-0.5 tabular-nums whitespace-nowrap">
           <For each={metrics()}>
-            {(k, i) => {
-              const Icon = METRIC_ICON[k];
-              return (
-                <>
-                  <Show when={i() > 0}>
-                    <span style={{ color: panelBorder() }}>·</span>
-                  </Show>
-                  <span class="flex items-center gap-0.5" style={{ color: panelText() }}>
-                    <Icon size={iconPx()} color={panelMuted()} strokeWidth={2.25} />
-                    <span>{formatShort(computed(k))}</span>
-                  </span>
-                </>
-              );
-            }}
+            {(k, i) => (
+              <>
+                <Show when={i() > 0}>
+                  <span style={{ color: panelBorder() }}>·</span>
+                </Show>
+                <span class="flex items-center gap-0.5" style={{ color: panelText() }}>
+                  {(() => {
+                    const I = (props.tokenSettings.icons?.[k] ? ICON_BY_KEY[props.tokenSettings.icons[k]] : undefined) ?? METRIC_ICON[k];
+                    return <I size={iconPx()} color={panelMuted()} strokeWidth={2.25} />;
+                  })()}
+                  <span>{formatShort(computed(k))}</span>
+                </span>
+              </>
+            )}
           </For>
         </div>
 
@@ -179,8 +193,6 @@ export default function TokenPanel(props: TokenPanelProps) {
               "pointer-events": "none",
               "white-space": "nowrap",
               "box-shadow": "0 6px 20px rgba(0,0,0,0.4)",
-              "backdrop-filter": "blur(8px)",
-              "-webkit-backdrop-filter": "blur(8px)",
             }}
           >
             <For each={sessionsList()}>

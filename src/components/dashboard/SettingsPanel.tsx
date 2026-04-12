@@ -9,7 +9,7 @@ import type {
   TokenMetricKey,
 } from "../../stores/working-bubble-store";
 import { defaultTokenPanel, ALL_TOKEN_METRICS } from "../../stores/working-bubble-store";
-import TokenPanel, { METRIC_ICON } from "../overlay/TokenPanel";
+import TokenPanel, { ALL_ICON_OPTIONS } from "../overlay/TokenPanel";
 import type { SessionTokenUsage } from "../../stores/token-usage-store";
 import { GripVertical } from "lucide-solid";
 import WorkingBubble from "../overlay/WorkingBubble";
@@ -70,6 +70,7 @@ function mergeParsedTokenPanel(base: TokenPanelSettings, parsed: any): TokenPane
     visible: { ...base.visible },
     bgColor: base.bgColor,
     textColor: base.textColor,
+    icons: { ...base.icons },
   };
   if (Array.isArray(parsed.order)) {
     const seen = new Set<TokenMetricKey>();
@@ -92,6 +93,14 @@ function mergeParsedTokenPanel(base: TokenPanelSettings, parsed: any): TokenPane
   }
   if (typeof parsed.bgColor === "string") result.bgColor = parsed.bgColor;
   if (typeof parsed.textColor === "string") result.textColor = parsed.textColor;
+  if (parsed.icons && typeof parsed.icons === "object") {
+    const validKeys = new Set(ALL_ICON_OPTIONS.map(o => o.key));
+    for (const k of ALL_TOKEN_METRICS) {
+      if (typeof parsed.icons[k] === "string" && validKeys.has(parsed.icons[k])) {
+        result.icons[k] = parsed.icons[k];
+      }
+    }
+  }
   return result;
 }
 
@@ -215,6 +224,34 @@ export default function SettingsPanel() {
 
   const [draggingMetric, setDraggingMetric] = createSignal<TokenMetricKey | null>(null);
   const [dragOverMetric, setDragOverMetric] = createSignal<TokenMetricKey | null>(null);
+
+  type PendingSwap = { metric: TokenMetricKey; iconKey: string; conflicting: TokenMetricKey };
+  const [pendingSwap, setPendingSwap] = createSignal<PendingSwap | null>(null);
+
+  function setMetricIcon(metric: TokenMetricKey, iconKey: string) {
+    const icons = { ...bubbleSettings.tokenPanel.icons };
+    const conflicting = ALL_TOKEN_METRICS.find(k => k !== metric && icons[k] === iconKey);
+    if (conflicting) {
+      setPendingSwap({ metric, iconKey, conflicting });
+      return;
+    }
+    icons[metric] = iconKey;
+    setBubbleSettings("tokenPanel", "icons", icons);
+    persistAndEmit();
+  }
+
+  function confirmSwap() {
+    const swap = pendingSwap();
+    if (!swap) return;
+    const icons = { ...bubbleSettings.tokenPanel.icons };
+    // swap the two icons
+    const prevIcon = icons[swap.metric];
+    icons[swap.metric] = swap.iconKey;
+    icons[swap.conflicting] = prevIcon;
+    setBubbleSettings("tokenPanel", "icons", icons);
+    persistAndEmit();
+    setPendingSwap(null);
+  }
 
   async function handleInstallHooks() {
     setLoading("install");
@@ -505,15 +542,17 @@ export default function SettingsPanel() {
               <ColorRow label="Background" value={bubbleSettings.tokenPanel.bgColor ?? "rgba(12,16,12,0.85)"} onChange={(v) => setTokenPanelColor("bgColor", v)} />
             </div>
             <div class="space-y-1">
-              <p class="text-xs text-text-muted">Drag the handle to reorder. Checkbox toggles visibility.</p>
+              <p class="text-xs text-text-muted">Drag to reorder. Checkbox toggles visibility. Pick an icon on the right.</p>
               <For each={bubbleSettings.tokenPanel.order}>
                 {(metricKey) => (
                   <TokenMetricRow
                     metric={metricKey}
                     visible={bubbleSettings.tokenPanel.visible[metricKey]}
+                    currentIcon={bubbleSettings.tokenPanel.icons[metricKey]}
                     dragging={draggingMetric() === metricKey}
                     dragOver={dragOverMetric() === metricKey}
                     onToggle={() => setMetricVisible(metricKey, !bubbleSettings.tokenPanel.visible[metricKey])}
+                    onIconChange={(key) => setMetricIcon(metricKey, key)}
                     onDragStart={() => setDraggingMetric(metricKey)}
                     onDragEnd={() => { setDraggingMetric(null); setDragOverMetric(null); }}
                     onDragEnter={() => setDragOverMetric(metricKey)}
@@ -530,6 +569,35 @@ export default function SettingsPanel() {
           </Show>
         </div>
       </Section>
+
+      {/* Icon swap confirmation dialog */}
+      <Show when={pendingSwap()}>
+        {(swap) => (
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div class="bg-surface border border-border rounded-card p-5 w-72 shadow-xl space-y-3">
+              <p class="text-sm font-semibold text-text-primary">Icon already in use</p>
+              <p class="text-xs text-text-muted leading-relaxed">
+                <span class="font-medium text-text-primary">{METRIC_LABEL[swap().conflicting].title}</span> already uses this icon.
+                Swap both icons?
+              </p>
+              <div class="flex gap-2 justify-end pt-1">
+                <button
+                  class="px-3 py-1.5 text-xs rounded border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+                  onClick={() => setPendingSwap(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  class="px-3 py-1.5 text-xs rounded bg-orange-primary text-white hover:opacity-90 transition-opacity"
+                  onClick={confirmSwap}
+                >
+                  Swap
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
 
       {/* Updates */}
       <Section title="Updates">
@@ -827,9 +895,11 @@ const METRIC_LABEL: Record<TokenMetricKey, { title: string; hint: string }> = {
 function TokenMetricRow(props: {
   metric: TokenMetricKey;
   visible: boolean;
+  currentIcon: string;
   dragging: boolean;
   dragOver: boolean;
   onToggle: () => void;
+  onIconChange: (key: string) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
   onDragEnter: () => void;
@@ -870,17 +940,80 @@ function TokenMetricRow(props: {
       >
         <GripVertical size={16} />
       </span>
-      <label class="flex items-center gap-2 flex-1 cursor-pointer">
+      <label class="flex items-center gap-2 flex-1 cursor-pointer min-w-0">
         <input
           type="checkbox"
           checked={props.visible}
           onChange={props.onToggle}
-          class="accent-orange-primary"
+          class="accent-orange-primary flex-shrink-0"
         />
-        {(() => { const Icon = METRIC_ICON[props.metric]; return <Icon size={13} color="rgba(156,163,175,0.8)" strokeWidth={2} />; })()}
         <span class="text-sm text-text-primary">{meta().title}</span>
-        <span class="text-xs text-text-muted">{meta().hint}</span>
+        <span class="text-xs text-text-muted truncate">{meta().hint}</span>
       </label>
+      {/* Icon dropdown */}
+      <IconDropdown currentIcon={props.currentIcon} onSelect={props.onIconChange} />
+    </div>
+  );
+}
+
+function IconDropdown(props: { currentIcon: string; onSelect: (key: string) => void }) {
+  const [open, setOpen] = createSignal(false);
+  let containerRef: HTMLDivElement | undefined;
+
+  // Close on click outside
+  const handleOutside = (e: MouseEvent) => {
+    if (containerRef && !containerRef.contains(e.target as Node)) setOpen(false);
+  };
+  createEffect(() => {
+    if (open()) document.addEventListener("mousedown", handleOutside);
+    else document.removeEventListener("mousedown", handleOutside);
+  });
+  onCleanup(() => document.removeEventListener("mousedown", handleOutside));
+
+  return (
+    <div ref={containerRef} class="relative flex-shrink-0">
+      <button
+        title="Change icon"
+        onClick={() => setOpen(v => !v)}
+        class="w-7 h-7 flex items-center justify-center rounded border transition-colors"
+        classList={{
+          "border-orange-primary text-orange-primary bg-orange-primary/10": open(),
+          "border-border text-text-muted hover:text-text-primary hover:border-text-muted": !open(),
+        }}
+      >
+        {(() => {
+          const opt = ALL_ICON_OPTIONS.find(o => o.key === props.currentIcon);
+          if (!opt) return null;
+          const I = opt.component;
+          return <I size={13} strokeWidth={2} />;
+        })()}
+      </button>
+      <Show when={open()}>
+        <div
+          class="absolute right-0 top-full mt-1.5 z-50 rounded-lg border border-white/20 shadow-2xl p-2 grid grid-cols-4 gap-1"
+          style={{ background: "rgba(50,50,58,1)", "min-width": "124px" }}
+        >
+          <For each={ALL_ICON_OPTIONS}>
+            {(opt) => {
+              const Icon = opt.component;
+              const active = () => props.currentIcon === opt.key;
+              return (
+                <button
+                  title={opt.key}
+                  onClick={() => { props.onSelect(opt.key); setOpen(false); }}
+                  class="w-7 h-7 flex items-center justify-center rounded transition-colors"
+                  classList={{
+                    "bg-orange-primary text-white": active(),
+                    "text-white/70 hover:text-white hover:bg-white/15": !active(),
+                  }}
+                >
+                  <Icon size={14} strokeWidth={2} />
+                </button>
+              );
+            }}
+          </For>
+        </div>
+      </Show>
     </div>
   );
 }
