@@ -75,6 +75,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   // Auto-approve countdown
   const [countdown, setCountdown] = createSignal<number | null>(null);
   const [countdownPaused, setCountdownPaused] = createSignal(false);
+  let wrapperRef: HTMLDivElement | undefined;
 
   const sessionId = () => event().session_id;
 
@@ -102,6 +103,12 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     const permId = props.permission.id;
     clearCountdownInterval();
     setAnimKey((k) => k + 1);
+
+    // Reset hover-pause — previous permission may have left it stuck true
+    // (mouseLeave never fires when a new permission replaces the old one in
+    // the same DOM element under the cursor). Re-derive from actual :hover.
+    const stillHovered = !!wrapperRef && wrapperRef.matches(":hover");
+    setCountdownPaused(stillHovered);
 
     // Reset per-question state when permission changes
     const qs = questions();
@@ -255,6 +262,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
   return (
     <div
+      ref={(el) => { wrapperRef = el; }}
       class="select-none flex items-center"
       classList={{
         "flex-col items-center": dir() === "down",

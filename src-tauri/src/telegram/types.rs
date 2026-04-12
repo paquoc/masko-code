@@ -120,7 +120,6 @@ pub struct InlineKeyboardButton {
 pub enum PollerCmd {
     Stop,
     ConfigChanged,
-    SendingChanged,
 }
 
 #[derive(Debug, thiserror::Error)]
