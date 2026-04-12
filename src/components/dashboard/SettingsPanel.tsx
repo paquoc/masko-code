@@ -68,6 +68,8 @@ function mergeParsedTokenPanel(base: TokenPanelSettings, parsed: any): TokenPane
     enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : base.enabled,
     order: [...base.order],
     visible: { ...base.visible },
+    bgColor: base.bgColor,
+    textColor: base.textColor,
   };
   if (Array.isArray(parsed.order)) {
     const seen = new Set<TokenMetricKey>();
@@ -88,6 +90,8 @@ function mergeParsedTokenPanel(base: TokenPanelSettings, parsed: any): TokenPane
       if (typeof parsed.visible[k] === "boolean") result.visible[k] = parsed.visible[k];
     }
   }
+  if (typeof parsed.bgColor === "string") result.bgColor = parsed.bgColor;
+  if (typeof parsed.textColor === "string") result.textColor = parsed.textColor;
   return result;
 }
 
