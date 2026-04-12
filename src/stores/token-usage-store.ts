@@ -42,6 +42,31 @@ interface RustRawUsage {
   cacheCreation: number;
 }
 
+/** Cache transcript path without reading JSONL (used when panel is hidden) */
+function cachePath(sessionId: string, transcriptPath?: string, projectName?: string): void {
+  if (!sessionId || !transcriptPath) return;
+  setState("pathCache", sessionId, transcriptPath);
+  if (projectName) {
+    const prev = state.bySession[sessionId];
+    if (!prev || prev.projectName !== projectName) {
+      setState("bySession", sessionId, {
+        sessionId,
+        projectName,
+        input: prev?.input ?? 0,
+        output: prev?.output ?? 0,
+        cacheRead: prev?.cacheRead ?? 0,
+        cacheCreation: prev?.cacheCreation ?? 0,
+      });
+    }
+  }
+}
+
+/** Refresh all cached sessions (used when panel is re-enabled) */
+async function refreshAllCached(): Promise<void> {
+  const entries = Object.entries(state.pathCache);
+  await Promise.all(entries.map(([sid, path]) => refreshSession(sid, path)));
+}
+
 async function refreshSession(
   sessionId: string,
   transcriptPath?: string,
@@ -174,7 +199,9 @@ function hasAnyUsage(): boolean {
 export const tokenUsageStore = {
   get bySession() { return state.bySession; },
   setMascotOpenTime,
+  cachePath,
   refreshSession,
+  refreshAllCached,
   removeSession,
   resetToNow,
   aggregate,

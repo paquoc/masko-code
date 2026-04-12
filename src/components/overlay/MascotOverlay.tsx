@@ -653,6 +653,13 @@ function MascotOverlay() {
     invoke("update_working_bubble_zone", { x: l.x, y: l.y, w: 176, h: 80 }).catch(() => { });
   });
 
+  // Refresh all cached token sessions when panel is re-enabled
+  createEffect(() => {
+    if (workingBubbleStore.settings.tokenPanel.enabled) {
+      tokenUsageStore.refreshAllCached();
+    }
+  });
+
   // Sync permission bubble bounding box to Rust (handles left/right layout too)
   createEffect(() => {
     const perm = permissionStore.pending.find((p) => !p.collapsed) || null;
@@ -796,7 +803,7 @@ function MascotOverlay() {
           break;
       }
 
-      // Token usage refresh
+      // Token usage refresh — skip JSONL reads when panel is hidden
       if (event.session_id) {
         const projectNameForToken = event.cwd
           ? event.cwd.replace(/\\/g, "/").split("/").pop() || ""
@@ -806,11 +813,19 @@ function MascotOverlay() {
           case HookEventType.PostToolUse:
           case HookEventType.PostToolUseFailure:
           case HookEventType.Stop:
-            tokenUsageStore.refreshSession(
-              event.session_id,
-              event.transcript_path ?? undefined,
-              projectNameForToken,
-            );
+            if (workingBubbleStore.settings.tokenPanel.enabled) {
+              tokenUsageStore.refreshSession(
+                event.session_id,
+                event.transcript_path ?? undefined,
+                projectNameForToken,
+              );
+            } else {
+              tokenUsageStore.cachePath(
+                event.session_id,
+                event.transcript_path ?? undefined,
+                projectNameForToken,
+              );
+            }
             break;
           case HookEventType.SessionEnd:
             tokenUsageStore.removeSession(event.session_id);
