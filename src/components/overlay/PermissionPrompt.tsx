@@ -129,19 +129,19 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
     countdownInterval = setInterval(() => {
       if (countdownPaused()) return;
-      setCountdown((prev) => {
-        log("[countdown] tick, prev =", prev);
-        if (prev === null) return null;
-        const next = prev - 1;
-        if (next <= 0) {
-          log("[countdown] reached 0, approving");
-          clearCountdownInterval();
-          handleApprove();
-          return null;
-        }
+      const prev = countdown();
+      log("[countdown] tick, prev =", prev);
+      if (prev === null) return;
+      const next = prev - 1;
+      if (next <= 0) {
+        log("[countdown] reached 0, approving");
+        clearCountdownInterval();
+        setCountdown(null);
+        handleApprove();
+      } else {
         log("[countdown] next =", next);
-        return next;
-      });
+        setCountdown(next);
+      }
     }, 1000);
 
     onCleanup(clearCountdownInterval);

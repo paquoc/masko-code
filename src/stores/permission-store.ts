@@ -115,6 +115,9 @@ export function cachePreToolUse(sessionId: string, agentId: string | undefined, 
 }
 
 export function add(event: AgentEvent, requestId: string): void {
+  // Deduplicate: both "hook-event" and "permission-request" listeners call add()
+  if (pending.some((p) => p.id === requestId)) return;
+
   // Try to resolve toolUseId from cache
   const key = `${event.session_id || ""}:${event.agent_id || ""}:${event.tool_name || ""}`;
   const resolvedToolUseId = event.tool_use_id || preToolUseCache.get(key);
