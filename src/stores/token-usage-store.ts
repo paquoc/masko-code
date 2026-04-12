@@ -122,9 +122,46 @@ function computed(metric: TokenMetricKey): number {
 }
 
 function sessions(): SessionTokenUsage[] {
-  return Object.values(state.bySession)
-    .filter((s) => s.input + s.output + s.cacheRead + s.cacheCreation > 0)
-    .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+  // Group by projectName — merge all sessions from the same project into one row
+  const byProject = new Map<string, SessionTokenUsage>();
+  for (const s of Object.values(state.bySession)) {
+    if (s.input + s.output + s.cacheRead + s.cacheCreation === 0) continue;
+    const key = s.projectName || s.sessionId;
+    const existing = byProject.get(key);
+    if (existing) {
+      byProject.set(key, {
+        ...existing,
+        input: existing.input + s.input,
+        output: existing.output + s.output,
+        cacheRead: existing.cacheRead + s.cacheRead,
+        cacheCreation: existing.cacheCreation + s.cacheCreation,
+      });
+    } else {
+      byProject.set(key, { ...s });
+    }
+  }
+  return Array.from(byProject.values()).sort((a, b) =>
+    (a.projectName || a.sessionId).localeCompare(b.projectName || b.sessionId),
+  );
+}
+
+async function resetToNow(): Promise<void> {
+  mascotOpenTime = new Date().toISOString();
+  // Zero out frontend state immediately so the panel shows 0 right away
+  setState("bySession", produce((bs) => {
+    for (const key of Object.keys(bs)) {
+      bs[key] = { ...bs[key], input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
+    }
+  }));
+  // Clear the Rust-side cache for each session so the new since-cutoff is respected
+  // (Rust only applies the `since` filter when first creating the entry)
+  const entries = Object.entries(state.pathCache);
+  await Promise.all(
+    entries.map(async ([sessionId, transcriptPath]) => {
+      try { await invoke("reset_session_token_usage", { sessionId }); } catch { /* ignore */ }
+      await refreshSession(sessionId, transcriptPath);
+    }),
+  );
 }
 
 function hasAnyUsage(): boolean {
@@ -139,6 +176,7 @@ export const tokenUsageStore = {
   setMascotOpenTime,
   refreshSession,
   removeSession,
+  resetToNow,
   aggregate,
   computed,
   sessions,

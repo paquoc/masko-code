@@ -69,6 +69,10 @@ function ContextMenu(props: {
     }).catch(() => {});
   };
 
+  async function resetTokenCount() {
+    await tokenUsageStore.resetToNow();
+  }
+
   async function openTokenPanelConfig() {
     props.onClose();
     try {
@@ -238,6 +242,14 @@ function ContextMenu(props: {
             checked={tokenPanelEnabled()}
             onChange={toggleTokenPanel}
           />
+          <button
+            class="w-full flex items-center gap-2.5 py-2 text-sm transition-colors text-left hover:bg-white/10 bg-white/5"
+            style={{ "padding-left": "22px", "padding-right": "12px" }}
+            onClick={resetTokenCount}
+          >
+            <span class="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>↺</span>
+            <span style={{ "font-size": "13px", "font-family": "system-ui, sans-serif", color: "rgba(255,255,255,0.55)" }}>Reset</span>
+          </button>
           <button
             class="w-full flex items-center gap-2.5 py-2 text-sm transition-colors text-left hover:bg-white/10 bg-white/5"
             style={{ "padding-left": "22px", "padding-right": "12px" }}
