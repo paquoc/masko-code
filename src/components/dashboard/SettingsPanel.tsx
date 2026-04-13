@@ -655,12 +655,28 @@ export default function SettingsPanel() {
 
       {/* Debug */}
       <Section title="Debug">
-        <button
-          class="px-3 py-1.5 text-xs font-body font-medium rounded-card-sm bg-surface-hover text-text-primary hover:bg-border transition-colors"
-          onClick={() => invoke("open_devtools").catch(() => {})}
-        >
-          Open Overlay DevTools
-        </button>
+        <div class="flex gap-2 flex-wrap">
+          <button
+            class="px-3 py-1.5 text-xs font-body font-medium rounded-card-sm bg-surface-hover text-text-primary hover:bg-border transition-colors"
+            onClick={() => invoke("open_devtools").catch(() => {})}
+          >
+            Open Overlay DevTools
+          </button>
+          <button
+            class="px-3 py-1.5 text-xs font-body font-medium rounded-card-sm bg-surface-hover text-text-primary hover:bg-border transition-colors"
+            onClick={async () => {
+              try {
+                const info = await invoke("debug_overlay_info") as Record<string, unknown>;
+                (info as any).frontendDpr = window.devicePixelRatio;
+                (info as any).innerSize = [window.innerWidth, window.innerHeight];
+                const text = JSON.stringify(info, null, 2);
+                await navigator.clipboard.writeText(text);
+              } catch { /* ignore */ }
+            }}
+          >
+            Copy Debug Info
+          </button>
+        </div>
       </Section>
 
       {/* About */}

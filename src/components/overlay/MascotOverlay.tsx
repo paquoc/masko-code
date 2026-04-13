@@ -46,6 +46,7 @@ function ContextMenu(props: {
     invoke("open_devtools").catch(() => { });
   }
 
+
   function quitApp() {
     props.onClose();
     invoke("quit_app").catch(() => { });
@@ -479,6 +480,18 @@ function MascotOverlay() {
     sm.start(); // arriveAtNode → evaluateAndFire with correct inputs
     log("Mascot switched — restored state:", JSON.stringify(agentState));
   }
+
+  // Report devicePixelRatio to Rust so hit-test matches WebView2 rendering.
+  // Also watch for DPI changes (e.g. window moved to a different-DPI monitor).
+  onMount(() => {
+    invoke("update_frontend_dpr", { dpr: window.devicePixelRatio }).catch(() => {});
+    const mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    const handler = () => {
+      invoke("update_frontend_dpr", { dpr: window.devicePixelRatio }).catch(() => {});
+    };
+    mql.addEventListener("change", handler);
+    onCleanup(() => mql.removeEventListener("change", handler));
+  });
 
   // Load persisted mascot on startup, fallback to clippy
   onMount(async () => {
