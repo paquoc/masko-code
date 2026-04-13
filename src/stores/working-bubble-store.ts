@@ -144,7 +144,7 @@ export const defaultTokenPanel: TokenPanelSettings = {
   visible: {
     read: true,
     write: true,
-    total: true,
+    total: false,
     input: false,
     output: false,
     cache_read: false,
