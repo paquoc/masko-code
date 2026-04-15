@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show, type JSX } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -9,16 +9,19 @@ import { parseAgentEvent, HookEventType, getEventType } from "../../models/agent
 import { conditionBool, conditionNumber } from "../../models/types";
 import { permissionStore } from "../../stores/permission-store";
 import { workingBubbleStore } from "../../stores/working-bubble-store";
+import { tokenUsageStore } from "../../stores/token-usage-store";
+import TokenPanel from "./TokenPanel";
 import { overlayPositionStore } from "../../stores/overlay-position-store";
 import { telegramStore } from "../../stores/telegram-store";
 import { log, error } from "../../services/log";
 import PermissionPrompt from "./PermissionPrompt";
 import WorkingBubble from "./WorkingBubble";
 import { TAIL_SIZE, type TailDir } from "./BubbleTail";
+import { Send, ChartNoAxesColumn } from "lucide-solid";
 
 // ─── Context Menu ─────────────────────────────────────────────────────────────
 
-type SliderType = "size" | "opacity" | "telegram";
+type SliderType = "size" | "opacity" | "telegram" | "token";
 
 function ContextMenu(props: {
   x: number;
@@ -43,6 +46,7 @@ function ContextMenu(props: {
     invoke("open_devtools").catch(() => { });
   }
 
+
   function quitApp() {
     props.onClose();
     invoke("quit_app").catch(() => { });
@@ -52,6 +56,34 @@ function ContextMenu(props: {
     const s = telegramStore.status;
     return s.configured && !s.error;
   };
+
+  const tokenPanelEnabled = () => workingBubbleStore.settings.tokenPanel.enabled;
+  const toggleTokenPanel = () => {
+    const cur = workingBubbleStore.settings;
+    const next = !cur.tokenPanel.enabled;
+    workingBubbleStore.updateSettings({
+      tokenPanel: { ...cur.tokenPanel, enabled: next },
+    });
+    emit("bubble-settings-changed", {
+      ...cur,
+      tokenPanel: { ...cur.tokenPanel, enabled: next },
+    }).catch(() => {});
+  };
+
+  async function resetTokenCount() {
+    await tokenUsageStore.resetToNow();
+  }
+
+  async function openTokenPanelConfig() {
+    props.onClose();
+    try {
+      const win = await WebviewWindow.getByLabel("main");
+      await win?.show();
+      await win?.setFocus();
+      await emit("navigate", "settings");
+      setTimeout(() => emit("navigate-section", "token-panel").catch(() => {}), 120);
+    } catch { /* ignore */ }
+  }
 
   async function openTelegramSettings() {
     props.onClose();
@@ -169,7 +201,7 @@ function ContextMenu(props: {
         >
           <MenuRow
             label="Telegram"
-            icon="💬"
+            iconEl={<Send size={13} />}
             hasArrow
             active={expanded() === "telegram"}
             onClick={() => toggleSlider("telegram")}
@@ -197,6 +229,38 @@ function ContextMenu(props: {
           </Show>
         </Show>
 
+        {/* Token panel */}
+        <MenuRow
+          label="Token"
+          iconEl={<ChartNoAxesColumn size={13} />}
+          hasArrow
+          active={expanded() === "token"}
+          onClick={() => toggleSlider("token")}
+        />
+        <Show when={expanded() === "token"}>
+          <CheckboxRow
+            label="Show"
+            checked={tokenPanelEnabled()}
+            onChange={toggleTokenPanel}
+          />
+          <button
+            class="w-full flex items-center gap-2.5 py-2 text-sm transition-colors text-left hover:bg-white/10 bg-white/5"
+            style={{ "padding-left": "22px", "padding-right": "12px" }}
+            onClick={resetTokenCount}
+          >
+            <span class="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>↺</span>
+            <span style={{ "font-size": "13px", "font-family": "system-ui, sans-serif", color: "rgba(255,255,255,0.55)" }}>Reset</span>
+          </button>
+          <button
+            class="w-full flex items-center gap-2.5 py-2 text-sm transition-colors text-left hover:bg-white/10 bg-white/5"
+            style={{ "padding-left": "22px", "padding-right": "12px" }}
+            onClick={openTokenPanelConfig}
+          >
+            <span class="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>⚙</span>
+            <span style={{ "font-size": "13px", "font-family": "system-ui, sans-serif", color: "rgba(255,255,255,0.55)" }}>Config</span>
+          </button>
+        </Show>
+
         <div class="h-px bg-white/10 mx-2" />
 
         {/* Open dashboard */}
@@ -216,10 +280,12 @@ function ContextMenu(props: {
 
 function MenuRow(props: {
   label: string;
-  icon: string;
+  icon?: string;
+  iconEl?: JSX.Element;
   danger?: boolean;
   hasArrow?: boolean;
   active?: boolean;
+  checked?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -232,12 +298,19 @@ function MenuRow(props: {
       }}
       onClick={props.onClick}
     >
-      <span class="w-4 text-center text-xs opacity-90">{props.icon}</span>
+      <span class="w-4 flex items-center justify-center text-xs opacity-90">
+        {props.iconEl ?? props.icon}
+      </span>
       <span class="flex-1 font-medium" style={{ "font-size": "13px", "font-family": "system-ui, sans-serif" }}>
         {props.label}
       </span>
       <Show when={props.hasArrow}>
         <span class="opacity-40 text-xs">{props.active ? "▲" : "▼"}</span>
+      </Show>
+      <Show when={props.checked !== undefined && !props.hasArrow}>
+        <span class="text-xs" style={{ color: props.checked ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
+          {props.checked ? "●" : "○"}
+        </span>
       </Show>
     </button>
   );
@@ -408,8 +481,23 @@ function MascotOverlay() {
     log("Mascot switched — restored state:", JSON.stringify(agentState));
   }
 
+  // Report devicePixelRatio to Rust so hit-test matches WebView2 rendering.
+  // Also watch for DPI changes (e.g. window moved to a different-DPI monitor).
+  onMount(() => {
+    invoke("update_frontend_dpr", { dpr: window.devicePixelRatio }).catch(() => {});
+    const mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    const handler = () => {
+      invoke("update_frontend_dpr", { dpr: window.devicePixelRatio }).catch(() => {});
+    };
+    mql.addEventListener("change", handler);
+    onCleanup(() => mql.removeEventListener("change", handler));
+  });
+
   // Load persisted mascot on startup, fallback to clippy
   onMount(async () => {
+    // Record the time the overlay opened — token usage is only counted from this point forward
+    tokenUsageStore.setMascotOpenTime(new Date().toISOString());
+
     // Restore mascot position within the fullscreen overlay
     await overlayPositionStore.restorePosition();
 
@@ -578,6 +666,13 @@ function MascotOverlay() {
     invoke("update_working_bubble_zone", { x: l.x, y: l.y, w: 176, h: 80 }).catch(() => { });
   });
 
+  // Refresh all cached token sessions when panel is re-enabled
+  createEffect(() => {
+    if (workingBubbleStore.settings.tokenPanel.enabled) {
+      tokenUsageStore.refreshAllCached();
+    }
+  });
+
   // Sync permission bubble bounding box to Rust (handles left/right layout too)
   createEffect(() => {
     const perm = permissionStore.pending.find((p) => !p.collapsed) || null;
@@ -644,9 +739,11 @@ function MascotOverlay() {
         case HookEventType.PreToolUse: {
           agentState.isWorking = true;
           agentState.isIdle = false;
+          agentState.isCompacting = false; // tool use and compacting are mutually exclusive
           sm.setAgentStateInputs([
             ["isWorking", conditionBool(true)],
             ["isIdle", conditionBool(false)],
+            ["isCompacting", conditionBool(false)],
           ]);
           sm.setAgentEventTrigger(eventType);
           // Show working bubble with tool detail
@@ -664,12 +761,14 @@ function MascotOverlay() {
         case HookEventType.PostToolUseFailure: {
           agentState.isWorking = true;
           agentState.isIdle = false;
+          agentState.isCompacting = false; // tool use and compacting are mutually exclusive
           // PostToolUse means tool executed — refresh isAlert from actual pending state
           const hasUncollapsed = permissionStore.pending.some((p) => !p.collapsed);
           if (!hasUncollapsed) agentState.isAlert = false;
           sm.setAgentStateInputs([
             ["isWorking", conditionBool(true)],
             ["isIdle", conditionBool(false)],
+            ["isCompacting", conditionBool(false)],
             ["isAlert", conditionBool(agentState.isAlert)],
           ]);
           sm.setAgentEventTrigger(eventType);
@@ -715,6 +814,36 @@ function MascotOverlay() {
         default:
           sm.setAgentEventTrigger(eventType);
           break;
+      }
+
+      // Token usage refresh — skip JSONL reads when panel is hidden
+      if (event.session_id) {
+        const projectNameForToken = event.cwd
+          ? event.cwd.replace(/\\/g, "/").split("/").pop() || ""
+          : "";
+        switch (eventType) {
+          case HookEventType.SessionStart:
+          case HookEventType.PostToolUse:
+          case HookEventType.PostToolUseFailure:
+          case HookEventType.Stop:
+            if (workingBubbleStore.settings.tokenPanel.enabled) {
+              tokenUsageStore.refreshSession(
+                event.session_id,
+                event.transcript_path ?? undefined,
+                projectNameForToken,
+              );
+            } else {
+              tokenUsageStore.cachePath(
+                event.session_id,
+                event.transcript_path ?? undefined,
+                projectNameForToken,
+              );
+            }
+            break;
+          case HookEventType.SessionEnd:
+            tokenUsageStore.removeSession(event.session_id);
+            break;
+        }
       }
     });
     onCleanup(unlisten);
@@ -946,6 +1075,68 @@ function MascotOverlay() {
     }
   };
 
+  // Token panel is pinned directly below the mascot, horizontally centered.
+  // The outer wrapper uses a CSS transform so we don't need to measure the
+  // panel's actual width — translateX(-50%) centers any width.
+  const TOKEN_PANEL_GAP = -10;
+
+  // Token panel element ref (for hit-test zone registration so the panel
+  // receives mouse events through the overlay's click-through layer).
+  const [tokenPanelEl, setTokenPanelEl] = createSignal<HTMLDivElement | null>(null);
+
+  createEffect(() => {
+    const el = tokenPanelEl();
+    if (!el) {
+      invoke("set_overlay_token_panel_visible", { visible: false }).catch(() => { });
+      invoke("update_token_panel_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
+      return;
+    }
+    const push = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        invoke("set_overlay_token_panel_visible", { visible: false }).catch(() => { });
+        invoke("update_token_panel_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
+        return;
+      }
+      invoke("set_overlay_token_panel_visible", { visible: true }).catch(() => { });
+      invoke("update_token_panel_zone", {
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      }).catch(() => { });
+    };
+    push();
+    const ro = new ResizeObserver(push);
+    ro.observe(el);
+    onCleanup(() => {
+      ro.disconnect();
+      invoke("set_overlay_token_panel_visible", { visible: false }).catch(() => { });
+      invoke("update_token_panel_zone", { x: -1, y: -1, w: 0, h: 0 }).catch(() => { });
+    });
+  });
+
+  // Re-push token panel zone when mascot moves (wrapper position changes
+  // but its own size hasn't, so ResizeObserver won't fire).
+  createEffect(() => {
+    const _x = overlayPositionStore.x;
+    const _y = overlayPositionStore.y;
+    const _s = effectiveSize();
+    const el = tokenPanelEl();
+    if (!el) return;
+    // Defer to next frame so the CSS transform/left/top have been applied
+    requestAnimationFrame(() => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      invoke("update_token_panel_zone", {
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      }).catch(() => { });
+    });
+  });
+
   // Permission expand/collapse state
   const [permExpanded, setPermExpanded] = createSignal(false);
   const togglePermExpanded = () => setPermExpanded((prev) => !prev);
@@ -996,6 +1187,25 @@ function MascotOverlay() {
             </div>
           );
         })()}
+      </Show>
+
+      {/* Token usage panel — pinned directly below the mascot */}
+      <Show when={workingBubbleStore.settings.tokenPanel.enabled}>
+        <div
+          class="absolute"
+          ref={(el) => setTokenPanelEl(el)}
+          style={{
+            "z-index": 14,
+            left: `${overlayPositionStore.x + effectiveSize() / 2}px`,
+            top: `${overlayPositionStore.y + effectiveSize() + TOKEN_PANEL_GAP}px`,
+            transform: "translateX(-50%)",
+          }}
+        >
+          <TokenPanel
+            appearance={workingBubbleStore.settings.appearance}
+            tokenSettings={workingBubbleStore.settings.tokenPanel}
+          />
+        </div>
       </Show>
 
       {/* Permission bubble — floats near mascot */}

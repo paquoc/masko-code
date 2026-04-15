@@ -83,7 +83,6 @@ pub async fn run_poller(
                 mlog!("[telegram] poller received cmd={:?}", cmd);
                 match cmd {
                     PollerCmd::Stop | PollerCmd::ConfigChanged => break,
-                    PollerCmd::SendingChanged => {} // no-op: poll timeout is fixed
                 }
             }
             result = client.get_updates(offset, POLL_SECS) => {

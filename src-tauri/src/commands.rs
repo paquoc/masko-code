@@ -103,6 +103,20 @@ pub fn set_overlay_dragging(dragging: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Report the frontend's window.devicePixelRatio so the hit-test uses the
+/// same scale as WebView2 rendering (avoids mismatch on some multi-monitor setups).
+#[tauri::command(rename_all = "camelCase")]
+pub fn update_frontend_dpr(dpr: f64) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let dpr_x1000 = (dpr * 1000.0).round() as u32;
+        crate::win_overlay::update_frontend_dpr(dpr_x1000);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = dpr;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn update_mascot_position(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -130,6 +144,27 @@ pub fn get_monitor_at_point(x: i32, y: i32) -> Result<(i32, i32, i32, i32), Stri
 pub fn update_working_bubble_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     crate::win_overlay::update_bubble_zone(x, y, w, h);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (x, y, w, h);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_overlay_token_panel_visible(visible: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::win_overlay::TOKEN_PANEL_VISIBLE
+            .store(visible, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = visible;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_token_panel_zone(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    crate::win_overlay::update_token_panel_zone(x, y, w, h);
     #[cfg(not(target_os = "windows"))]
     let _ = (x, y, w, h);
     Ok(())
@@ -229,6 +264,28 @@ pub fn open_devtools(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Diagnostic dump: overlay window rect, virtual desktop, all monitors, DPI info.
+/// Returns a JSON object for remote debugging of multi-monitor hit-test issues.
+#[tauri::command]
+pub fn debug_overlay_info(app: AppHandle) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let info = if let Some(overlay) = app.get_webview_window("overlay") {
+            let hwnd_raw = overlay.hwnd().map_err(|e| e.to_string())?.0 as usize;
+            crate::win_overlay::collect_debug_info(hwnd_raw)
+        } else {
+            serde_json::json!({"error": "overlay window not found"})
+        };
+        mlog!("debug_overlay_info: {}", info);
+        Ok(info)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Ok(serde_json::json!({"platform": "not windows"}))
+    }
+}
+
 /// Returns (left, top, width, height) of the entire virtual desktop (all monitors).
 #[tauri::command]
 pub fn get_virtual_desktop_bounds() -> Result<(i32, i32, i32, i32), String> {
@@ -314,4 +371,29 @@ pub async fn telegram_get_status(
     manager: tauri::State<'_, Arc<TelegramManager>>,
 ) -> Result<TelegramStatus, String> {
     Ok(manager.get_status().await)
+}
+
+// ===== Token usage commands =====
+
+use crate::token_usage::{RawUsage, TokenUsageState};
+use std::path::PathBuf;
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn get_session_token_usage(
+    state: tauri::State<'_, TokenUsageState>,
+    session_id: String,
+    transcript_path: String,
+    since_rfc3339: Option<String>,
+) -> Result<RawUsage, String> {
+    let path = PathBuf::from(&transcript_path);
+    Ok(state.read_session_usage(&session_id, &path, since_rfc3339.as_deref()))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn reset_session_token_usage(
+    state: tauri::State<'_, TokenUsageState>,
+    session_id: String,
+) -> Result<(), String> {
+    state.reset_session(&session_id);
+    Ok(())
 }

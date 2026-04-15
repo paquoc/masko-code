@@ -7,7 +7,7 @@
 //! frame/decoration bits before they apply. This prevents the frame flash that
 //! `setIgnoreCursorEvents` normally causes (it calls SetWindowPos(SWP_FRAMECHANGED)
 //! internally, but since our handler enforces frameless styles, nothing visible changes).
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 
 use std::sync::atomic::AtomicI32;
 
@@ -20,6 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 pub static PERMISSION_HIT_VISIBLE: AtomicBool = AtomicBool::new(false);
 pub static WORKING_BUBBLE_VISIBLE: AtomicBool = AtomicBool::new(false);
+pub static TOKEN_PANEL_VISIBLE: AtomicBool = AtomicBool::new(false);
 /// When true, cursor polling always reports interactive (suppresses click-through during drag)
 pub static DRAGGING: AtomicBool = AtomicBool::new(false);
 /// When true, WM_STYLECHANGING will NOT force WS_EX_NOACTIVATE (allows keyboard focus)
@@ -45,6 +46,14 @@ static PERM_X: AtomicI32 = AtomicI32::new(-1);
 static PERM_Y: AtomicI32 = AtomicI32::new(-1);
 static PERM_W: AtomicI32 = AtomicI32::new(0);
 static PERM_H: AtomicI32 = AtomicI32::new(0);
+static TOKEN_PANEL_X: AtomicI32 = AtomicI32::new(-1);
+static TOKEN_PANEL_Y: AtomicI32 = AtomicI32::new(-1);
+static TOKEN_PANEL_W: AtomicI32 = AtomicI32::new(0);
+static TOKEN_PANEL_H: AtomicI32 = AtomicI32::new(0);
+
+// Frontend-reported devicePixelRatio × 1000 (to store as integer).
+// 0 means "not yet reported" — fall back to GetDpiForWindow.
+pub static FRONTEND_DPR_X1000: AtomicU32 = AtomicU32::new(0);
 
 // Style bits that would show a frame — strip these on every style change
 const BANNED_STYLE: u32 = WS_CAPTION.0
@@ -175,6 +184,19 @@ pub fn update_permission_zone(x: i32, y: i32, w: i32, h: i32) {
     PERM_H.store(h, Ordering::Relaxed);
 }
 
+/// Update token panel zone (logical CSS px). Pass x=-1 to disable.
+pub fn update_token_panel_zone(x: i32, y: i32, w: i32, h: i32) {
+    TOKEN_PANEL_X.store(x, Ordering::Relaxed);
+    TOKEN_PANEL_Y.store(y, Ordering::Relaxed);
+    TOKEN_PANEL_W.store(w, Ordering::Relaxed);
+    TOKEN_PANEL_H.store(h, Ordering::Relaxed);
+}
+
+/// Store the frontend's window.devicePixelRatio (multiplied by 1000).
+pub fn update_frontend_dpr(dpr_x1000: u32) {
+    FRONTEND_DPR_X1000.store(dpr_x1000, Ordering::Relaxed);
+}
+
 /// Get monitor bounds (physical pixels) for the monitor containing the given point.
 /// Returns (left, top, width, height).
 pub fn monitor_bounds_at_point(x: i32, y: i32) -> (i32, i32, i32, i32) {
@@ -291,18 +313,19 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             return false;
         }
 
-        // IMPORTANT: use the overlay window's own DPI, NOT the cursor's monitor DPI.
-        // The WebView renders with a single DPI context tied to the overlay window
-        // (typically the primary monitor's DPI). Using the cursor's monitor DPI would
-        // produce wrong scaling when the cursor is on a secondary monitor with different DPI.
+        // Use the frontend-reported devicePixelRatio when available.
+        // This guarantees the hit-test scale matches WebView2's actual rendering,
+        // even on multi-monitor setups where GetDpiForWindow may disagree with
+        // the WebView's DPI context.
+        let frontend_dpr = FRONTEND_DPR_X1000.load(Ordering::Relaxed);
         let window_dpi = GetDpiForWindow(hwnd);
-        let scale = if window_dpi > 0 { window_dpi as f64 / 96.0 } else { 1.0 };
-
-        // For diagnostics: also capture cursor's monitor DPI to log the difference
-        let hmon_cursor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
-        let mut cursor_dpi_x: u32 = 96;
-        let mut cursor_dpi_y: u32 = 96;
-        let _ = GetDpiForMonitor(hmon_cursor, MDT_EFFECTIVE_DPI, &mut cursor_dpi_x, &mut cursor_dpi_y);
+        let scale = if frontend_dpr > 0 {
+            frontend_dpr as f64 / 1000.0
+        } else if window_dpi > 0 {
+            window_dpi as f64 / 96.0
+        } else {
+            1.0
+        };
 
         let client_x = cursor.x - rect.left;
         let client_y = cursor.y - rect.top;
@@ -338,6 +361,114 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             client_x >= px && client_x < px + pw && client_y >= py && client_y < py + ph
         };
 
-        in_mascot || in_perm || in_bubble
+        // Token panel zone: exact position sent by frontend
+        let token_on = TOKEN_PANEL_VISIBLE.load(Ordering::Relaxed);
+        let tx = TOKEN_PANEL_X.load(Ordering::Relaxed);
+        let in_token = token_on && tx >= 0 && {
+            let tx = (tx as f64 * scale) as i32;
+            let ty = (TOKEN_PANEL_Y.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let tw = (TOKEN_PANEL_W.load(Ordering::Relaxed) as f64 * scale) as i32;
+            let th = (TOKEN_PANEL_H.load(Ordering::Relaxed) as f64 * scale) as i32;
+            client_x >= tx && client_x < tx + tw && client_y >= ty && client_y < ty + th
+        };
+
+        in_mascot || in_perm || in_bubble || in_token
+    }
+}
+
+/// Collect diagnostic info for remote debugging of multi-monitor hit-test issues.
+pub fn collect_debug_info(hwnd_raw: usize) -> serde_json::Value {
+    unsafe {
+        let hwnd = HWND(hwnd_raw as *mut std::ffi::c_void);
+
+        // Window rect
+        let mut rect = RECT::default();
+        let _ = GetWindowRect(hwnd, &mut rect);
+
+        // Virtual desktop
+        let (vx, vy, vw, vh) = get_virtual_desktop_bounds();
+
+        // Window DPI
+        let window_dpi = GetDpiForWindow(hwnd);
+
+        // Frontend DPR
+        let frontend_dpr_x1000 = FRONTEND_DPR_X1000.load(Ordering::Relaxed);
+
+        // Cursor info
+        let mut cursor = POINT { x: 0, y: 0 };
+        let _ = GetCursorPos(&mut cursor);
+        let hmon_cursor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+        let mut cursor_dpi_x: u32 = 96;
+        let mut cursor_dpi_y: u32 = 96;
+        let _ = GetDpiForMonitor(hmon_cursor, MDT_EFFECTIVE_DPI, &mut cursor_dpi_x, &mut cursor_dpi_y);
+
+        // Mascot zone
+        let mx = MASCOT_X.load(Ordering::Relaxed);
+        let my = MASCOT_Y.load(Ordering::Relaxed);
+        let mw = MASCOT_W.load(Ordering::Relaxed);
+        let mh = MASCOT_H.load(Ordering::Relaxed);
+
+        // Effective scale used by hit-test
+        let scale = if frontend_dpr_x1000 > 0 {
+            frontend_dpr_x1000 as f64 / 1000.0
+        } else if window_dpi > 0 {
+            window_dpi as f64 / 96.0
+        } else {
+            1.0
+        };
+
+        // Enumerate all monitors
+        let mut monitors: Vec<serde_json::Value> = Vec::new();
+        unsafe extern "system" fn enum_cb(
+            hmon: HMONITOR,
+            _hdc: HDC,
+            _lprect: *mut RECT,
+            lparam: LPARAM,
+        ) -> BOOL {
+            let list = &mut *(lparam.0 as *mut Vec<serde_json::Value>);
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            if GetMonitorInfoW(hmon, &mut info).as_bool() {
+                let rc = info.rcMonitor;
+                let wa = info.rcWork;
+                let mut dpi_x: u32 = 96;
+                let mut dpi_y: u32 = 96;
+                let _ = GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
+                let primary = (info.dwFlags & 1) != 0; // MONITORINFOF_PRIMARY
+                list.push(serde_json::json!({
+                    "bounds": [rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top],
+                    "workArea": [wa.left, wa.top, wa.right - wa.left, wa.bottom - wa.top],
+                    "dpi": [dpi_x, dpi_y],
+                    "primary": primary,
+                }));
+            }
+            BOOL(1) // continue
+        }
+        let _ = EnumDisplayMonitors(
+            HDC::default(),
+            None,
+            Some(enum_cb),
+            LPARAM(&mut monitors as *mut Vec<serde_json::Value> as isize),
+        );
+
+        serde_json::json!({
+            "windowRect": [rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top],
+            "virtualDesktop": [vx, vy, vw, vh],
+            "windowDpi": window_dpi,
+            "frontendDprX1000": frontend_dpr_x1000,
+            "effectiveScale": scale,
+            "cursor": [cursor.x, cursor.y],
+            "cursorMonitorDpi": [cursor_dpi_x, cursor_dpi_y],
+            "mascotCss": [mx, my, mw, mh],
+            "mascotPhysical": [
+                (mx as f64 * scale) as i32,
+                (my as f64 * scale) as i32,
+                (mw as f64 * scale) as i32,
+                (mh as f64 * scale) as i32,
+            ],
+            "monitors": monitors,
+        })
     }
 }

@@ -75,6 +75,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   // Auto-approve countdown
   const [countdown, setCountdown] = createSignal<number | null>(null);
   const [countdownPaused, setCountdownPaused] = createSignal(false);
+  let wrapperRef: HTMLDivElement | undefined;
 
   const sessionId = () => event().session_id;
 
@@ -103,6 +104,12 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     clearCountdownInterval();
     setAnimKey((k) => k + 1);
 
+    // Reset hover-pause — previous permission may have left it stuck true
+    // (mouseLeave never fires when a new permission replaces the old one in
+    // the same DOM element under the cursor). Re-derive from actual :hover.
+    const stillHovered = !!wrapperRef && wrapperRef.matches(":hover");
+    setCountdownPaused(stillHovered);
+
     // Reset per-question state when permission changes
     const qs = questions();
     setCurrentQuestionIndex(0);
@@ -122,19 +129,19 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
     countdownInterval = setInterval(() => {
       if (countdownPaused()) return;
-      setCountdown((prev) => {
-        log("[countdown] tick, prev =", prev);
-        if (prev === null) return null;
-        const next = prev - 1;
-        if (next <= 0) {
-          log("[countdown] reached 0, approving");
-          clearCountdownInterval();
-          handleApprove();
-          return null;
-        }
+      const prev = countdown();
+      log("[countdown] tick, prev =", prev);
+      if (prev === null) return;
+      const next = prev - 1;
+      if (next <= 0) {
+        log("[countdown] reached 0, approving");
+        clearCountdownInterval();
+        setCountdown(null);
+        handleApprove();
+      } else {
         log("[countdown] next =", next);
-        return next;
-      });
+        setCountdown(next);
+      }
     }, 1000);
 
     onCleanup(clearCountdownInterval);
@@ -255,6 +262,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
   return (
     <div
+      ref={(el) => { wrapperRef = el; }}
       class="select-none flex items-center"
       classList={{
         "flex-col items-center": dir() === "down",
