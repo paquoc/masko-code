@@ -179,6 +179,7 @@ pub fn run() {
             commands::set_overlay_working_bubble_visible,
             commands::set_overlay_dragging,
             commands::update_frontend_dpr,
+            commands::update_overlay_viewport,
             commands::update_mascot_position,
             commands::get_monitor_at_point,
             commands::get_virtual_desktop_bounds,

@@ -55,6 +55,10 @@ static TOKEN_PANEL_H: AtomicI32 = AtomicI32::new(0);
 // 0 means "not yet reported" — fall back to GetDpiForWindow.
 pub static FRONTEND_DPR_X1000: AtomicU32 = AtomicU32::new(0);
 
+// Overlay CSS viewport size — reported by frontend for diagnostics
+static OVERLAY_INNER_W: AtomicI32 = AtomicI32::new(0);
+static OVERLAY_INNER_H: AtomicI32 = AtomicI32::new(0);
+
 // Style bits that would show a frame — strip these on every style change
 const BANNED_STYLE: u32 = WS_CAPTION.0
     | WS_THICKFRAME.0
@@ -197,6 +201,12 @@ pub fn update_frontend_dpr(dpr_x1000: u32) {
     FRONTEND_DPR_X1000.store(dpr_x1000, Ordering::Relaxed);
 }
 
+/// Store the overlay's CSS viewport size for diagnostics.
+pub fn update_overlay_viewport(w: i32, h: i32) {
+    OVERLAY_INNER_W.store(w, Ordering::Relaxed);
+    OVERLAY_INNER_H.store(h, Ordering::Relaxed);
+}
+
 /// Get monitor bounds (physical pixels) for the monitor containing the given point.
 /// Returns (left, top, width, height).
 pub fn monitor_bounds_at_point(x: i32, y: i32) -> (i32, i32, i32, i32) {
@@ -313,10 +323,9 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             return false;
         }
 
-        // Use the frontend-reported devicePixelRatio when available.
-        // This guarantees the hit-test scale matches WebView2's actual rendering,
-        // even on multi-monitor setups where GetDpiForWindow may disagree with
-        // the WebView's DPI context.
+        // Scale CSS coordinates to virtual-screen coordinates.
+        // WebView2 CSS viewport = windowRect / devicePixelRatio, so:
+        //   virtual_screen_offset = CSS_position * DPR
         let frontend_dpr = FRONTEND_DPR_X1000.load(Ordering::Relaxed);
         let window_dpi = GetDpiForWindow(hwnd);
         let scale = if frontend_dpr > 0 {
@@ -330,7 +339,7 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
         let client_x = cursor.x - rect.left;
         let client_y = cursor.y - rect.top;
 
-        // Read dynamic mascot position (logical CSS px) and scale to physical
+        // Read dynamic mascot position (logical CSS px) and scale to virtual-screen
         let mx = (MASCOT_X.load(Ordering::Relaxed) as f64 * scale) as i32;
         let my = (MASCOT_Y.load(Ordering::Relaxed) as f64 * scale) as i32;
         let mw = (MASCOT_W.load(Ordering::Relaxed) as f64 * scale) as i32;
@@ -339,7 +348,7 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
         let in_mascot = client_x >= mx && client_x < mx + mw
             && client_y >= my && client_y < my + mh;
 
-        // Working bubble zone: exact position sent by frontend
+        // Working bubble zone
         let bubble_on = WORKING_BUBBLE_VISIBLE.load(Ordering::Relaxed);
         let bx = BUBBLE_X.load(Ordering::Relaxed);
         let in_bubble = bubble_on && bx >= 0 && {
@@ -350,7 +359,7 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             client_x >= bx && client_x < bx + bw && client_y >= by && client_y < by + bh
         };
 
-        // Permission zone: exact position sent by frontend
+        // Permission zone
         let perm_on = PERMISSION_HIT_VISIBLE.load(Ordering::Relaxed);
         let px = PERM_X.load(Ordering::Relaxed);
         let in_perm = perm_on && px >= 0 && {
@@ -361,7 +370,7 @@ pub fn is_cursor_in_interactive_area(hwnd_raw: usize) -> bool {
             client_x >= px && client_x < px + pw && client_y >= py && client_y < py + ph
         };
 
-        // Token panel zone: exact position sent by frontend
+        // Token panel zone
         let token_on = TOKEN_PANEL_VISIBLE.load(Ordering::Relaxed);
         let tx = TOKEN_PANEL_X.load(Ordering::Relaxed);
         let in_token = token_on && tx >= 0 && {
@@ -391,7 +400,7 @@ pub fn collect_debug_info(hwnd_raw: usize) -> serde_json::Value {
         // Window DPI
         let window_dpi = GetDpiForWindow(hwnd);
 
-        // Frontend DPR
+        // Frontend DPR (informational only — not used for hit-test scaling)
         let frontend_dpr_x1000 = FRONTEND_DPR_X1000.load(Ordering::Relaxed);
 
         // Cursor info
@@ -402,20 +411,11 @@ pub fn collect_debug_info(hwnd_raw: usize) -> serde_json::Value {
         let mut cursor_dpi_y: u32 = 96;
         let _ = GetDpiForMonitor(hmon_cursor, MDT_EFFECTIVE_DPI, &mut cursor_dpi_x, &mut cursor_dpi_y);
 
-        // Mascot zone
+        // Mascot zone (CSS px = virtual-screen coords, no scaling needed)
         let mx = MASCOT_X.load(Ordering::Relaxed);
         let my = MASCOT_Y.load(Ordering::Relaxed);
         let mw = MASCOT_W.load(Ordering::Relaxed);
         let mh = MASCOT_H.load(Ordering::Relaxed);
-
-        // Effective scale used by hit-test
-        let scale = if frontend_dpr_x1000 > 0 {
-            frontend_dpr_x1000 as f64 / 1000.0
-        } else if window_dpi > 0 {
-            window_dpi as f64 / 96.0
-        } else {
-            1.0
-        };
 
         // Enumerate all monitors
         let mut monitors: Vec<serde_json::Value> = Vec::new();
@@ -453,21 +453,18 @@ pub fn collect_debug_info(hwnd_raw: usize) -> serde_json::Value {
             LPARAM(&mut monitors as *mut Vec<serde_json::Value> as isize),
         );
 
+        let overlay_w = OVERLAY_INNER_W.load(Ordering::Relaxed);
+        let overlay_h = OVERLAY_INNER_H.load(Ordering::Relaxed);
+
         serde_json::json!({
             "windowRect": [rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top],
             "virtualDesktop": [vx, vy, vw, vh],
+            "overlayViewport": [overlay_w, overlay_h],
             "windowDpi": window_dpi,
             "frontendDprX1000": frontend_dpr_x1000,
-            "effectiveScale": scale,
             "cursor": [cursor.x, cursor.y],
             "cursorMonitorDpi": [cursor_dpi_x, cursor_dpi_y],
-            "mascotCss": [mx, my, mw, mh],
-            "mascotPhysical": [
-                (mx as f64 * scale) as i32,
-                (my as f64 * scale) as i32,
-                (mw as f64 * scale) as i32,
-                (mh as f64 * scale) as i32,
-            ],
+            "mascotHitZone": [mx, my, mw, mh],
             "monitors": monitors,
         })
     }

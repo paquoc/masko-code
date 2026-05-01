@@ -117,6 +117,15 @@ pub fn update_frontend_dpr(dpr: f64) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command(rename_all = "camelCase")]
+pub fn update_overlay_viewport(w: i32, h: i32) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    crate::win_overlay::update_overlay_viewport(w, h);
+    #[cfg(not(target_os = "windows"))]
+    { let _ = (w, h); }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn update_mascot_position(x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
     #[cfg(target_os = "windows")]

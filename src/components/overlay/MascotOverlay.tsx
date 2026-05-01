@@ -481,13 +481,15 @@ function MascotOverlay() {
     log("Mascot switched — restored state:", JSON.stringify(agentState));
   }
 
-  // Report devicePixelRatio to Rust so hit-test matches WebView2 rendering.
+  // Report devicePixelRatio and viewport size to Rust for diagnostics.
   // Also watch for DPI changes (e.g. window moved to a different-DPI monitor).
   onMount(() => {
     invoke("update_frontend_dpr", { dpr: window.devicePixelRatio }).catch(() => {});
+    invoke("update_overlay_viewport", { w: window.innerWidth, h: window.innerHeight }).catch(() => {});
     const mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     const handler = () => {
       invoke("update_frontend_dpr", { dpr: window.devicePixelRatio }).catch(() => {});
+      invoke("update_overlay_viewport", { w: window.innerWidth, h: window.innerHeight }).catch(() => {});
     };
     mql.addEventListener("change", handler);
     onCleanup(() => mql.removeEventListener("change", handler));
@@ -702,6 +704,15 @@ function MascotOverlay() {
         (document.activeElement as HTMLElement)?.blur();
       }
       win.setIgnoreCursorEvents(shouldIgnore).catch(() => { });
+    });
+    onCleanup(unlisten);
+  });
+
+  // Reset mascot position to top-left of primary monitor (from tray menu)
+  onMount(async () => {
+    const unlisten = await listen("reset-mascot-position", () => {
+      overlayPositionStore.updatePosition(0, 0);
+      overlayPositionStore.persistPosition();
     });
     onCleanup(unlisten);
   });

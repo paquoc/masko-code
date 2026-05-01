@@ -154,14 +154,43 @@ export function analyzeBashCommand(commandStr: string): AnalysisResult {
   result.overallRisk = highestRisk;
   result.shouldAutoApprove = anyMatched && allAutoApprove;
 
-  log("[bash-risk] analyze:", commandStr, "→ commands:", commands, "anyMatched:", anyMatched, "allAutoApprove:", allAutoApprove, "shouldAutoApprove:", result.shouldAutoApprove, "matchedRule:", result.matchedRule);
+  const ruleSummary = result.matchedRule
+    ? `id=${result.matchedRule.id.slice(0, 8)} risk=${result.matchedRule.risk} autoApprove=${result.matchedRule.autoApprove} patterns="${result.matchedRule.patterns}"`
+    : "none";
+  log("[bash-risk] analyze:", commandStr, "→ commands:", commands, "anyMatched:", anyMatched, "allAutoApprove:", allAutoApprove, "shouldAutoApprove:", result.shouldAutoApprove, "matchedRule:", ruleSummary);
 
   return result;
 }
 
 /** Check if countdown should show for this permission */
 export function shouldShowCountdown(toolName: string | undefined, toolInput: Record<string, any> | undefined, sessionId?: string): boolean {
-  if (autoApproveStore.isSessionAutoApprove(sessionId)) return true;
-  if (toolName !== "Bash" || !toolInput?.command) return false;
-  return analyzeBashCommand(String(toolInput.command)).shouldAutoApprove;
+  return getAutoApproveReason(toolName, toolInput, sessionId) !== null;
+}
+
+export type AutoApproveReason =
+  | { type: "session" }
+  | { type: "rule"; ruleIndex: number; risk: RiskLevel };
+
+/** Returns why this permission should auto-approve, or null if it shouldn't */
+export function getAutoApproveReason(
+  toolName: string | undefined,
+  toolInput: Record<string, any> | undefined,
+  sessionId?: string,
+): AutoApproveReason | null {
+  if (autoApproveStore.isSessionAutoApprove(sessionId)) {
+    log("[autoApproveReason] session sessionId=", sessionId, "tool=", toolName);
+    return { type: "session" };
+  }
+  if (toolName !== "Bash" || !toolInput?.command) {
+    log("[autoApproveReason] not eligible tool=", toolName, "hasCommand=", !!toolInput?.command, "sessionId=", sessionId);
+    return null;
+  }
+  const analysis = analyzeBashCommand(String(toolInput.command));
+  if (!analysis.shouldAutoApprove || !analysis.matchedRule) {
+    log("[autoApproveReason] bash no-match shouldAutoApprove=", analysis.shouldAutoApprove);
+    return null;
+  }
+  const ruleIndex = autoApproveStore.settings.rules.findIndex((r) => r.id === analysis.matchedRule!.id);
+  log("[autoApproveReason] rule index=", ruleIndex, "risk=", analysis.matchedRule.risk);
+  return { type: "rule", ruleIndex, risk: analysis.matchedRule.risk };
 }
