@@ -1,8 +1,17 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { installHooks, uninstallHooks, isHooksRegistered, getServerStatus, getAutostart, setAutostart } from "../../services/ipc";
-import type { WorkingBubbleSettings, BubbleAppearance } from "../../stores/working-bubble-store";
+import type {
+  WorkingBubbleSettings,
+  BubbleAppearance,
+  TokenPanelSettings,
+  TokenMetricKey,
+} from "../../stores/working-bubble-store";
+import { defaultTokenPanel, ALL_TOKEN_METRICS } from "../../stores/working-bubble-store";
+import TokenPanel, { ALL_ICON_OPTIONS } from "../overlay/TokenPanel";
+import type { SessionTokenUsage } from "../../stores/token-usage-store";
+import { GripVertical } from "lucide-solid";
 import WorkingBubble from "../overlay/WorkingBubble";
 import PermissionPrompt from "../overlay/PermissionPrompt";
 import type { PendingPermission } from "../../models/permission";
@@ -32,6 +41,11 @@ function loadBubbleSettings(): WorkingBubbleSettings {
     showSessionStart: true,
     showSessionEnd: true,
     appearance: { ...defaultAppearance },
+    tokenPanel: {
+      ...defaultTokenPanel,
+      order: [...defaultTokenPanel.order],
+      visible: { ...defaultTokenPanel.visible },
+    },
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -41,10 +55,53 @@ function loadBubbleSettings(): WorkingBubbleSettings {
         ...defaults,
         ...parsed,
         appearance: { ...defaults.appearance, ...parsed.appearance },
+        tokenPanel: mergeParsedTokenPanel(defaults.tokenPanel, parsed.tokenPanel),
       };
     }
   } catch { /* ignore */ }
   return defaults;
+}
+
+function mergeParsedTokenPanel(base: TokenPanelSettings, parsed: any): TokenPanelSettings {
+  if (!parsed || typeof parsed !== "object") return base;
+  const result: TokenPanelSettings = {
+    enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : base.enabled,
+    order: [...base.order],
+    visible: { ...base.visible },
+    bgColor: base.bgColor,
+    textColor: base.textColor,
+    icons: { ...base.icons },
+  };
+  if (Array.isArray(parsed.order)) {
+    const seen = new Set<TokenMetricKey>();
+    const filtered: TokenMetricKey[] = [];
+    for (const k of parsed.order) {
+      if ((ALL_TOKEN_METRICS as string[]).includes(k) && !seen.has(k as TokenMetricKey)) {
+        filtered.push(k as TokenMetricKey);
+        seen.add(k as TokenMetricKey);
+      }
+    }
+    for (const k of ALL_TOKEN_METRICS) {
+      if (!seen.has(k)) filtered.push(k);
+    }
+    result.order = filtered;
+  }
+  if (parsed.visible && typeof parsed.visible === "object") {
+    for (const k of ALL_TOKEN_METRICS) {
+      if (typeof parsed.visible[k] === "boolean") result.visible[k] = parsed.visible[k];
+    }
+  }
+  if (typeof parsed.bgColor === "string") result.bgColor = parsed.bgColor;
+  if (typeof parsed.textColor === "string") result.textColor = parsed.textColor;
+  if (parsed.icons && typeof parsed.icons === "object") {
+    const validKeys = new Set(ALL_ICON_OPTIONS.map(o => o.key));
+    for (const k of ALL_TOKEN_METRICS) {
+      if (typeof parsed.icons[k] === "string" && validKeys.has(parsed.icons[k])) {
+        result.icons[k] = parsed.icons[k];
+      }
+    }
+  }
+  return result;
 }
 
 const previewPermission: PendingPermission = {
@@ -63,6 +120,25 @@ const previewPermission: PendingPermission = {
   collapsed: false,
 };
 
+const previewTokenSessions: SessionTokenUsage[] = [
+  {
+    sessionId: "preview-a",
+    projectName: "demo-project",
+    input: 12_345,
+    output: 3_210,
+    cacheRead: 45_678,
+    cacheCreation: 987,
+  },
+  {
+    sessionId: "preview-b",
+    projectName: "other-repo",
+    input: 2_100,
+    output: 450,
+    cacheRead: 8_900,
+    cacheCreation: 120,
+  },
+];
+
 export default function SettingsPanel() {
   const [hooksInstalled, setHooksInstalled] = createSignal(false);
   const [serverPort, setServerPort] = createSignal(45832);
@@ -80,6 +156,12 @@ export default function SettingsPanel() {
     } catch (e) {
       error("Settings load error:", e);
     }
+
+    const unlisten = await listen<string>("navigate-section", (e) => {
+      const el = document.getElementById(`section-${e.payload}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    onCleanup(unlisten);
   });
 
   async function toggleAutostart() {
@@ -111,6 +193,64 @@ export default function SettingsPanel() {
   function resetAppearance() {
     setBubbleSettings("appearance", { ...defaultAppearance });
     persistAndEmit();
+  }
+
+  function setTokenPanelEnabled(enabled: boolean) {
+    setBubbleSettings("tokenPanel", "enabled", enabled);
+    persistAndEmit();
+  }
+
+  function setTokenPanelColor(key: "bgColor" | "textColor", value: string) {
+    setBubbleSettings("tokenPanel", key, value);
+    persistAndEmit();
+  }
+
+  function setMetricVisible(metric: TokenMetricKey, visible: boolean) {
+    setBubbleSettings("tokenPanel", "visible", metric, visible);
+    persistAndEmit();
+  }
+
+  function reorderMetric(fromKey: TokenMetricKey, toKey: TokenMetricKey) {
+    if (fromKey === toKey) return;
+    const order = [...bubbleSettings.tokenPanel.order];
+    const fromIdx = order.indexOf(fromKey);
+    const toIdx = order.indexOf(toKey);
+    if (fromIdx < 0 || toIdx < 0) return;
+    order.splice(fromIdx, 1);
+    order.splice(toIdx, 0, fromKey);
+    setBubbleSettings("tokenPanel", "order", order);
+    persistAndEmit();
+  }
+
+  const [draggingMetric, setDraggingMetric] = createSignal<TokenMetricKey | null>(null);
+  const [dragOverMetric, setDragOverMetric] = createSignal<TokenMetricKey | null>(null);
+
+  type PendingSwap = { metric: TokenMetricKey; iconKey: string; conflicting: TokenMetricKey };
+  const [pendingSwap, setPendingSwap] = createSignal<PendingSwap | null>(null);
+
+  function setMetricIcon(metric: TokenMetricKey, iconKey: string) {
+    const icons = { ...bubbleSettings.tokenPanel.icons };
+    const conflicting = ALL_TOKEN_METRICS.find(k => k !== metric && icons[k] === iconKey);
+    if (conflicting) {
+      setPendingSwap({ metric, iconKey, conflicting });
+      return;
+    }
+    icons[metric] = iconKey;
+    setBubbleSettings("tokenPanel", "icons", icons);
+    persistAndEmit();
+  }
+
+  function confirmSwap() {
+    const swap = pendingSwap();
+    if (!swap) return;
+    const icons = { ...bubbleSettings.tokenPanel.icons };
+    // swap the two icons
+    const prevIcon = icons[swap.metric];
+    icons[swap.metric] = swap.iconKey;
+    icons[swap.conflicting] = prevIcon;
+    setBubbleSettings("tokenPanel", "icons", icons);
+    persistAndEmit();
+    setPendingSwap(null);
   }
 
   async function handleInstallHooks() {
@@ -325,7 +465,7 @@ export default function SettingsPanel() {
       <Section title="Bubble Appearance">
         <div class="space-y-3">
           {/* Previews */}
-          <div class="flex items-end justify-center gap-3 py-2">
+          <div class="flex items-end justify-center gap-3 py-2 flex-wrap">
             <WorkingBubble
               appearance={bubbleSettings.appearance}
               previewState={{
@@ -343,6 +483,13 @@ export default function SettingsPanel() {
                 permission={previewPermission}
               />
             </div>
+            <Show when={bubbleSettings.tokenPanel.enabled}>
+              <TokenPanel
+                appearance={bubbleSettings.appearance}
+                tokenSettings={bubbleSettings.tokenPanel}
+                previewSessions={previewTokenSessions}
+              />
+            </Show>
           </div>
 
           {/* Font size */}
@@ -380,13 +527,85 @@ export default function SettingsPanel() {
         </div>
       </Section>
 
+      {/* Token Panel */}
+      <Section title="Token Panel" id="section-token-panel">
+        <div class="space-y-3">
+          <ToggleRow
+            label="Show token panel"
+            description="Cumulative token counts next to the mascot"
+            checked={bubbleSettings.tokenPanel.enabled}
+            onChange={() => setTokenPanelEnabled(!bubbleSettings.tokenPanel.enabled)}
+          />
+          <Show when={bubbleSettings.tokenPanel.enabled}>
+            <div class="space-y-1">
+              <ColorRow label="Text color" value={bubbleSettings.tokenPanel.textColor ?? "rgba(74,222,128,1)"} onChange={(v) => setTokenPanelColor("textColor", v)} />
+              <ColorRow label="Background" value={bubbleSettings.tokenPanel.bgColor ?? "rgba(12,16,12,0.85)"} onChange={(v) => setTokenPanelColor("bgColor", v)} />
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs text-text-muted">Drag to reorder. Checkbox toggles visibility. Pick an icon on the right.</p>
+              <For each={bubbleSettings.tokenPanel.order}>
+                {(metricKey) => (
+                  <TokenMetricRow
+                    metric={metricKey}
+                    visible={bubbleSettings.tokenPanel.visible[metricKey]}
+                    currentIcon={bubbleSettings.tokenPanel.icons[metricKey]}
+                    dragging={draggingMetric() === metricKey}
+                    dragOver={dragOverMetric() === metricKey}
+                    onToggle={() => setMetricVisible(metricKey, !bubbleSettings.tokenPanel.visible[metricKey])}
+                    onIconChange={(key) => setMetricIcon(metricKey, key)}
+                    onDragStart={() => setDraggingMetric(metricKey)}
+                    onDragEnd={() => { setDraggingMetric(null); setDragOverMetric(null); }}
+                    onDragEnter={() => setDragOverMetric(metricKey)}
+                    onDrop={() => {
+                      const from = draggingMetric();
+                      if (from) reorderMetric(from, metricKey);
+                      setDraggingMetric(null);
+                      setDragOverMetric(null);
+                    }}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </Section>
+
+      {/* Icon swap confirmation dialog */}
+      <Show when={pendingSwap()}>
+        {(swap) => (
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div class="bg-surface border border-border rounded-card p-5 w-72 shadow-xl space-y-3">
+              <p class="text-sm font-semibold text-text-primary">Icon already in use</p>
+              <p class="text-xs text-text-muted leading-relaxed">
+                <span class="font-medium text-text-primary">{METRIC_LABEL[swap().conflicting].title}</span> already uses this icon.
+                Swap both icons?
+              </p>
+              <div class="flex gap-2 justify-end pt-1">
+                <button
+                  class="px-3 py-1.5 text-xs rounded border border-border text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+                  onClick={() => setPendingSwap(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  class="px-3 py-1.5 text-xs rounded bg-orange-primary text-white hover:opacity-90 transition-opacity"
+                  onClick={confirmSwap}
+                >
+                  Swap
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
+
       {/* Updates */}
       <Section title="Updates">
         <div class="flex items-center justify-between">
           <div>
             <Show when={updateStore.status === "idle"}>
               <p class="text-sm font-body text-text-primary">You're up to date</p>
-              <p class="text-xs text-text-muted mt-0.5">Current version: v1.24.0</p>
+              <p class="text-xs text-text-muted mt-0.5">Current version: v1.26.0</p>
             </Show>
             <Show when={updateStore.status === "checking"}>
               <p class="text-sm font-body text-text-primary">Checking for updates...</p>
@@ -436,18 +655,32 @@ export default function SettingsPanel() {
 
       {/* Debug */}
       <Section title="Debug">
-        <button
-          class="px-3 py-1.5 text-xs font-body font-medium rounded-card-sm bg-surface-hover text-text-primary hover:bg-border transition-colors"
-          onClick={() => invoke("open_devtools").catch(() => {})}
-        >
-          Open Overlay DevTools
-        </button>
+        <div class="flex gap-2 flex-wrap">
+          <button
+            class="px-3 py-1.5 text-xs font-body font-medium rounded-card-sm bg-surface-hover text-text-primary hover:bg-border transition-colors"
+            onClick={() => invoke("open_devtools").catch(() => {})}
+          >
+            Open Overlay DevTools
+          </button>
+          <button
+            class="px-3 py-1.5 text-xs font-body font-medium rounded-card-sm bg-surface-hover text-text-primary hover:bg-border transition-colors"
+            onClick={async () => {
+              try {
+                const info = await invoke("debug_overlay_info") as Record<string, unknown>;
+                const text = JSON.stringify(info, null, 2);
+                await navigator.clipboard.writeText(text);
+              } catch { /* ignore */ }
+            }}
+          >
+            Copy Debug Info
+          </button>
+        </div>
       </Section>
 
       {/* About */}
       <Section title="About">
         <div class="space-y-1 text-sm text-text-muted font-body">
-          <p><span class="text-text-primary font-medium">Masko Code</span> v1.24.0</p>
+          <p><span class="text-text-primary font-medium">Masko Code</span> v1.26.0</p>
           <p>Your AI coding assistant companion for Windows.</p>
           <p class="text-xs mt-2">
             <button
@@ -463,9 +696,9 @@ export default function SettingsPanel() {
   );
 }
 
-function Section(props: { title: string; children: any }) {
+function Section(props: { title: string; id?: string; children: any }) {
   return (
-    <div class="bg-surface rounded-card border border-border p-4">
+    <div id={props.id} class="bg-surface rounded-card border border-border p-4">
       <h3 class="font-heading font-semibold text-sm text-text-primary mb-3">{props.title}</h3>
       {props.children}
     </div>
@@ -658,6 +891,142 @@ function HotkeyRow(props: { label: string; action: keyof HotkeySettings }) {
         >
           {bindingToLabel(binding())}
         </button>
+      </Show>
+    </div>
+  );
+}
+
+const METRIC_LABEL: Record<TokenMetricKey, { title: string; hint: string }> = {
+  read: { title: "Read", hint: "input + cache read" },
+  write: { title: "Write", hint: "output + cache create" },
+  total: { title: "Total", hint: "all combined" },
+  input: { title: "Input", hint: "raw input tokens" },
+  output: { title: "Output", hint: "raw output tokens" },
+  cache_read: { title: "Cache read", hint: "raw cache read input" },
+  cache_creation: { title: "Cache create", hint: "raw cache creation input" },
+};
+
+function TokenMetricRow(props: {
+  metric: TokenMetricKey;
+  visible: boolean;
+  currentIcon: string;
+  dragging: boolean;
+  dragOver: boolean;
+  onToggle: () => void;
+  onIconChange: (key: string) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDragEnter: () => void;
+  onDrop: () => void;
+}) {
+  const meta = () => METRIC_LABEL[props.metric];
+  let rowRef: HTMLDivElement | undefined;
+  return (
+    <div
+      ref={(el) => { rowRef = el; }}
+      class="flex items-center gap-2 py-1.5 px-2 rounded border transition-colors"
+      classList={{
+        "opacity-40": props.dragging,
+        "border-orange-primary/60 bg-orange-primary/10": props.dragOver && !props.dragging,
+        "border-transparent hover:bg-white/5": !props.dragOver && !props.dragging,
+        "border-white/10 bg-white/5": props.dragging,
+      }}
+      onDragEnter={(e) => { e.preventDefault(); props.onDragEnter(); }}
+      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "move"; }}
+      onDrop={(e) => { e.preventDefault(); props.onDrop(); }}
+    >
+      <span
+        class="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-primary flex items-center justify-center px-1"
+        title="Drag to reorder"
+        draggable={true}
+        onDragStart={(e) => {
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", props.metric);
+            if (rowRef) {
+              const rect = rowRef.getBoundingClientRect();
+              e.dataTransfer.setDragImage(rowRef, e.clientX - rect.left, e.clientY - rect.top);
+            }
+          }
+          props.onDragStart();
+        }}
+        onDragEnd={props.onDragEnd}
+      >
+        <GripVertical size={16} />
+      </span>
+      <label class="flex items-center gap-2 flex-1 cursor-pointer min-w-0">
+        <input
+          type="checkbox"
+          checked={props.visible}
+          onChange={props.onToggle}
+          class="accent-orange-primary flex-shrink-0"
+        />
+        <span class="text-sm text-text-primary">{meta().title}</span>
+        <span class="text-xs text-text-muted truncate">{meta().hint}</span>
+      </label>
+      {/* Icon dropdown */}
+      <IconDropdown currentIcon={props.currentIcon} onSelect={props.onIconChange} />
+    </div>
+  );
+}
+
+function IconDropdown(props: { currentIcon: string; onSelect: (key: string) => void }) {
+  const [open, setOpen] = createSignal(false);
+  let containerRef: HTMLDivElement | undefined;
+
+  // Close on click outside
+  const handleOutside = (e: MouseEvent) => {
+    if (containerRef && !containerRef.contains(e.target as Node)) setOpen(false);
+  };
+  createEffect(() => {
+    if (open()) document.addEventListener("mousedown", handleOutside);
+    else document.removeEventListener("mousedown", handleOutside);
+  });
+  onCleanup(() => document.removeEventListener("mousedown", handleOutside));
+
+  return (
+    <div ref={containerRef} class="relative flex-shrink-0">
+      <button
+        title="Change icon"
+        onClick={() => setOpen(v => !v)}
+        class="w-7 h-7 flex items-center justify-center rounded border transition-colors"
+        classList={{
+          "border-orange-primary text-orange-primary bg-orange-primary/10": open(),
+          "border-border text-text-muted hover:text-text-primary hover:border-text-muted": !open(),
+        }}
+      >
+        {(() => {
+          const opt = ALL_ICON_OPTIONS.find(o => o.key === props.currentIcon);
+          if (!opt) return null;
+          const I = opt.component;
+          return <I size={13} strokeWidth={2} />;
+        })()}
+      </button>
+      <Show when={open()}>
+        <div
+          class="absolute right-0 top-full mt-1.5 z-50 rounded-lg border border-white/20 shadow-2xl p-2 grid grid-cols-4 gap-1"
+          style={{ background: "rgba(50,50,58,1)", "min-width": "124px" }}
+        >
+          <For each={ALL_ICON_OPTIONS}>
+            {(opt) => {
+              const Icon = opt.component;
+              const active = () => props.currentIcon === opt.key;
+              return (
+                <button
+                  title={opt.key}
+                  onClick={() => { props.onSelect(opt.key); setOpen(false); }}
+                  class="w-7 h-7 flex items-center justify-center rounded transition-colors"
+                  classList={{
+                    "bg-orange-primary text-white": active(),
+                    "text-white/70 hover:text-white hover:bg-white/15": !active(),
+                  }}
+                >
+                  <Icon size={14} strokeWidth={2} />
+                </button>
+              );
+            }}
+          </For>
+        </div>
       </Show>
     </div>
   );

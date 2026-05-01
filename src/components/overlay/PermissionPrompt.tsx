@@ -8,7 +8,7 @@ import { workingBubbleStore, type BubbleAppearance } from "../../stores/working-
 import { log } from "../../services/log";
 import { BubbleTail, type TailDir } from "./BubbleTail";
 import { autoApproveStore } from "../../stores/auto-approve-store";
-import { shouldShowCountdown } from "../../services/bash-risk-analyzer";
+import { getAutoApproveReason, type AutoApproveReason } from "../../services/bash-risk-analyzer";
 
 /** Format tool input for display */
 function formatToolInput(event: PendingPermission["event"]): string | null {
@@ -75,13 +75,15 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
   // Auto-approve countdown
   const [countdown, setCountdown] = createSignal<number | null>(null);
   const [countdownPaused, setCountdownPaused] = createSignal(false);
+  const [autoReason, setAutoReason] = createSignal<AutoApproveReason | null>(null);
+  let wrapperRef: HTMLDivElement | undefined;
 
   const sessionId = () => event().session_id;
 
-  // Determine if this permission should auto-approve
-  const shouldCountdown = () => {
-    if (isQ()) return false;
-    return shouldShowCountdown(event().tool_name, event().tool_input, sessionId());
+  // Determine if this permission should auto-approve, and why
+  const computeAutoReason = (): AutoApproveReason | null => {
+    if (isQ()) return null;
+    return getAutoApproveReason(event().tool_name, event().tool_input, sessionId());
   };
 
   // Start countdown timer
@@ -96,45 +98,63 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
   // Track permission id to restart countdown when permission changes
   const [animKey, setAnimKey] = createSignal(0);
+  let lastPermId: string | null = null;
 
   createEffect(() => {
     // Access permission id so effect re-runs when it changes
     const permId = props.permission.id;
+    const permChanged = permId !== lastPermId;
+    lastPermId = permId;
+
     clearCountdownInterval();
     setAnimKey((k) => k + 1);
 
-    // Reset per-question state when permission changes
-    const qs = questions();
-    setCurrentQuestionIndex(0);
-    setQuestionSelections(qs.map(() => new Set<string>()));
-    setQuestionOtherActive(qs.map(() => false));
-    setQuestionOtherText(qs.map(() => ""));
+    if (permChanged) {
+      // Always start unpaused on a new permission. The component instance is
+      // reused across permissions (Show is non-keyed), so countdownPaused can
+      // be stuck true from the previous prompt — and if the cursor is parked
+      // over the bubble area when a new permission arrives, no mouseEnter/
+      // mouseLeave will fire to clear it. The whole point of auto-approve is
+      // running while the user is AFK / not interacting; if they want to
+      // pause, the next mouseEnter will set paused=true again.
+      setCountdownPaused(false);
 
-    if (!shouldCountdown()) {
+      // Reset per-question state only when permission actually changes
+      const qs = questions();
+      setCurrentQuestionIndex(0);
+      setQuestionSelections(qs.map(() => new Set<string>()));
+      setQuestionOtherActive(qs.map(() => false));
+      setQuestionOtherText(qs.map(() => ""));
+    }
+
+    const sid = sessionId();
+    const reason = computeAutoReason();
+    setAutoReason(reason);
+    if (!reason) {
       setCountdown(null);
-      log("[countdown] skip for", permId);
+      log("[countdown] skip permId=", permId, "tool=", event().tool_name, "sessionId=", sid);
       return;
     }
 
     const seconds = autoApproveStore.settings.countdownSeconds;
-    log("[countdown] init, countdownSeconds =", seconds, "permId =", permId);
+    log("[countdown] init permId=", permId, "tool=", event().tool_name, "sessionId=", sid, "reason=", reason, "seconds=", seconds, "permChanged=", permChanged, "paused=", countdownPaused());
     setCountdown(seconds);
 
     countdownInterval = setInterval(() => {
       if (countdownPaused()) return;
-      setCountdown((prev) => {
-        log("[countdown] tick, prev =", prev);
-        if (prev === null) return null;
-        const next = prev - 1;
-        if (next <= 0) {
-          log("[countdown] reached 0, approving");
-          clearCountdownInterval();
-          handleApprove();
-          return null;
-        }
+      const prev = countdown();
+      log("[countdown] tick, prev =", prev);
+      if (prev === null) return;
+      const next = prev - 1;
+      if (next <= 0) {
+        log("[countdown] reached 0, approving");
+        clearCountdownInterval();
+        setCountdown(null);
+        handleApprove();
+      } else {
         log("[countdown] next =", next);
-        return next;
-      });
+        setCountdown(next);
+      }
     }, 1000);
 
     onCleanup(clearCountdownInterval);
@@ -255,6 +275,7 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
   return (
     <div
+      ref={(el) => { wrapperRef = el; }}
       class="select-none flex items-center"
       classList={{
         "flex-col items-center": dir() === "down",
@@ -288,17 +309,29 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
             <span class="ml-auto" style={{ "font-size": `${fsMuted()}px`, color: a().mutedColor }}>{project()}</span>
             {/* Expand / Collapse toggle */}
             <button
-              class="ml-1 px-1 py-0.5 rounded transition-colors"
+              class="ml-1 px-1 py-0.5 rounded transition-colors cursor-pointer hover:bg-neutral-200"
               style={{
                 "font-size": `${fsMuted()}px`,
                 color: a().mutedColor,
-                background: "transparent",
                 "line-height": "1",
               }}
               onClick={(e) => { e.stopPropagation(); props.onToggleExpand?.(); }}
               title={props.expanded ? "Collapse" : "Expand"}
             >
               {props.expanded ? "↘" : "⤡"}
+            </button>
+            {/* Close — collapses bubble (does not resolve the permission) */}
+            <button
+              class="px-1 py-0.5 rounded transition-colors cursor-pointer hover:bg-neutral-200"
+              style={{
+                "font-size": `${fsMuted()}px`,
+                color: a().mutedColor,
+                "line-height": "1",
+              }}
+              onClick={(e) => { e.stopPropagation(); clearCountdownInterval(); setCountdown(null); handleCollapse(); }}
+              title="Close bubble (permission stays pending)"
+            >
+              ✕
             </button>
           </div>
         </div>
@@ -539,13 +572,17 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
               />
             </Show>
             <span class="relative">
-              {isQ()
-                ? (questions().length > 1 && currentQuestionIndex() < questions().length - 1 ? "Next" : "Submit")
-                : selectedSuggestion()
-                  ? "Allow Rule"
-                  : countdown() !== null && countdown()! > 0
-                    ? `Approve (${countdown()})`
-                    : "Approve"}
+              {(() => {
+                if (isQ()) {
+                  return questions().length > 1 && currentQuestionIndex() < questions().length - 1 ? "Next" : "Submit";
+                }
+                if (selectedSuggestion()) return "Allow Rule";
+                const c = countdown();
+                if (c === null || c <= 0) return "Approve";
+                const r = autoReason();
+                if (r?.type === "rule") return `Approve - Auto by rule (${c})`;
+                return `Approve (${c})`;
+              })()}
             </span>
           </button>
 

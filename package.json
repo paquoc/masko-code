@@ -1,7 +1,7 @@
 {
   "name": "masko-windows",
   "private": true,
-  "version": "1.24.0",
+  "version": "1.26.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2",
     "bash-parser": "^0.5.0",
+    "lucide-solid": "^1.8.0",
     "solid-js": "^1.9"
   },
   "devDependencies": {

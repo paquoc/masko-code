@@ -6,13 +6,14 @@ use tauri::{
 
 pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItem::with_id(app, "restart_mascot", "Restart Mascot", true, None::<&str>)?;
+    let reset_pos = MenuItem::with_id(app, "reset_position", "Reset Mascot Position", true, None::<&str>)?;
     let dashboard = MenuItem::with_id(app, "dashboard", "Open Dashboard", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Masko", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&show, &dashboard, &sep1, &settings, &sep2, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &reset_pos, &dashboard, &sep1, &settings, &sep2, &quit])?;
 
     TrayIconBuilder::new()
         .icon(app.default_window_icon().cloned().unwrap())
@@ -26,6 +27,9 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     overlay.eval("location.reload()").ok();
                     overlay.show().ok();
                 }
+            }
+            "reset_position" => {
+                app.emit("reset-mascot-position", ()).ok();
             }
             "dashboard" => {
                 if let Some(main) = app.get_webview_window("main") {

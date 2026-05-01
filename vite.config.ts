@@ -26,6 +26,11 @@ export default defineConfig(async () => ({
         main: path.resolve(__dirname, "index.html"),
         overlay: path.resolve(__dirname, "overlay.html"),
       },
+      onwarn(warning, warn) {
+        // curry.js (dep of bash-parser) uses eval — known, safe to suppress
+        if (warning.code === "EVAL" && warning.id?.includes("curry")) return;
+        warn(warning);
+      },
     },
   },
   clearScreen: false,
