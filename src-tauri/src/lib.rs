@@ -204,6 +204,28 @@ pub fn run() {
             commands::get_session_token_usage,
             commands::reset_session_token_usage,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Masko");
+        .build(tauri::generate_context!())
+        .expect("error while building Masko")
+        .run(|app_handle, event| {
+            // Stop the Telegram long-poll BEFORE the process exits. Otherwise
+            // the in-flight getUpdates request is aborted mid-flight and
+            // Telegram keeps the connection "occupied" for a short window —
+            // when Masko reopens, getUpdates returns 409 Conflict.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                if let Some(manager) = app_handle.try_state::<std::sync::Arc<telegram::TelegramManager>>() {
+                    let m = manager.inner().clone();
+                    // Block on stop_poller — the watch::Sender::send wakes the
+                    // poller's select! immediately, which cancels the in-flight
+                    // get_updates HTTP call. Bounded so we never hang shutdown.
+                    let _ = tauri::async_runtime::block_on(async {
+                        tokio::time::timeout(
+                            std::time::Duration::from_secs(2),
+                            m.stop_poller(),
+                        )
+                        .await
+                    });
+                    mlog!("[telegram] poller stopped on exit");
+                }
+            }
+        });
 }

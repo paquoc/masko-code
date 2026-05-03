@@ -137,7 +137,9 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
     }
 
     const seconds = autoApproveStore.settings.countdownSeconds;
-    log("[countdown] init permId=", permId, "tool=", event().tool_name, "sessionId=", sid, "reason=", reason, "seconds=", seconds, "permChanged=", permChanged, "paused=", countdownPaused());
+    // NOTE: do not read countdownPaused() here — it would re-track the effect
+    // and cause the countdown to reset to full whenever the user hovers in/out.
+    log("[countdown] init permId=", permId, "tool=", event().tool_name, "sessionId=", sid, "reason=", reason, "seconds=", seconds, "permChanged=", permChanged);
     setCountdown(seconds);
 
     countdownInterval = setInterval(() => {
