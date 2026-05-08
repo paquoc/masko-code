@@ -154,7 +154,17 @@ export async function resolve(id: string, decision: PermissionDecision, suggesti
   const hookDecision: any = { behavior: decision };
   if (suggestion) {
     if (suggestion.type === "updatedInput") {
-      hookDecision.updatedInput = suggestion;
+      // Claude Code expects updatedInput to mirror the original tool_input
+      // schema — for AskUserQuestion that's { questions, answers } where answers
+      // is an object keyed by question text. The caller passes the prepared
+      // payload under suggestion.updatedInput; older callers may pass fields
+      // directly (legacy) — fall back to stripping the discriminator.
+      if (suggestion.updatedInput && typeof suggestion.updatedInput === "object") {
+        hookDecision.updatedInput = suggestion.updatedInput;
+      } else {
+        const { type: _t, ...rest } = suggestion;
+        hookDecision.updatedInput = rest;
+      }
     } else if (suggestion.type === "addRules" && suggestion.rules) {
       hookDecision.updatedPermissions = [suggestion];
     } else if (suggestion.type === "setMode" && suggestion.mode) {

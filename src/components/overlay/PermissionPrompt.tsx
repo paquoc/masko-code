@@ -42,13 +42,13 @@ function parseQuestions(event: PendingPermission["event"]): Array<{
   const raw = event.tool_input.questions;
   if (!Array.isArray(raw)) return [];
   return raw.map((q: any) => ({
-    question: q.question || "",
-    options: Array.isArray(q.options)
+    question: q?.question || "",
+    options: Array.isArray(q?.options)
       ? q.options.map((o: any) =>
-          typeof o === "string" ? { label: o } : { label: o.label || "", description: o.description },
+          typeof o === "string" ? { label: o } : { label: o?.label || "", description: o?.description },
         )
       : [],
-    multiSelect: q.multiSelect === true,
+    multiSelect: q?.multiSelect === true,
   }));
 }
 
@@ -191,19 +191,27 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
         setCurrentQuestionIndex(currentQuestionIndex() + 1);
         return;
       }
-      // Last (or only) question — submit all answers
+      // Last (or only) question — submit all answers.
+      // Claude Code expects updatedInput to mirror the original tool_input
+      // and add an `answers` object keyed by question text:
+      //   { questions: [...original...], answers: { [questionText]: answerLabel } }
       const answerText = answer().trim();
+      const rawInput = (event() as any).tool_input || {};
       if (qs.length > 0 && qs[0].options.length > 0) {
-        // Option-based: send one entry per question (in question order)
-        const answers = qs.map((_, i) => buildQuestionAnswer(i)).filter((a) => a.length > 0);
-        permissionStore.resolve(props.permission.id, "allow", {
-          type: "updatedInput",
-          answers,
+        const answersObj: Record<string, string> = {};
+        qs.forEach((q, i) => {
+          const a = buildQuestionAnswer(i);
+          if (a.length > 0) answersObj[q.question] = a;
         });
-      } else if (answerText) {
         permissionStore.resolve(props.permission.id, "allow", {
           type: "updatedInput",
-          answer: answerText,
+          updatedInput: { ...rawInput, answers: answersObj },
+        });
+      } else if (answerText && qs.length > 0) {
+        const answersObj: Record<string, string> = { [qs[0].question]: answerText };
+        permissionStore.resolve(props.permission.id, "allow", {
+          type: "updatedInput",
+          updatedInput: { ...rawInput, answers: answersObj },
         });
       }
     } else if (suggestion) {
@@ -225,9 +233,9 @@ export default function PermissionPrompt(props: { permission: PendingPermission;
 
   const updateQuestionSelection = (idx: number, updater: (prev: Set<string>) => Set<string>) => {
     setQuestionSelections((prev) => {
-      const next = prev.slice();
-      next[idx] = updater(next[idx] || new Set<string>());
-      return next;
+      const base = Array.isArray(prev) ? prev.slice() : [];
+      base[idx] = updater(base[idx] || new Set<string>());
+      return base;
     });
   };
 
